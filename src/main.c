@@ -12,6 +12,7 @@
 
 #include "config.h"
 #include "lvgl.h"
+#include "modes/game_of_life.h"
 #include "modes/placeholder.h"
 #include "shell.h"
 #include "src/drivers/display/drm/lv_linux_drm.h"
@@ -47,11 +48,11 @@ int main(void) {
     }
     lv_linux_drm_set_file(disp, cfg.drm_dev, -1);
 
-    /* Mode shell with temporary placeholder modes (Unit 1). The real Game of
-     * Life, Clock, and Menu modes replace these registrations in later units. */
+    /* Mode shell. Game of Life is the real mode (Unit 2); Clock and Menu are
+     * still placeholders until later units replace them. */
     shell_init();
     shell_register_content_mode(
-        placeholder_mode_create("game_of_life", "Game of Life", 0x0d2818));
+        game_of_life_mode_create("game_of_life", "Game of Life"));
     shell_register_content_mode(
         placeholder_mode_create("clock", "Clock", 0x14233a));
     shell_register_menu(placeholder_mode_create("menu", "Menu", 0x202428));

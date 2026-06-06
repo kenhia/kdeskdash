@@ -23,7 +23,9 @@ add_executable(kdeskdash
     src/config.c
     src/registry.c
     src/shell.c
+    src/gol.c
     src/modes/placeholder.c
+    src/modes/game_of_life.c
     src/demo_screen.c
     assets/brain_rot.c
 )
@@ -66,4 +68,9 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_registry PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_registry PRIVATE -Wall -Wextra)
     add_test(NAME test_registry COMMAND test_registry)
+
+    add_executable(test_gol tests/test_gol.c src/gol.c)
+    target_include_directories(test_gol PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_gol PRIVATE -Wall -Wextra)
+    add_test(NAME test_gol COMMAND test_gol)
 endif()
