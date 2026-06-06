@@ -21,6 +21,9 @@ add_subdirectory(lib/lvgl)
 add_executable(kdeskdash
     src/main.c
     src/config.c
+    src/registry.c
+    src/shell.c
+    src/modes/placeholder.c
     src/demo_screen.c
     assets/brain_rot.c
 )
@@ -53,3 +56,14 @@ add_custom_target(deploy
     DEPENDS kdeskdash
     COMMENT "Deploying kdeskdash to ${KDESKDASH_TARGET}"
 )
+
+# Host-only unit tests for pure logic (no LVGL/DRM). Run with: ctest --test-dir build
+# Skipped when cross-compiling, since ctest executes the binaries on the build host.
+if(NOT CMAKE_CROSSCOMPILING)
+    enable_testing()
+
+    add_executable(test_registry tests/test_registry.c src/registry.c)
+    target_include_directories(test_registry PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_registry PRIVATE -Wall -Wextra)
+    add_test(NAME test_registry COMMAND test_registry)
+endif()

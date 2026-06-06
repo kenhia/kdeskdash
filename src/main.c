@@ -1,17 +1,19 @@
 /**
  * @file main.c
- * kdeskdash entry point (pre-MVP).
+ * kdeskdash entry point.
  *
- * Brings up the LVGL DRM display and evdev touch input, draws the demo screen,
- * and runs the LVGL main loop until SIGINT/SIGTERM, then tears down cleanly.
+ * Brings up the LVGL DRM display and evdev touch input, starts the mode shell
+ * with its registered modes, and runs the LVGL main loop until SIGINT/SIGTERM,
+ * then tears down cleanly.
  */
 #include <signal.h>
 #include <stdio.h>
 #include <unistd.h>
 
 #include "config.h"
-#include "demo_screen.h"
 #include "lvgl.h"
+#include "modes/placeholder.h"
+#include "shell.h"
 #include "src/drivers/display/drm/lv_linux_drm.h"
 #include "src/drivers/evdev/lv_evdev.h"
 
@@ -45,8 +47,15 @@ int main(void) {
     }
     lv_linux_drm_set_file(disp, cfg.drm_dev, -1);
 
-    /* Demo content — after display init so the active screen exists */
-    demo_screen_create();
+    /* Mode shell with temporary placeholder modes (Unit 1). The real Game of
+     * Life, Clock, and Menu modes replace these registrations in later units. */
+    shell_init();
+    shell_register_content_mode(
+        placeholder_mode_create("game_of_life", "Game of Life", 0x0d2818));
+    shell_register_content_mode(
+        placeholder_mode_create("clock", "Clock", 0x14233a));
+    shell_register_menu(placeholder_mode_create("menu", "Menu", 0x202428));
+    shell_start(NULL);
 
     /* Capacitive touch via evdev (ILITEK, default /dev/input/event1).
      * Touch is optional: if it cannot be opened, the display still runs. */
@@ -60,6 +69,7 @@ int main(void) {
 
     /* Main loop */
     while (g_running) {
+        shell_tick();
         uint32_t sleep_ms = lv_timer_handler();
         if (sleep_ms > 100)
             sleep_ms = 100;
