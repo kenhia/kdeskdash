@@ -1,0 +1,730 @@
+{
+  "version": 1,
+  "generatedAt": "2026-06-06T03:10:24.780460259Z",
+  "rerunPolicy": "additive-only",
+  "requested": {
+    "stackPacks": [
+      "general",
+      "typescript",
+      "python",
+      "rails"
+    ],
+    "atvLayers": [
+      "core-skills",
+      "orchestrators",
+      "universal-agents",
+      "stack-agents",
+      "mcp-servers",
+      "vscode-extensions",
+      "copilot-instructions",
+      "setup-steps",
+      "file-instructions",
+      "docs-structure"
+    ],
+    "gstackRuntime": false,
+    "includeAgentBrowser": false,
+    "presetName": "Starter"
+  },
+  "outcomes": [
+    {
+      "step": "Scaffolding ATV files",
+      "status": "done",
+      "detail": "106 files created, 8 directories created",
+      "duration": "0s",
+      "substeps": [
+        {
+          "step": ".github/skills",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/hooks/scripts",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".vscode",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": "docs/plans",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": "docs/brainstorms",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": "docs/solutions",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".atv/instincts",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/copilot-instructions.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/copilot-setup-steps.yml",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/copilot-mcp-config.json",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/atv-doctor/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/atv-security/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/atv-update/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/autoresearch/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/brainstorming/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-brainstorm/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-compound/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-compound/assets/resolution-template.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-compound/references/schema.yaml",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-compound/references/yaml-schema.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-compound-refresh/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-compound-refresh/assets/resolution-template.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-compound-refresh/references/schema.yaml",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-compound-refresh/references/yaml-schema.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-ideate/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-plan/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-review/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-review/references/diff-scope.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-review/references/findings-schema.json",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-review/references/persona-catalog.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-review/references/resolve-base.sh",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-review/references/review-output-template.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-review/references/subagent-template.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ce-work/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/claude-permissions-optimizer/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/claude-permissions-optimizer/scripts/extract-commands.mjs",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/claude-permissions-optimizer/scripts/normalize.mjs",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/deepen-plan/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/document-review/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/document-review/references/findings-schema.json",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/document-review/references/review-output-template.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/document-review/references/subagent-template.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/evolve/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/feature-video/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/instincts/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/karpathy-guidelines/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/land/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/learn/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/lfg/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/observe/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/ralph-loop/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/resolve_todo_parallel/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/setup/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/slfg/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/takeoff/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/test-browser/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/skills/unslop/SKILL.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/adversarial-document-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/adversarial-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/agent-native-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/ankane-readme-writer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/api-contract-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/architecture-strategist.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/best-practices-researcher.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/bug-reproduction-validator.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/cli-agent-readiness-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/cli-readiness-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/code-simplicity-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/coherence-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/correctness-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/data-integrity-guardian.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/data-migration-expert.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/data-migrations-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/deployment-verification-agent.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/design-implementation-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/design-iterator.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/design-lens-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/dhh-rails-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/feasibility-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/figma-design-sync.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/framework-docs-researcher.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/git-history-analyzer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/issue-intelligence-analyst.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/julik-frontend-races-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/kieran-python-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/kieran-rails-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/kieran-typescript-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/learnings-researcher.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/lint.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/maintainability-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/pattern-observer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/pattern-recognition-specialist.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/performance-oracle.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/performance-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/pr-comment-resolver.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/previous-comments-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/product-lens-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/project-standards-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/reliability-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/repo-research-analyst.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/schema-drift-detector.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/scope-guardian-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/security-lens-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/security-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/security-sentinel.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/spec-flow-analyzer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/agents/testing-reviewer.agent.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/typescript.instructions.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/python.instructions.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/rails.instructions.md",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".vscode/extensions.json",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/hooks/copilot-hooks.json",
+          "status": "done",
+          "detail": "created"
+        },
+        {
+          "step": ".github/hooks/scripts/observe.js",
+          "status": "done",
+          "detail": "created"
+        }
+      ]
+    }
+  ],
+  "recommendations": [
+    {
+      "id": "start-brainstorm",
+      "title": "Start with /ce-brainstorm to shape the first feature",
+      "reason": "No brainstorms were found in docs/brainstorms yet.",
+      "priority": 90
+    },
+    {
+      "id": "add-prompts",
+      "title": "Create prompt files for repeatable workflows",
+      "reason": "No .prompt.md files found in .github/prompts/.",
+      "priority": 55
+    }
+  ],
+  "fileChecksums": {
+    ".github/agents/adversarial-document-reviewer.agent.md": "51ab2fda2edf2be5b75c6659941504e1cf2af95c477b3a1807bb1249ce87c8a9",
+    ".github/agents/adversarial-reviewer.agent.md": "a189864cffb0da2ef8e1bb04f2b9144a3f226f1625f608557cc771ca8415e5dd",
+    ".github/agents/agent-native-reviewer.agent.md": "305fc89a6f2344be31249fe06d7410f6a6936aef76dd0c33ca9463d56f959dcf",
+    ".github/agents/ankane-readme-writer.agent.md": "c52e765303b799cbc91bad19b7f76d25ae4646177d4f7490276a108b424bd87c",
+    ".github/agents/api-contract-reviewer.agent.md": "670645516aaef637d20192a02c98e64d83165f7b6176fdc0a5b3947ff7e200f0",
+    ".github/agents/architecture-strategist.agent.md": "f9d10445241cec5b1f47daf5b7231296fee7391e0b84cb6ccab8132c15d05a2d",
+    ".github/agents/best-practices-researcher.agent.md": "69f28bbd2a1d8a99f0471f807e86388ed17afde8455e21542d765d66042ff45d",
+    ".github/agents/bug-reproduction-validator.agent.md": "eefc24aa6e8418c7145388d73b2c4a70453ecb849343d5390fa8d229bf5a9e22",
+    ".github/agents/cli-agent-readiness-reviewer.agent.md": "c8f313df782561f54e3f93f46b3946946e4f0f55c8e6e4cdb4056620fbdebf37",
+    ".github/agents/cli-readiness-reviewer.agent.md": "05e2168b3e42afa9e885a3b01a0a18eb7f0b39d73032ce2e0f4b57aea7d976e1",
+    ".github/agents/code-simplicity-reviewer.agent.md": "9cd12e58fc45f18b9ee6d239dfa16d68b601ec599c326cb0677d7c3db03c32ec",
+    ".github/agents/coherence-reviewer.agent.md": "6afc99daa2586300bf617834eb607cfc6418c39b97bbc495ee9c1be5580cd695",
+    ".github/agents/correctness-reviewer.agent.md": "8f3489efdcbefdabd4b3c4599d9b4f7422b5f2cfeee48db625a1c6b84954ba39",
+    ".github/agents/data-integrity-guardian.agent.md": "00574d01f914cae9af7194d6c9eb3ae4a5d03033062c378c673dc1371c46ca20",
+    ".github/agents/data-migration-expert.agent.md": "4264cc91bb1238bc0eb6833669e4135844a7c7c857bbd611b3ff325ddf4e5f32",
+    ".github/agents/data-migrations-reviewer.agent.md": "38818b9feaf84faf69b192c48ffa9b4bb6392bc5ea145a84a7407f3dc9d11e15",
+    ".github/agents/deployment-verification-agent.agent.md": "ad19dda050e3bf6fe8ca751538955ff6000a49d72b8c44f660b79f5b33e8fc48",
+    ".github/agents/design-implementation-reviewer.agent.md": "43ea1f9baa62e4b818fe67c3c2700eb190108d9e173a57b126744ed12c70083d",
+    ".github/agents/design-iterator.agent.md": "ec8433c45081a8aba464ef02405c060be0bc6cda4887f344577a405ecf209a1a",
+    ".github/agents/design-lens-reviewer.agent.md": "e1eeb6dc4d13ae66f925c0b3dda6e1ab73aab6e96d0308d734a85d229d211440",
+    ".github/agents/dhh-rails-reviewer.agent.md": "8c7044f799b115ffbf2e423c737bb5662f6a39ec1e12eec127e379ec42757895",
+    ".github/agents/feasibility-reviewer.agent.md": "c236e2848e6326bad63caf0fdeb0ed6cdc0894579ea608829980b2f7bec43d28",
+    ".github/agents/figma-design-sync.agent.md": "4e4f43a73641e218448b5051037d664cef310a7bd70b4b83de2fe88e1e966d35",
+    ".github/agents/framework-docs-researcher.agent.md": "fa36b231170df89d486c0af79d00f5a598028d1db8fc625d352e56c9cb671405",
+    ".github/agents/git-history-analyzer.agent.md": "94053b11d2df08cee0cb947a377bfb208d712bc9cb2d70ccecfcc08b1266078e",
+    ".github/agents/issue-intelligence-analyst.agent.md": "094c3c0c8775f5cb829a891241daafb2528885cf100128dd92169ae801df388b",
+    ".github/agents/julik-frontend-races-reviewer.agent.md": "b8d530d9d65ac1e72f4d36a62a5707ac186b87f8fe0e8a3c3014c0a44e407eec",
+    ".github/agents/kieran-python-reviewer.agent.md": "d1fcdbd0364444e221ee07635b1b6b109d7cdc14a36b8539cf6db4c38a5405bc",
+    ".github/agents/kieran-rails-reviewer.agent.md": "22733c72a3f73af55bcf106e3f72c34b13d12564e36cf38aeb8c151f6f22748f",
+    ".github/agents/kieran-typescript-reviewer.agent.md": "5ff0f88df5c05c35100caeb08c0fc3b07d88d3149653d7924d01a064706065e8",
+    ".github/agents/learnings-researcher.agent.md": "f0f09f1cfdda19f106dfd28dba53bce491e4dc81fda36089f6716f4dfd19be5e",
+    ".github/agents/lint.agent.md": "b3ab235bee081f638c91b2fc5bda8d7a814160252470602aa572f5fc8f1d5076",
+    ".github/agents/maintainability-reviewer.agent.md": "e229ac5acf034697ca7deb9641a38c8b4dd44101a157aeb5bd0d034ed5ebf9ca",
+    ".github/agents/pattern-observer.agent.md": "8496211a56074c04af017510a908e1bc3345079533353a3eb74fe499994380d8",
+    ".github/agents/pattern-recognition-specialist.agent.md": "7331968a736af0f278dbe417c956fe1fdf6a232be2b8f8cb30f1f620ee036c1d",
+    ".github/agents/performance-oracle.agent.md": "1cad0bc27a62e8aadde964f3269295022eba82d6a52a6df37d68c2d97a365742",
+    ".github/agents/performance-reviewer.agent.md": "03712822ea5e0be193a57be49c04668e9a2ca0c32586e51e26641eb33aea23b5",
+    ".github/agents/pr-comment-resolver.agent.md": "fc5e411565ca566d31bcf43e04d0e45b89510ef4f994163ccb0149c471a88ed9",
+    ".github/agents/previous-comments-reviewer.agent.md": "480c97ca8794ccb0afc920b61a9827bff26c9e7dd4a1b11138459115abffc71a",
+    ".github/agents/product-lens-reviewer.agent.md": "c40546bcc9bfbdddf7a401d57dfaadada6fe72a78197b383e92a9284cebe56e9",
+    ".github/agents/project-standards-reviewer.agent.md": "c0762518acf59faec3b816e008e3a8ed0a8057d580d25407b0c14f94d7f50e62",
+    ".github/agents/reliability-reviewer.agent.md": "3f791693052b36d9a4f499daa11cd83973b64088acebe419c56fb60fccda35b6",
+    ".github/agents/repo-research-analyst.agent.md": "ac975b3f8202e525cbefe4948ef795c5f13dbc6641531056e0aa9bb3f98f760b",
+    ".github/agents/schema-drift-detector.agent.md": "a20aee4792b15882c81f7c7a89bf4916dee6e14ec6c0d9130e7fa173058393a7",
+    ".github/agents/scope-guardian-reviewer.agent.md": "926e32567dcae4c92e5783721c6e20c771090e24046beced46c41ec6d23ae9c9",
+    ".github/agents/security-lens-reviewer.agent.md": "c6b359eb97fcb672e7d83f528f45a18ed4d43c5773a0cba692178615c3ce2c41",
+    ".github/agents/security-reviewer.agent.md": "b89e36e0fe2f1797d0ab851870afaafe26cccf79d0930cdb72b58d8592ba0e70",
+    ".github/agents/security-sentinel.agent.md": "3a811168a5be69296e00c1e8bd22abf339226aba3fe896218949a33768f9774a",
+    ".github/agents/spec-flow-analyzer.agent.md": "d88cdeb64404fe94c7a54810189209ee82891a21369c3577669a2c5bf8efd527",
+    ".github/agents/testing-reviewer.agent.md": "0bf25081cc3d1f921f8ee1f0f5146f622198df70c3642ddba4abff82b8a1a0c4",
+    ".github/copilot-instructions.md": "f690b857e60ee33e96a6e72558e45413dcd1bceec043594c76b49993f162f5c3",
+    ".github/copilot-mcp-config.json": "7fd46519241af54112807b1492f83146476a3a78b8950f421705d3f5b6ed728c",
+    ".github/copilot-setup-steps.yml": "b69eb24c51bff08703d9206ec87ed6d2cb2429af3990fb2936a8603643ddccf9",
+    ".github/hooks/copilot-hooks.json": "4efd34a87c6d9c20373b5293257f29a4d2ce5f16d0e45487ef5c3f5be5f3088d",
+    ".github/hooks/scripts/observe.js": "d8fa02691d8a5db0bf0655a1dd47d046bfb71604c681bfb1dfe57ba1871bb1df",
+    ".github/python.instructions.md": "4284ce3409db28ab314a7e05b1960f0d2e4924136e9a80b9f2c228aebc7b80dd",
+    ".github/rails.instructions.md": "36078831b87cf7795ba827f1156ef657f665d386dbfd9b710e2f54475ac26169",
+    ".github/skills/atv-doctor/SKILL.md": "01307d34e7198e18737a6b413964b759f8125f2470b17ec065c3f57a50d977c7",
+    ".github/skills/atv-security/SKILL.md": "40176bb8aeeba4531147daf5b6522a8b965f26c11b788e3e465ff677a49af700",
+    ".github/skills/atv-update/SKILL.md": "8f7cf4fbfa5c49ee1d266c7e9e7d5de5c6a10b3a8f7bfe51822639be7e3cef5c",
+    ".github/skills/autoresearch/SKILL.md": "754179e987519dac86e01f79c1e015345d9b07c09f4bc34c324d89165d10fbd5",
+    ".github/skills/brainstorming/SKILL.md": "bfaefce6fdc889bdf91939c36156e879775c402378628f6fe597a7f4e5808311",
+    ".github/skills/ce-brainstorm/SKILL.md": "a423157097ed0bb405344585a0164cf889d6d8812f530067a5b4e5b2c5e12144",
+    ".github/skills/ce-compound-refresh/SKILL.md": "b2842c44ec7dbf74ec2959bed97cdc7d0f738cd5eaba5f97060d625e3ab35bc4",
+    ".github/skills/ce-compound-refresh/assets/resolution-template.md": "e2aa5cf7e01b1d2ae08317863d011cb0b384bbf683bd2cab885a486f5b9cdd3b",
+    ".github/skills/ce-compound-refresh/references/schema.yaml": "5787641cc2bb0a6f4df36e7aded4db898e47308284e0699b165605eb6731e36b",
+    ".github/skills/ce-compound-refresh/references/yaml-schema.md": "5715d8c066060f93135b6f5536e9329b2cdb07d09fc134b3e26f9efc2a8a7608",
+    ".github/skills/ce-compound/SKILL.md": "c2f240dfb038ac5ab96e809cb4bc2d924937e0989523fad16f0cd8ed2c5604e4",
+    ".github/skills/ce-compound/assets/resolution-template.md": "e2aa5cf7e01b1d2ae08317863d011cb0b384bbf683bd2cab885a486f5b9cdd3b",
+    ".github/skills/ce-compound/references/schema.yaml": "5787641cc2bb0a6f4df36e7aded4db898e47308284e0699b165605eb6731e36b",
+    ".github/skills/ce-compound/references/yaml-schema.md": "5715d8c066060f93135b6f5536e9329b2cdb07d09fc134b3e26f9efc2a8a7608",
+    ".github/skills/ce-ideate/SKILL.md": "34eafea77db1cfbe3dae94cafcbd0677145cd078398c4c194d00495b15776a31",
+    ".github/skills/ce-plan/SKILL.md": "59ec493d11c7d1048ab23d3b3fc6e11142dca33767c0e47d70b2d3da50bf3d1b",
+    ".github/skills/ce-review/SKILL.md": "3ff5e8180f2912e8037e75c3e5b99f3c243826e41e691f6a64a987c31b71b514",
+    ".github/skills/ce-review/references/diff-scope.md": "b11a3cbee8372bc4162a2e00898e82317b37c5f56cbf456fe81c3e5fef1ff989",
+    ".github/skills/ce-review/references/findings-schema.json": "2ddc30b034071836fad3ded0d75af5f67cbd7bbd7f973b9d6070d748be76e8c3",
+    ".github/skills/ce-review/references/persona-catalog.md": "b220c5ef53514c5669a0795525ffff4faac1a3b5927aaebde846a4e7c41b60ea",
+    ".github/skills/ce-review/references/resolve-base.sh": "5d51756e7cfdebe9ca9e8fd02595a1f4c6b70435c2c898ce25a7537ae497c8bf",
+    ".github/skills/ce-review/references/review-output-template.md": "a84580fc5e37e5a4e435681d6984983af88fed73a4a9d9888b87e7e7f8f7f452",
+    ".github/skills/ce-review/references/subagent-template.md": "750f1e2990403143ade8d06fdb9f8dd26232774202928806feecb7b371bb4f30",
+    ".github/skills/ce-work/SKILL.md": "4c64318b31b75c0a60abfb1a3fbe18f4c5182b40095bba6590770fd8b9545e1d",
+    ".github/skills/claude-permissions-optimizer/SKILL.md": "c7bffdf46bc73ee3a832f0d747d0fbdfb1ca77f18b6fd3261730c21060542d0a",
+    ".github/skills/claude-permissions-optimizer/scripts/extract-commands.mjs": "89e05ad9dddf3e5801eeeffa69d570adb9b91cfae55c06d9be4015acf86920c2",
+    ".github/skills/claude-permissions-optimizer/scripts/normalize.mjs": "6c9d5a1a03b6105f41db326d7067a754d15ca195aea8a0815aa569028e2682fa",
+    ".github/skills/deepen-plan/SKILL.md": "fd6803b60860815321c999b69b151a6ed9ddbb86e264fa524a6385a89fcc28df",
+    ".github/skills/document-review/SKILL.md": "d4f2a16f83e2468a7c414e750c6991b000bcbc09532d07d3face798be3906b75",
+    ".github/skills/document-review/references/findings-schema.json": "e2182c7d2d590f61b231e2d527154e70dc39208fe0f095ae84f27e9bbc0ff9bd",
+    ".github/skills/document-review/references/review-output-template.md": "3a702b5dc3f849e426b25410cd64ef3ccef0840f62ddcbe98bf12c976ebaa77f",
+    ".github/skills/document-review/references/subagent-template.md": "d5167612fc3c884433f00b066cd06858a5953cc3cdb4e5fb403196e52b4606b6",
+    ".github/skills/evolve/SKILL.md": "67f81f2316396f250995d185c4bfb8a5a634af63c1df0d65bce4703d76ec0b02",
+    ".github/skills/feature-video/SKILL.md": "c85bd48d3fe929d9ae86665bdc9ec1462878ac4be28d32165f8dbd969e8bfcb1",
+    ".github/skills/instincts/SKILL.md": "7211c09c7c9e9b4be51ddc54f80719fddefdb970b1161f3f748a38849e8085bd",
+    ".github/skills/karpathy-guidelines/SKILL.md": "8004c92988b5ee4121c833167b3642aa01d1916e017460033681128381083a8d",
+    ".github/skills/land/SKILL.md": "faa66ec29ebad86d7c3a43f5f2e84bcdf6eabacd55e2adaf4f49cf8dc4e8178e",
+    ".github/skills/learn/SKILL.md": "26ca1864c2b4cd186d8c23e466a755c18f3a29839b070a081edfca44a86e3732",
+    ".github/skills/lfg/SKILL.md": "b9d552aca8d6c5c4cc063ec69fa1246d3972d92ebf30fd0b0382d75e6832522d",
+    ".github/skills/observe/SKILL.md": "3547808f1b09c59561a1134c72936e767ced838f8da0b2df653203b2cdde1dba",
+    ".github/skills/ralph-loop/SKILL.md": "5d54c8fcb51d3fa218e6d074aa8d103fbfb40d97ac49c8a7ba8de3811c6163e0",
+    ".github/skills/resolve_todo_parallel/SKILL.md": "a327253dc15aba9a07e23be856e093196156faba15aaf221f2a0f13d066cbb90",
+    ".github/skills/setup/SKILL.md": "ab3cdcbb2e470a2a71fcee4bc1ad21c300f94091960c72266cfdf7f6bd8dedbf",
+    ".github/skills/slfg/SKILL.md": "a80836da60f23d9b018b69dc80575664081097beb46464ec367f94bcaabefa09",
+    ".github/skills/takeoff/SKILL.md": "e9b6b8b85ebe9c27a5a20cbc40dfdd9a8baf33bbfe17d81164949df6487dc994",
+    ".github/skills/test-browser/SKILL.md": "292f16327520199182aecf6798ca1d5b716f903014445345b896c043f38e5da4",
+    ".github/skills/unslop/SKILL.md": "ae19bc7cf7a8c6eb3b3cf83c2de6b278141f0cc2516b87d9e69e1522f73a195c",
+    ".github/typescript.instructions.md": "fc1e116e6cf5115eb999d503742020c76cd4157fa3a6088d23998d1d9a92bbe4",
+    ".vscode/extensions.json": "99ed44a7dd73be54b9a76dd9c8cc66e3c433ab15a125584908dadbdd90ca7c3b"
+  }
+}

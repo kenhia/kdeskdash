@@ -1,0 +1,8 @@
+build/
+build-pi/
+build-tests/
+*.o
+.cache/
+compile_commands.json
+.venv-tools/
+.atv/observations.jsonl
