@@ -24,8 +24,10 @@ add_executable(kdeskdash
     src/registry.c
     src/shell.c
     src/gol.c
+    src/stopwatch.c
     src/modes/placeholder.c
     src/modes/game_of_life.c
+    src/modes/clock.c
     src/demo_screen.c
     assets/brain_rot.c
 )
@@ -73,4 +75,9 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_gol PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_gol PRIVATE -Wall -Wextra)
     add_test(NAME test_gol COMMAND test_gol)
+
+    add_executable(test_stopwatch tests/test_stopwatch.c src/stopwatch.c)
+    target_include_directories(test_stopwatch PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_stopwatch PRIVATE -Wall -Wextra)
+    add_test(NAME test_stopwatch COMMAND test_stopwatch)
 endif()

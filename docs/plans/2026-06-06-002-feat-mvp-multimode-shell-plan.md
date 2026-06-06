@@ -238,7 +238,7 @@ placeholder stops updating; `ctest` registry test passes on the host.
 
 ---
 
-- [ ] **Unit 2: Game of Life mode**
+- [x] **Unit 2: Game of Life mode**
 
 **Goal:** A full-screen Conway's Game of Life mode with toroidal wrap, canvas rendering, the
 configurable settings (randomized within ranges at activation), and the optional fade trail.
