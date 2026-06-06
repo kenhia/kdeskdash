@@ -189,7 +189,7 @@ shell:
 
 ## Implementation Units
 
-- [ ] **Unit 1: Mode shell, registry, and swipe navigation**
+- [x] **Unit 1: Mode shell, registry, and swipe navigation**
 
 **Goal:** Replace the static demo screen with a mode shell that owns the active mode,
 per-mode `activate`/`deactivate`/`tick` lifecycle, and gesture-driven navigation. Register
