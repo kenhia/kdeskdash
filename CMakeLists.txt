@@ -14,6 +14,20 @@ add_compile_definitions(LV_LVGL_H_INCLUDE_SIMPLE)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(DRM REQUIRED libdrm)
 
+# hiredis: prefer CMake config (Trixie libhiredis-dev 1.x); fall back to
+# pkg-config, exposing a uniform hiredis::hiredis target either way.
+find_package(hiredis QUIET CONFIG)
+if(NOT TARGET hiredis::hiredis)
+    pkg_check_modules(HIREDIS REQUIRED hiredis)
+    add_library(hiredis::hiredis INTERFACE IMPORTED GLOBAL)
+    target_include_directories(hiredis::hiredis INTERFACE ${HIREDIS_INCLUDE_DIRS})
+    target_link_libraries(hiredis::hiredis INTERFACE ${HIREDIS_LIBRARIES})
+    if(HIREDIS_LIBRARY_DIRS)
+        target_link_directories(hiredis::hiredis INTERFACE ${HIREDIS_LIBRARY_DIRS})
+    endif()
+    message(STATUS "hiredis: using pkg-config (${HIREDIS_VERSION})")
+endif()
+
 include_directories(${DRM_INCLUDE_DIRS})
 
 add_subdirectory(lib/lvgl)
@@ -25,6 +39,7 @@ add_executable(kdeskdash
     src/shell.c
     src/gol.c
     src/stopwatch.c
+    src/redis.c
     src/modes/game_of_life.c
     src/modes/clock.c
     src/modes/menu.c
@@ -41,6 +56,7 @@ target_include_directories(kdeskdash PRIVATE
 target_link_libraries(kdeskdash
     lvgl
     ${DRM_LIBRARIES}
+    hiredis::hiredis
     pthread
 )
 

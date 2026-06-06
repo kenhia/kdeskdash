@@ -15,6 +15,7 @@ static kd_mode_t *s_content[SHELL_MAX_CONTENT];
 static int        s_content_count;
 static kd_mode_t *s_menu;
 static kd_mode_t *s_active;
+static void     (*s_change_cb)(const char *id);
 
 /* Screens that already have the gesture handler attached, so we wire each one
  * exactly once. Content modes + menu, so the same bound applies. */
@@ -67,6 +68,7 @@ void shell_init(void) {
     s_content_count = 0;
     s_menu = NULL;
     s_active = NULL;
+    s_change_cb = NULL;
     memset(s_wired, 0, sizeof(s_wired));
     s_wired_count = 0;
 }
@@ -78,6 +80,10 @@ void shell_register_content_mode(kd_mode_t *m) {
 
 void shell_register_menu(kd_mode_t *m) {
     s_menu = m;
+}
+
+void shell_set_change_cb(void (*cb)(const char *id)) {
+    s_change_cb = cb;
 }
 
 kd_mode_t *shell_find_mode(const char *id) {
@@ -135,6 +141,8 @@ void shell_set_active(kd_mode_t *m) {
         wire_gesture_once(m->screen);
         lv_screen_load(m->screen);
     }
+    if (s_change_cb && m->id)
+        s_change_cb(m->id);
 }
 
 void shell_tick(void) {

@@ -16,6 +16,7 @@ cross-compile approach and adding touch input.
 - Raspberry Pi 5 (8GB), Debian 13 (Trixie), hostname `rpidash2`, user `ken`
 - GeeekPi 11.26" 1920x440 HDMI capacitive touch (ILITEK controller)
 - Display: DRM `/dev/dri/card1` (vc4 GPU) · Touch: evdev `/dev/input/event1`
+- 3D Printed case (work in progress, will include STLs once I finish the design)
 
 ## Build (cross-compile from a dev host)
 

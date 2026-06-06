@@ -47,6 +47,11 @@ kd_mode_t *shell_content_at(int index);
 /* Drive the active mode's tick. Call once per main-loop iteration. */
 void shell_tick(void);
 
+/* Register a callback invoked with the new mode id whenever the active mode
+ * changes. Used to persist the active mode (e.g. to Redis). Pass NULL to
+ * clear. The callback fires after the new mode is shown. */
+void shell_set_change_cb(void (*cb)(const char *id));
+
 /* Start the shell. If `restore_id` names a registered mode, open it; otherwise
  * open the menu, or the first content mode if no menu is registered. */
 void shell_start(const char *restore_id);

@@ -377,7 +377,7 @@ swipe-down consistently returns to the Menu.
 
 ---
 
-- [ ] **Unit 5: Redis integration (remote control, settings injection, persistence)**
+- [x] **Unit 5: Redis integration (remote control, settings injection, persistence)**
 
 **Goal:** Add the optional Redis client: connection from env, per-loop poll that drives the
 active mode from `kdeskdash:active_mode`, last-mode restore on startup, and Game of Life

@@ -15,6 +15,7 @@
 
 #include "gol.h"
 #include "lvgl.h"
+#include "redis.h"
 
 typedef struct {
     lv_obj_t *canvas;
@@ -87,10 +88,9 @@ static void render(gol_mode_state_t *st) {
     lv_obj_invalidate(st->canvas);
 }
 
-/* Re-seed the board with fresh random settings sized to the current display. */
-static void reseed(gol_mode_state_t *st) {
-    gol_settings_t cfg = random_settings(&st->rng);
-    int block = cfg.cell_size + cfg.padding;
+/* Re-seed the board with the given settings, sized to the current display. */
+static void reseed(gol_mode_state_t *st, const gol_settings_t *cfg) {
+    int block = cfg->cell_size + cfg->padding;
     int cols = st->disp_w / block;
     int rows = st->disp_h / block;
     if (cols < 1)
@@ -100,7 +100,7 @@ static void reseed(gol_mode_state_t *st) {
 
     if (st->has_grid)
         gol_free(&st->gol);
-    gol_init(&st->gol, cols, rows, &cfg);
+    gol_init(&st->gol, cols, rows, cfg);
     st->has_grid = true;
     gol_seed(&st->gol, &st->rng);
     render(st);
@@ -138,7 +138,13 @@ static void activate(kd_mode_t *self) {
     st->rng ^= lv_tick_get() * 2654435761u;
     if (st->rng == 0)
         st->rng = 0x1234567u;
-    reseed(st);
+    /* Randomize, then overlay any one-shot settings injected via Redis; absent
+     * fields keep their randomized values and the injection key is cleared. */
+    gol_settings_t cfg = random_settings(&st->rng);
+    redis_apply_gol_settings(&cfg);
+    if (cfg.padding >= cfg.cell_size)
+        cfg.padding = cfg.cell_size - 1;
+    reseed(st, &cfg);
 }
 
 static void tick(kd_mode_t *self) {
