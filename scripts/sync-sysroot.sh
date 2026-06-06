@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sync an aarch64 sysroot from the Pi for cross-compilation.
 #
-# Prerequisite on the Pi: sudo apt-get install -y libdrm-dev
+# Prerequisite on the Pi: sudo apt-get install -y libdrm-dev libhiredis-dev
 # (linux/input.h, needed by lv_evdev, ships with linux-libc-dev which is already present.)
 set -euo pipefail
 
@@ -20,3 +20,9 @@ ls "$SYSROOT/usr/include/xf86drm.h" \
    "$SYSROOT/usr/lib/aarch64-linux-gnu/pkgconfig/libdrm.pc" 2>/dev/null \
    && echo "OK: libdrm dev files found in sysroot" \
    || echo "WARNING: libdrm dev files missing — run 'sudo apt-get install libdrm-dev' on the Pi and re-sync"
+
+echo "Verifying hiredis headers/pkgconfig are present:"
+ls "$SYSROOT/usr/include/hiredis/hiredis.h" \
+   "$SYSROOT/usr/lib/aarch64-linux-gnu/pkgconfig/hiredis.pc" 2>/dev/null \
+   && echo "OK: hiredis dev files found in sysroot" \
+   || echo "WARNING: hiredis dev files missing — run 'sudo apt-get install libhiredis-dev' on the Pi and re-sync"

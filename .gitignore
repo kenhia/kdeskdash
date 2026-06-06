@@ -6,3 +6,6 @@ build-tests/
 compile_commands.json
 .venv-tools/
 .atv/observations.jsonl
+
+# Local MCP server config — may contain bearer tokens / secrets
+.vscode/mcp.json
