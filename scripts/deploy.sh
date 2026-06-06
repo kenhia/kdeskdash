@@ -19,9 +19,11 @@ case "$cmd" in
     # Stop the service if installed; fall back to killing a manually-run instance.
     # scp fails with "text file busy" if the binary is still running.
     ssh "$target" 'sudo systemctl stop kdeskdash 2>/dev/null || true; sudo pkill -INT kdeskdash 2>/dev/null || true; sleep 1'
-    scp "$binary" "$target:~/kdeskdash"
-    ssh "$target" 'sudo systemctl start kdeskdash 2>/dev/null || true'
-    echo "deployed kdeskdash to $target"
+    # Stage in $HOME (scp has no sudo), then install to a root-owned path so the
+    # root service does not execute a binary from a user-writable directory.
+    scp "$binary" "$target:~/kdeskdash.new"
+    ssh "$target" 'sudo install -m755 ~/kdeskdash.new /usr/local/bin/kdeskdash && rm -f ~/kdeskdash.new && sudo systemctl start kdeskdash 2>/dev/null || true'
+    echo "deployed kdeskdash to $target:/usr/local/bin/kdeskdash"
     ;;
 
   install-service)

@@ -43,8 +43,6 @@ add_executable(kdeskdash
     src/modes/game_of_life.c
     src/modes/clock.c
     src/modes/menu.c
-    src/demo_screen.c
-    assets/brain_rot.c
 )
 
 target_include_directories(kdeskdash PRIVATE

@@ -6,7 +6,7 @@
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now kdeskdash
 #
-# The binary is deployed to /home/ken/kdeskdash by `cmake --build build-pi --target deploy`.
+# The binary is deployed to /usr/local/bin/kdeskdash by `cmake --build build-pi --target deploy`.
 [Unit]
 Description=kdeskdash touch dashboard
 # Redis is optional; start after it when present so remote control/persistence
@@ -17,8 +17,10 @@ Wants=redis-server.service
 [Service]
 # DRM master + evdev access require root on this panel.
 User=root
-ExecStart=/home/ken/kdeskdash
-EnvironmentFile=/etc/kdeskdash/kdeskdash.env
+ExecStart=/usr/local/bin/kdeskdash
+# Leading '-' makes the env file optional: every KDESKDASH_* var has a built-in
+# default, so a missing file must not block the appliance from starting.
+EnvironmentFile=-/etc/kdeskdash/kdeskdash.env
 Restart=always
 RestartSec=2
 

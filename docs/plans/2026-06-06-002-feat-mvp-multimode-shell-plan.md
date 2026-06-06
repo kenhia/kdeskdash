@@ -293,7 +293,7 @@ animates without visible stutter at a reasonable cell size.
 
 ---
 
-- [ ] **Unit 3: Clock mode**
+- [x] **Unit 3: Clock mode**
 
 **Goal:** A Clock mode showing large centered local time, UTC on the left, and a
 wallclock-based stopwatch on the right with start/stop and reset, to 0.1s resolution.

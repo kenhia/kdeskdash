@@ -11,6 +11,7 @@
  */
 #include "modes/game_of_life.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "gol.h"
@@ -47,6 +48,8 @@ static gol_settings_t random_settings(uint32_t *rng) {
 }
 
 static void render(gol_mode_state_t *st) {
+    if (!st->cbuf)
+        return; /* canvas buffer alloc failed; degrade to a blank screen */
     int stride = st->disp_w; /* pixels per row (buffer is tightly packed) */
     /* Background: opaque black. */
     for (int i = 0; i < st->disp_w * st->disp_h; i++)
@@ -119,6 +122,9 @@ static void build_screen(kd_mode_t *self) {
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
     st->cbuf = malloc((size_t)st->disp_w * st->disp_h * sizeof(uint32_t));
+    if (!st->cbuf)
+        fprintf(stderr, "game_of_life: canvas buffer alloc failed (%dx%d)\n",
+                st->disp_w, st->disp_h);
     lv_obj_t *canvas = lv_canvas_create(scr);
     lv_canvas_set_buffer(canvas, st->cbuf, st->disp_w, st->disp_h,
                          LV_COLOR_FORMAT_XRGB8888);

@@ -115,17 +115,8 @@ ssh ken@rpidash2 'sudo systemctl start kdeskdash'
 
 Edit `/etc/kdeskdash/kdeskdash.env` on the Pi to override the environment variables above
 (template: [deploy/kdeskdash.env.example](deploy/kdeskdash.env.example)). The deploy target
-(`cmake --build build-pi --target deploy`) stops the service, copies the binary, and starts it.
-
-## Regenerating the demo image
-
-The image is vendored as an LVGL C array (`assets/brain_rot.c`) so the binary needs no
-PNG decoder. To regenerate from `assets/brain_rot.png`:
-
-```bash
-python3 -m venv .venv-tools && .venv-tools/bin/pip install pypng pillow lz4
-scripts/gen-image.sh
-```
+(`cmake --build build-pi --target deploy`) stops the service, installs the binary to
+`/usr/local/bin/kdeskdash`, and starts it.
 
 ## Project layout
 
@@ -139,8 +130,7 @@ kdeskdash/
 │   └── kdeskdash.env.example       # env template -> /etc/kdeskdash/kdeskdash.env
 ├── scripts/
 │   ├── sync-sysroot.sh             # rsync Pi sysroot for cross-compilation
-│   └── gen-image.sh                # regenerate the LVGL C-array image
-├── assets/                         # source PNG + generated brain_rot.c
+│   └── deploy.sh                   # remote deploy / systemd install
 ├── src/
 │   ├── main.c                      # entry: DRM + evdev bring-up, main loop, teardown
 │   ├── config.{c,h}                # env-var configuration

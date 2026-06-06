@@ -11,19 +11,29 @@
 #include <hiredis/hiredis.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "shell.h"
 
 #define KEY_ACTIVE_MODE  "kdeskdash:active_mode"
 #define KEY_GOL_SETTINGS "kdeskdash:gol:settings"
 
+/* A blocking connect to an unreachable host stalls the single-threaded UI loop
+ * for up to the connect timeout. Keep that timeout short and only retry a dead
+ * connection every RECONNECT_BACKOFF_S so a missing/remote Redis can't make the
+ * panel janky. (Against the default loopback host a down Redis refuses
+ * instantly, so this only matters for remote hosts.) */
+#define CONNECT_TIMEOUT_MS  250
+#define RECONNECT_BACKOFF_S 5
+
 static redisContext *g_ctx = NULL;
 static char g_host[128] = "127.0.0.1";
 static int  g_port = 6379;
 static char g_auth[256] = {0};
+static time_t g_next_attempt = 0;
 
 static bool do_connect(void) {
-    struct timeval tv = {1, 0}; /* 1s connect timeout */
+    struct timeval tv = {0, CONNECT_TIMEOUT_MS * 1000};
     redisContext *ctx = redisConnectWithTimeout(g_host, g_port, tv);
     if (!ctx || ctx->err) {
         if (ctx)
@@ -59,7 +69,16 @@ static bool reconnect_if_needed(void) {
         redisFree(g_ctx);
         g_ctx = NULL;
     }
-    return do_connect();
+    /* Back off after a failed connect so we don't pay the connect timeout on
+     * every poll while the host is unreachable. */
+    time_t now = time(NULL);
+    if (now < g_next_attempt)
+        return false;
+    if (!do_connect()) {
+        g_next_attempt = now + RECONNECT_BACKOFF_S;
+        return false;
+    }
+    return true;
 }
 
 void redis_init(const char *host, int port, const char *auth) {
@@ -120,12 +139,15 @@ bool redis_get_active_mode(char *buf, size_t buflen) {
     return ok;
 }
 
-/* Apply one "field value" pair from the settings hash onto cfg, with clamping
- * that matches the randomization ranges in game_of_life.c. */
+/* Apply one "field value" pair from the settings hash onto cfg. These are
+ * hard safety bounds, intentionally wider than random_settings() in
+ * game_of_life.c so a remote client can experiment — except the cell_size
+ * floor, which must stay >= 2 to preserve the bounded worst-case grid / per-
+ * frame work that random_settings() also enforces. */
 static void apply_field(gol_settings_t *cfg, const char *field, const char *val) {
     if (strcmp(field, "cell_size") == 0) {
         int v = atoi(val);
-        if (v >= 1 && v <= 64)
+        if (v >= 2 && v <= 64)
             cfg->cell_size = v;
     } else if (strcmp(field, "padding") == 0) {
         int v = atoi(val);
