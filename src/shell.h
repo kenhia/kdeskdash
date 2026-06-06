@@ -40,6 +40,10 @@ kd_mode_t *shell_active(void);
 kd_mode_t *shell_next_content(void);
 kd_mode_t *shell_prev_content(void);
 
+/* Enumerate registered content modes (for the menu launcher). */
+int        shell_content_count(void);
+kd_mode_t *shell_content_at(int index);
+
 /* Drive the active mode's tick. Call once per main-loop iteration. */
 void shell_tick(void);
 

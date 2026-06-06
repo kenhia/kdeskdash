@@ -113,6 +113,16 @@ kd_mode_t *shell_prev_content(void) {
     return s_content[registry_wrap_index(s_content_count, idx, -1)];
 }
 
+int shell_content_count(void) {
+    return s_content_count;
+}
+
+kd_mode_t *shell_content_at(int index) {
+    if (index < 0 || index >= s_content_count)
+        return NULL;
+    return s_content[index];
+}
+
 void shell_set_active(kd_mode_t *m) {
     if (!m || m == s_active)
         return;

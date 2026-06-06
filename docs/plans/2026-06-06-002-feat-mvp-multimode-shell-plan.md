@@ -341,7 +341,7 @@ survives mode switches.
 
 ---
 
-- [ ] **Unit 4: Menu launcher mode**
+- [x] **Unit 4: Menu launcher mode**
 
 **Goal:** A Menu mode that is itself a registered mode and acts as a launcher: a tile per
 content mode that opens that mode on tap. Becomes the swipe-down target.

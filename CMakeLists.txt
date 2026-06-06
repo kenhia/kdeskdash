@@ -25,9 +25,9 @@ add_executable(kdeskdash
     src/shell.c
     src/gol.c
     src/stopwatch.c
-    src/modes/placeholder.c
     src/modes/game_of_life.c
     src/modes/clock.c
+    src/modes/menu.c
     src/demo_screen.c
     assets/brain_rot.c
 )

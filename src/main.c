@@ -14,7 +14,7 @@
 #include "lvgl.h"
 #include "modes/clock.h"
 #include "modes/game_of_life.h"
-#include "modes/placeholder.h"
+#include "modes/menu.h"
 #include "shell.h"
 #include "src/drivers/display/drm/lv_linux_drm.h"
 #include "src/drivers/evdev/lv_evdev.h"
@@ -49,14 +49,14 @@ int main(void) {
     }
     lv_linux_drm_set_file(disp, cfg.drm_dev, -1);
 
-    /* Mode shell. Game of Life and Clock are real modes; Menu is still a
-     * placeholder until a later unit replaces it. */
+    /* Mode shell: Game of Life and Clock are content modes; the Menu launcher
+     * is the swipe-down target and startup default. */
     shell_init();
     shell_register_content_mode(
         game_of_life_mode_create("game_of_life", "Game of Life"));
     shell_register_content_mode(
         clock_mode_create("clock", "Clock"));
-    shell_register_menu(placeholder_mode_create("menu", "Menu", 0x202428));
+    shell_register_menu(menu_mode_create("menu", "Menu"));
     shell_start(NULL);
 
     /* Capacitive touch via evdev (ILITEK, default /dev/input/event1).
