@@ -1,0 +1,26 @@
+# systemd unit for the kdeskdash dashboard appliance.
+#
+# Install on the Pi (rpidash2):
+#   sudo install -D -m644 deploy/kdeskdash.service /etc/systemd/system/kdeskdash.service
+#   sudo install -D -m600 deploy/kdeskdash.env.example /etc/kdeskdash/kdeskdash.env  # then edit
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now kdeskdash
+#
+# The binary is deployed to /home/ken/kdeskdash by `cmake --build build-pi --target deploy`.
+[Unit]
+Description=kdeskdash touch dashboard
+# Redis is optional; start after it when present so remote control/persistence
+# are available immediately, but do not fail if it is absent.
+After=redis-server.service
+Wants=redis-server.service
+
+[Service]
+# DRM master + evdev access require root on this panel.
+User=root
+ExecStart=/home/ken/kdeskdash
+EnvironmentFile=/etc/kdeskdash/kdeskdash.env
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

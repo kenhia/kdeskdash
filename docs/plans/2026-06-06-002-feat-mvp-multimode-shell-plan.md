@@ -436,7 +436,7 @@ killing Redis does not break the dashboard; last mode is restored across restart
 
 ---
 
-- [ ] **Unit 6: systemd service, Redis on the Pi, deploy, and docs**
+- [x] **Unit 6: systemd service, Redis on the Pi, deploy, and docs**
 
 **Goal:** Make the dashboard a boot appliance: install/enable `redis-server` and a
 `kdeskdash.service` on `rpidash2`, wire the deploy target to manage the service, and document

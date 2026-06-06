@@ -7,7 +7,8 @@
 #include <stdlib.h>
 
 #define DEFAULT_DRM_DEV   "/dev/dri/card1"
-#define DEFAULT_TOUCH_DEV "/dev/input/event1"
+/* Stable by-id symlink survives replug/reboot; event node numbers do not. */
+#define DEFAULT_TOUCH_DEV "/dev/input/by-id/usb-ILITEK_ILITEK-TOUCH-event-if00"
 
 static const char *env_or(const char *name, const char *fallback) {
     const char *v = getenv(name);

@@ -70,11 +70,20 @@ if(CMAKE_CROSSCOMPILING)
 endif()
 
 # Deploy to the Pi: cmake --build build-pi --target deploy
+# Stops the service (or a manually-run instance), copies the binary, restarts it.
 set(KDESKDASH_TARGET "ken@rpidash2" CACHE STRING "ssh target for deploy")
 add_custom_target(deploy
-    COMMAND scp ${CMAKE_BINARY_DIR}/kdeskdash ${KDESKDASH_TARGET}:~/kdeskdash
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/deploy.sh deploy ${KDESKDASH_TARGET} ${CMAKE_BINARY_DIR}/kdeskdash
     DEPENDS kdeskdash
     COMMENT "Deploying kdeskdash to ${KDESKDASH_TARGET}"
+)
+
+# One-time service setup: cmake --build build-pi --target install-service
+# Installs the systemd unit and an env file (only if absent), reloads, and
+# enables the service. Safe to re-run; it will not overwrite an edited env file.
+add_custom_target(install-service
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/deploy.sh install-service ${KDESKDASH_TARGET} ${CMAKE_SOURCE_DIR}/deploy/kdeskdash.service ${CMAKE_SOURCE_DIR}/deploy/kdeskdash.env.example
+    COMMENT "Installing kdeskdash systemd service on ${KDESKDASH_TARGET}"
 )
 
 # Host-only unit tests for pure logic (no LVGL/DRM). Run with: ctest --test-dir build
