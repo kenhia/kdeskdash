@@ -414,7 +414,9 @@ fully-zeroed `out`.
 
 ---
 
-- [ ] **Unit 3: Telemetry Redis client (second endpoint + discovery + GET/parse)**
+- [x] **Unit 3: Telemetry Redis client (second endpoint + discovery + GET/parse)** — DONE.
+  - 3a (`12caaa0`): extracted reusable `redis_client_t` handle; control API byte-identical on top; hardware regression gate passed via redis-cli (active_mode + gol settings + restore).
+  - 3b (`da8c777`): pure host-token contract (`src/telemetry_host.{c,h}`, 20+ host tests) + telemetry client (`src/telemetry.{c,h}`) with double-buffered SCAN discovery and GET/parse reply contract (OK/ABSENT/UNAVAIL); config `KDESKDASH_TELEMETRY_REDIS_HOST/_PORT/_REDISCLI_AUTH` (default `rpi53`); lazy lifecycle wired in `main.c` (no poll until Unit 4). Cross-build clean; clean boot on rpidash2; live SCAN/GET against `rpi53` listed hosts (`kai`, `kubs0`) and parsed `dev_telemetry` payloads.
 
 **Goal:** Connect to the remote telemetry Redis on `rpi53` (independent of the
 local control client), discover live hosts, and fetch+parse per-host samples —
@@ -472,7 +474,7 @@ Verified via `redis-cli` inspection on hardware (mirrors the MVP Redis approach)
 
 ---
 
-- [ ] **Unit 4: `dev` mode skeleton + mirrored 4-chart layout + triple-trace GPU line**
+- [x] **Unit 4: `dev` mode skeleton + mirrored 4-chart layout + triple-trace GPU line** — DONE (`d46f798`). `src/modes/dev.{c,h}` (mode lifecycle, mirrored row layout, ~1s telemetry poll + ~5s discovery while active, first-two-hosts stub assignment) + `src/modes/dev_graph.{c,h}` (per-host CPU/RAM and GPU/VRAM charts with independent secondary-Y ranges; GPU-compute triple-trace, VRAM single line). Registered in `main.c`. Cross-build clean; hardware-confirmed on rpidash2 (four live charts, mirrored, thick GPU line; stable single instance, 0 restarts).
 
 **Goal:** Register the `dev` content mode and render the static layout — two
 chart pairs (CPU/RAM outer, GPU/VRAM inner, mirrored) flanking a center column —
