@@ -80,4 +80,19 @@ bool redis_get_active_mode(char *buf, size_t buflen);
  * applied. No-op/false when Redis is down or the key is absent. */
 bool redis_apply_gol_settings(gol_settings_t *cfg);
 
+/* Which dev-mode chart side a host assignment belongs to. */
+typedef enum {
+    REDIS_DEV_SIDE_LEFT = 0,
+    REDIS_DEV_SIDE_RIGHT,
+} redis_dev_side_t;
+
+/* Persist a dev-mode host assignment (SET kdeskdash:dev:left|right). An empty
+ * or NULL host clears the slot (DEL). No-op when the control Redis is down. */
+void redis_set_dev_assignment(redis_dev_side_t side, const char *host);
+
+/* Read a persisted dev-mode host assignment into `buf` (GET). Returns true if a
+ * non-empty value was read. The value is untrusted — the caller must re-validate
+ * it against the host-token contract before using it to build a telemetry key. */
+bool redis_get_dev_assignment(redis_dev_side_t side, char *buf, size_t buflen);
+
 #endif /* KDESKDASH_REDIS_H */

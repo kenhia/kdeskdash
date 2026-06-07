@@ -11,8 +11,9 @@
  * list itself (sort, debounce, keep-selected) lives in the pure dev_hostlist
  * model; this file owns the LVGL rendering and telemetry I/O.
  *
- * Assignments are not yet persisted — Unit 6 adds restore-on-activate; Unit 7
- * adds richer liveness/CPU-only handling.
+ * Assignments persist to the local control Redis (kdeskdash:dev:left|right) and
+ * are restored on activate; a restored hostname is re-validated against the
+ * host-token contract before use. Unit 7 adds richer liveness/CPU-only handling.
  */
 #include "modes/dev.h"
 
@@ -24,7 +25,9 @@
 #include "lvgl.h"
 #include "modes/dev_graph.h"
 #include "modes/dev_hostlist.h"
+#include "redis.h"
 #include "telemetry.h"
+#include "telemetry_host.h"
 
 #define DEV_POLL_MS     1000 /* per-host GET cadence */
 #define DEV_DISCOVER_MS 5000 /* SCAN discovery cadence (slower than poll) */
@@ -66,6 +69,7 @@ struct dev_state {
     char selected[DEV_HOST_MAX]; /* "" == nothing selected */
     dev_hostlist_t hosts;
 
+    bool     restored; /* persisted assignments loaded (once, on first build) */
     uint32_t last_poll;
     uint32_t last_discover;
 };
@@ -131,6 +135,8 @@ static void assign_cb(lv_event_t *e) {
         return; /* nothing selected: no-op */
     bool is_left = (bool)(uintptr_t)lv_obj_get_user_data(lv_event_get_target(e));
     assign_side(is_left ? &st->left : &st->right, st->selected);
+    redis_set_dev_assignment(
+        is_left ? REDIS_DEV_SIDE_LEFT : REDIS_DEV_SIDE_RIGHT, st->selected);
     repaint_rows(st);
 }
 
@@ -280,10 +286,28 @@ static void poll_side(dev_side_t *side) {
     }
 }
 
+/* Load one persisted side assignment from the local control Redis. The stored
+ * value is untrusted: re-validate it against the host-token contract and ignore
+ * anything empty, oversized, or out of charset (treated as no assignment). */
+static void restore_side(dev_side_t *side, redis_dev_side_t which) {
+    char host[DEV_HOST_MAX];
+    if (!redis_get_dev_assignment(which, host, sizeof(host)))
+        return;
+    if (!telemetry_host_token_ok(host, strlen(host)))
+        return;
+    assign_side(side, host);
+}
+
 static void activate(kd_mode_t *self) {
     if (!self->screen)
         build_screen(self);
     dev_state_t *st = self->state;
+    /* Restore persisted L/R assignments once, before the first telemetry poll. */
+    if (!st->restored) {
+        restore_side(&st->left, REDIS_DEV_SIDE_LEFT);
+        restore_side(&st->right, REDIS_DEV_SIDE_RIGHT);
+        st->restored = true;
+    }
     /* Force discovery + a poll on the next tick. */
     st->last_poll = 0;
     st->last_discover = 0;

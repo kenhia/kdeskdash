@@ -513,7 +513,14 @@ assigned hosts' four charts render live with a thick GPU line and mirrored layou
 
 ---
 
-- [ ] **Unit 5: Host selector UX**
+- [x] **Unit 5: Host selector UX** — committed `b41539d`. Pure `dev_hostlist`
+  model (lexicographic sort + drop/re-add debounce + keep-selected/assigned)
+  with host tests; interactive selector in `dev.c` (tap-select, L/R assign,
+  L/R/LR markers, offline dimming, gesture-bubble swipes). Added a bonus
+  `dev_graph_mark_gap()` start-line (pale-green vertical marker) drawn on host
+  (re)assignment and mode re-activation to flag data-time discontinuities.
+  Cross-build clean; deployed; hardware-verified (select/assign/markers/swipe
+  + gap line scrolling).
 
 **Goal:** The center column — a live, scrollable list of hosts with select +
 left/right assign controls and assignment markers.
@@ -552,7 +559,14 @@ scrolling behave; swipes still navigate out of `dev`.
 
 ---
 
-- [ ] **Unit 6: Assignment persistence (local control Redis)**
+- [x] **Unit 6: Assignment persistence (local control Redis)** — `redis_set_dev_assignment` /
+  `redis_get_dev_assignment` on the local control client (keys `kdeskdash:dev:left` /
+  `kdeskdash:dev:right`), independent of the telemetry client so assignments survive even
+  when telemetry is unreachable. Persist on each L/R assign; restore once on first `dev`
+  activate (guarded by `st->restored`), re-validating each stored hostname via the
+  host-token contract (`telemetry_host_token_ok`) so empty/oversized/illegal values are
+  ignored. No-op when Redis is down. Cross-build clean; deployed; hardware-verified
+  (seeded keys restored on fresh process boot, re-assign persists, survives reboot).
 
 **Goal:** Persist left/right host assignments and restore them when `dev`
 activates / on boot.

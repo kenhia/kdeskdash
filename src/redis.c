@@ -21,6 +21,8 @@
 
 #define KEY_ACTIVE_MODE  "kdeskdash:active_mode"
 #define KEY_GOL_SETTINGS "kdeskdash:gol:settings"
+#define KEY_DEV_LEFT     "kdeskdash:dev:left"
+#define KEY_DEV_RIGHT    "kdeskdash:dev:right"
 
 /* A blocking connect to an unreachable host stalls the single-threaded UI loop
  * for up to the connect timeout. Keep that timeout short and only retry a dead
@@ -144,6 +146,38 @@ bool redis_get_active_mode(char *buf, size_t buflen) {
     if (!buf || buflen == 0 || !redis_client_ensure(&g_control))
         return false;
     redisReply *r = redisCommand(g_control.ctx, "GET %s", KEY_ACTIVE_MODE);
+    bool ok = false;
+    if (r && r->type == REDIS_REPLY_STRING && r->len > 0) {
+        strncpy(buf, r->str, buflen - 1);
+        buf[buflen - 1] = '\0';
+        ok = true;
+    }
+    if (r)
+        freeReplyObject(r);
+    return ok;
+}
+
+static const char *dev_side_key(redis_dev_side_t side) {
+    return side == REDIS_DEV_SIDE_LEFT ? KEY_DEV_LEFT : KEY_DEV_RIGHT;
+}
+
+void redis_set_dev_assignment(redis_dev_side_t side, const char *host) {
+    if (!redis_client_ensure(&g_control))
+        return;
+    const char *key = dev_side_key(side);
+    redisReply *r;
+    if (host && host[0] != '\0')
+        r = redisCommand(g_control.ctx, "SET %s %s", key, host);
+    else
+        r = redisCommand(g_control.ctx, "DEL %s", key);
+    if (r)
+        freeReplyObject(r);
+}
+
+bool redis_get_dev_assignment(redis_dev_side_t side, char *buf, size_t buflen) {
+    if (!buf || buflen == 0 || !redis_client_ensure(&g_control))
+        return false;
+    redisReply *r = redisCommand(g_control.ctx, "GET %s", dev_side_key(side));
     bool ok = false;
     if (r && r->type == REDIS_REPLY_STRING && r->len > 0) {
         strncpy(buf, r->str, buflen - 1);
