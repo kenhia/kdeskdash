@@ -50,12 +50,18 @@ int main(void) {
     }
     lv_linux_drm_set_file(disp, cfg.drm_dev, -1);
 
-    /* Optional global 180° flip: the panel mounts inverted in the case, so this
-     * rotates render (and, via lv_indev, touch) for every mode. SPIKE: the
-     * lv_linux_drm driver may not honor software rotation — verify on hardware
-     * before relying on it (KMS rotate=180 + evdev calibration is the fallback). */
-    if (cfg.rotate_180)
-        lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_180);
+    /* Optional global 180° flip: the panel mounts inverted in the case.
+     * SPIKE RESULT (2026-06-07): lv_display_set_rotation() does NOT work here —
+     * the lv_linux_drm flush ignores disp->rotation (display stays unrotated)
+     * while lv_indev still transforms touch, which kills touch. So the toggle is
+     * parsed but the rotation is NOT applied via the LVGL display rotation API.
+     * A working path (driver-side lv_draw_sw_rotate / DRM plane rotation property,
+     * or physical mounting) is pending the Unit 1 regroup — see the plan. */
+    if (cfg.rotate_180) {
+        fprintf(stderr, "kdeskdash: KDESKDASH_ROTATE_180 set, but software "
+                        "rotation is not yet supported on this DRM driver — "
+                        "ignoring (see plan Unit 1).\n");
+    }
     /* Mode shell: Game of Life and Clock are content modes; the Menu launcher
      * is the swipe-down target and startup default. */
     shell_init();

@@ -290,6 +290,27 @@ touch following, behind an env toggle. This is the lead-off regroup gate.
 > unit easier to service even if the physical hack works. So this unit ships the
 > toggle even if the case ends up not needing it.
 
+> **SPIKE OUTCOME (2026-06-07) — Attempt A FAILED, regroup triggered.**
+> Implemented the env toggle + `lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_180)`
+> and ran it on `rpidash2` (single clean instance):
+> - **Display: NOT rotated.** Content rendered in normal orientation — the
+>   vendored `lv_linux_drm` flush ignores `disp->rotation` (confirms the feasibility
+>   finding: no software-rotation path in that driver).
+> - **Touch: DEAD.** LVGL still applied the rotation transform to pointer input,
+>   producing a continuous `indev_pointer_proc: X/Y is -1` flood and no usable touch.
+> - Net: Attempt A yields a **broken state** (unrotated display + dead touch), so
+>   `lv_display_set_rotation` **must not ship enabled** as-is.
+> - **KMS probe:** the panel is **HDMI-A-1** under **full KMS** (`vc4-kms-v3d`).
+>   Legacy `config.txt` rotation (`display_rotate`) is ignored under full KMS, and
+>   `modetest` isn't installed — so the plan's assumed "KMS `rotate=180` boot flip"
+>   is **not** a turnkey option here. Real software paths reduce to: (A′) add a
+>   rotating flush (`lv_draw_sw_rotate`) to the vendored `lv_linux_drm.c`, or set the
+>   DRM plane `rotation` property (DRM_MODE_ROTATE_180) in its atomic commit if the
+>   vc4 HVS plane supports it; (C) rely on the physical case mounting and leave the
+>   toggle dormant. **Decision pending user regroup** (the explicit reason this unit
+>   leads). Until decided, the `lv_display_set_rotation` call is neutralized so the
+>   toggle can't ship a touch-breaking state.
+
 **Requirements:** R19
 
 **Dependencies:** None — ships first.
