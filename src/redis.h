@@ -17,8 +17,42 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <time.h>
+
+#include <hiredis/hiredis.h>
 
 #include "gol.h"
+
+/* Generic synchronous Redis connection handle: owns a hiredis context plus the
+ * endpoint/auth and a per-handle reconnect backoff deadline. Independent
+ * endpoints (control + telemetry) each use their own handle so a stall or
+ * backoff on one never affects the other. Single-threaded; no locking. */
+typedef struct {
+    redisContext *ctx;
+    char host[128];
+    int port;
+    char auth[256];
+    time_t next_attempt;
+} redis_client_t;
+
+/* Store endpoint/auth on the handle (host NULL -> loopback, port <= 0 -> 6379).
+ * Does not connect; the caller chooses eager (redis_client_connect) or lazy
+ * (redis_client_ensure on first use). `auth` may be NULL. */
+void redis_client_init(redis_client_t *c, const char *host, int port,
+                       const char *auth);
+
+/* Attempt a connection now, ignoring backoff: 250 ms connect timeout, 50 ms
+ * read timeout, optional AUTH. Returns true and sets c->ctx on success. Used for
+ * a best-effort eager connect; does not arm the backoff on failure. */
+bool redis_client_connect(redis_client_t *c);
+
+/* Ensure a live connection, honoring backoff. True if connected. Frees an
+ * errored context, and after a failed connect waits before the next attempt so
+ * an unreachable endpoint can't stall the UI loop on every op. */
+bool redis_client_ensure(redis_client_t *c);
+
+/* Close and free the handle's context (idempotent). */
+void redis_client_close(redis_client_t *c);
 
 /* Store host/port/auth and attempt an initial connection. `auth` may be NULL.
  * Always succeeds from the caller's view; a failed connect simply leaves the
