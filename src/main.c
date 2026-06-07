@@ -50,6 +50,12 @@ int main(void) {
     }
     lv_linux_drm_set_file(disp, cfg.drm_dev, -1);
 
+    /* Optional global 180° flip: the panel mounts inverted in the case, so this
+     * rotates render (and, via lv_indev, touch) for every mode. SPIKE: the
+     * lv_linux_drm driver may not honor software rotation — verify on hardware
+     * before relying on it (KMS rotate=180 + evdev calibration is the fallback). */
+    if (cfg.rotate_180)
+        lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_180);
     /* Mode shell: Game of Life and Clock are content modes; the Menu launcher
      * is the swipe-down target and startup default. */
     shell_init();
@@ -77,7 +83,8 @@ int main(void) {
                         "running display-only\n", cfg.touch_dev);
     }
 
-    printf("kdeskdash: running (DRM %s, touch %s)\n", cfg.drm_dev, cfg.touch_dev);
+    printf("kdeskdash: running (DRM %s, touch %s, rotate_180 %s)\n",
+           cfg.drm_dev, cfg.touch_dev, cfg.rotate_180 ? "on" : "off");
 
     /* Main loop */
     uint32_t last_poll = lv_tick_get();

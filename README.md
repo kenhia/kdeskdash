@@ -71,6 +71,7 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | Environment variable | Default | Description |
 |----------------------|---------|-------------|
 | `KDESKDASH_DRM_DEV`    | `/dev/dri/card1`     | DRM device (card1 = vc4 GPU) |
+| `KDESKDASH_ROTATE_180` | _(off)_              | Flip the whole display 180° (panel mounts inverted); `1`/`true`/`yes`/`on` to enable |
 | `KDESKDASH_TOUCH_DEV`  | `/dev/input/by-id/usb-ILITEK_ILITEK-TOUCH-event-if00` | evdev touch device; the by-id symlink is stable across replug/reboot |
 | `KDESKDASH_REDIS_HOST` | `127.0.0.1`          | Redis host (optional)        |
 | `KDESKDASH_REDIS_PORT` | `6379`               | Redis port                   |
