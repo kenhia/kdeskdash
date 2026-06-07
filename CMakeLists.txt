@@ -40,6 +40,10 @@ add_executable(kdeskdash
     src/gol.c
     src/stopwatch.c
     src/redis.c
+    src/dev_telemetry.c
+    src/telemetry.c
+    src/telemetry_host.c
+    lib/cjson/cJSON.c
     src/modes/game_of_life.c
     src/modes/clock.c
     src/modes/menu.c
@@ -48,6 +52,7 @@ add_executable(kdeskdash
 target_include_directories(kdeskdash PRIVATE
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/lib/cjson
     ${DRM_INCLUDE_DIRS}
 )
 
@@ -118,4 +123,13 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_compile_options(test_dev_telemetry PRIVATE -Wall -Wextra)
     target_link_libraries(test_dev_telemetry m)
     add_test(NAME test_dev_telemetry COMMAND test_dev_telemetry)
+
+    # Pure host-token contract for telemetry discovery keys (no Redis/LVGL).
+    add_executable(test_telemetry_host
+        tests/test_telemetry_host.c
+        src/telemetry_host.c
+    )
+    target_include_directories(test_telemetry_host PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_telemetry_host PRIVATE -Wall -Wextra)
+    add_test(NAME test_telemetry_host COMMAND test_telemetry_host)
 endif()

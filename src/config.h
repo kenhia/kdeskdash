@@ -14,6 +14,9 @@ typedef struct {
     int         redis_port; /* KDESKDASH_REDIS_PORT — default 6379 */
     const char *redis_auth; /* REDISCLI_AUTH — NULL when unset (no AUTH) */
     bool        rotate_180; /* KDESKDASH_ROTATE_180 — flip the whole display 180° (case mounts the panel inverted) */
+    const char *telemetry_redis_host; /* KDESKDASH_TELEMETRY_REDIS_HOST — kpidash telemetry source, default rpi53 */
+    int         telemetry_redis_port; /* KDESKDASH_TELEMETRY_REDIS_PORT — default 6379 */
+    const char *telemetry_redis_auth; /* KDESKDASH_TELEMETRY_REDISCLI_AUTH — NULL when unset (no AUTH) */
 } kdeskdash_config_t;
 
 /* Populate cfg from the environment, falling back to defaults. */

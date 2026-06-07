@@ -37,4 +37,12 @@ void config_load(kdeskdash_config_t *cfg) {
     cfg->redis_auth = (auth && auth[0] != '\0') ? auth : NULL;
 
     cfg->rotate_180 = env_flag("KDESKDASH_ROTATE_180");
+
+    /* Telemetry source: kpidash publishes host metrics to a (typically remote)
+     * Redis. Separate endpoint + auth from the local control Redis. */
+    cfg->telemetry_redis_host = env_or("KDESKDASH_TELEMETRY_REDIS_HOST", "rpi53");
+    int tport = atoi(env_or("KDESKDASH_TELEMETRY_REDIS_PORT", "6379"));
+    cfg->telemetry_redis_port = (tport > 0 && tport <= 65535) ? tport : 6379;
+    const char *tauth = getenv("KDESKDASH_TELEMETRY_REDISCLI_AUTH");
+    cfg->telemetry_redis_auth = (tauth && tauth[0] != '\0') ? tauth : NULL;
 }

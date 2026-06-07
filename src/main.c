@@ -17,6 +17,7 @@
 #include "modes/menu.h"
 #include "redis.h"
 #include "shell.h"
+#include "telemetry.h"
 #include "src/drivers/display/drm/lv_linux_drm.h"
 #include "src/drivers/evdev/lv_evdev.h"
 
@@ -81,6 +82,11 @@ int main(void) {
         redis_get_active_mode(last_mode, sizeof(last_mode)) ? last_mode : NULL;
     shell_start(restore);
 
+    /* Telemetry source (kpidash host metrics). Lazy connect on its own handle:
+     * a down/slow endpoint never stalls boot or the control path. */
+    telemetry_init(cfg.telemetry_redis_host, cfg.telemetry_redis_port,
+                   cfg.telemetry_redis_auth);
+
     /* Capacitive touch via evdev (ILITEK, default /dev/input/event1).
      * Touch is optional: if it cannot be opened, the display still runs. */
     lv_indev_t *touch = lv_evdev_create(LV_INDEV_TYPE_POINTER, cfg.touch_dev);
@@ -109,6 +115,7 @@ int main(void) {
 
     printf("\nkdeskdash: shutting down\n");
     redis_shutdown();
+    telemetry_shutdown();
     lv_deinit();
     return 0;
 }
