@@ -48,6 +48,7 @@ add_executable(kdeskdash
     src/modes/clock.c
     src/modes/dev.c
     src/modes/dev_graph.c
+    src/modes/dev_hostlist.c
     src/modes/menu.c
 )
 
@@ -134,4 +135,14 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_telemetry_host PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_telemetry_host PRIVATE -Wall -Wextra)
     add_test(NAME test_telemetry_host COMMAND test_telemetry_host)
+
+    # Pure host-selector list model: lexicographic sort + drop/re-add debounce
+    # + keep-selected (no LVGL/Redis).
+    add_executable(test_dev_hostlist
+        tests/test_dev_hostlist.c
+        src/modes/dev_hostlist.c
+    )
+    target_include_directories(test_dev_hostlist PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_dev_hostlist PRIVATE -Wall -Wextra)
+    add_test(NAME test_dev_hostlist COMMAND test_dev_hostlist)
 endif()

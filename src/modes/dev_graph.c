@@ -27,6 +27,7 @@
 #define COLOR_GRID  lv_color_hex(0x1b2433)
 #define COLOR_HOST  lv_color_hex(0xcfe0f5)
 #define COLOR_CAP   lv_color_hex(0x7c93b3)
+#define COLOR_GAP   lv_color_hex(0xe6ffe6) /* gap/start marker (pale green) */
 
 typedef struct {
     dev_graph_kind_t kind;
@@ -46,7 +47,38 @@ typedef struct {
     lv_chart_series_t *vram_ser;
 
     uint32_t mb_max; /* current secondary-axis ceiling (RAM or VRAM total) */
+
+    /* Vertical "gap" marker: point index (0..POINT_COUNT-1) where a data
+     * discontinuity occurred, or -1 when inactive. Decrements as data shifts
+     * left, scrolling the marker off the chart. */
+    int32_t gap_idx;
 } dev_graph_priv_t;
+
+/* Draw the gap/start marker (a full-height vertical line) on top of the chart,
+ * tracking the shifting data via priv->gap_idx. */
+static void chart_draw_gap_cb(lv_event_t *e) {
+    dev_graph_priv_t *priv = lv_event_get_user_data(e);
+    if (!priv || priv->gap_idx < 0)
+        return;
+    lv_obj_t *chart = lv_event_get_target(e);
+
+    lv_area_t a;
+    lv_obj_get_content_coords(chart, &a);
+    int32_t w = a.x2 - a.x1;
+    int32_t x = a.x1 + (int32_t)((int64_t)w * priv->gap_idx / (POINT_COUNT - 1));
+
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = COLOR_GAP;
+    dsc.width = 2;
+    dsc.opa = LV_OPA_70;
+    dsc.p1.x = x;
+    dsc.p1.y = a.y1;
+    dsc.p2.x = x;
+    dsc.p2.y = a.y2;
+    lv_draw_line(layer, &dsc);
+}
 
 static lv_obj_t *make_chart(lv_obj_t *parent) {
     lv_obj_t *chart = lv_chart_create(parent);
@@ -105,6 +137,9 @@ lv_obj_t *dev_graph_create(lv_obj_t *parent, dev_graph_kind_t kind) {
     priv->host_lbl = host_lbl;
     priv->stat_lbl = stat_lbl;
     priv->mb_max = 16384;
+    priv->gap_idx = -1;
+
+    lv_obj_add_event_cb(chart, chart_draw_gap_cb, LV_EVENT_DRAW_POST_END, priv);
 
     /* Add flanking traces before the main series so the main line renders on
      * top of its band. */
@@ -214,6 +249,10 @@ void dev_graph_update(lv_obj_t *graph, const dev_sample_t *s) {
     else
         update_gpu_vram(priv, s);
 
+    /* One logical time-step elapsed: shift the gap marker left with the data. */
+    if (priv->gap_idx >= 0)
+        priv->gap_idx--;
+
     lv_chart_refresh(priv->chart);
 }
 
@@ -227,6 +266,16 @@ void dev_graph_set_host(lv_obj_t *graph, const char *host) {
     if (cur && strcmp(cur, host) == 0)
         return;
     lv_label_set_text(priv->host_lbl, host);
+}
+
+void dev_graph_mark_gap(lv_obj_t *graph) {
+    if (!graph)
+        return;
+    dev_graph_priv_t *priv = lv_obj_get_user_data(graph);
+    if (!priv)
+        return;
+    priv->gap_idx = POINT_COUNT - 1; /* right edge; scrolls left with the data */
+    lv_obj_invalidate(priv->chart);
 }
 
 void dev_graph_destroy(lv_obj_t *graph) {
