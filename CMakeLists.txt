@@ -46,6 +46,8 @@ add_executable(kdeskdash
     lib/cjson/cJSON.c
     src/modes/game_of_life.c
     src/modes/clock.c
+    src/modes/dev.c
+    src/modes/dev_graph.c
     src/modes/menu.c
 )
 

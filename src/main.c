@@ -13,6 +13,7 @@
 #include "config.h"
 #include "lvgl.h"
 #include "modes/clock.h"
+#include "modes/dev.h"
 #include "modes/game_of_life.h"
 #include "modes/menu.h"
 #include "redis.h"
@@ -70,6 +71,8 @@ int main(void) {
         game_of_life_mode_create("game_of_life", "Game of Life"));
     shell_register_content_mode(
         clock_mode_create("clock", "Clock"));
+    shell_register_content_mode(
+        dev_mode_create("dev", "Dev"));
     shell_register_menu(menu_mode_create("menu", "Menu"));
 
     /* Optional Redis: remote control + last-mode persistence. Safe when absent.
