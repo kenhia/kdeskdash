@@ -307,8 +307,11 @@ touch following, behind an env toggle. This is the lead-off regroup gate.
 >   rotating flush (`lv_draw_sw_rotate`) to the vendored `lv_linux_drm.c`, or set the
 >   DRM plane `rotation` property (DRM_MODE_ROTATE_180) in its atomic commit if the
 >   vc4 HVS plane supports it; (C) rely on the physical case mounting and leave the
->   toggle dormant. **Decision pending user regroup** (the explicit reason this unit
->   leads). Until decided, the `lv_display_set_rotation` call is neutralized so the
+>   toggle dormant. **REGROUP DECISION (2026-06-07): defer software rotation.** Unit 1
+>   is independent of the rest of the plan and a physical case-mount fix is likely
+>   (confirm when the case prints). Proceeding to Unit 2; the toggle stays plumbed
+>   but neutralized. Revisit A′/B only if rotation is still wanted after the case
+>   is confirmed. The `lv_display_set_rotation` call remains neutralized so the
 >   toggle can't ship a touch-breaking state.
 
 **Requirements:** R19
@@ -360,7 +363,7 @@ touch result are documented.
 
 ---
 
-- [ ] **Unit 2: Vendor cJSON + `dev_telemetry` parser**
+- [x] **Unit 2: Vendor cJSON + `dev_telemetry` parser** — done 2026-06-07. Vendored cJSON 1.7.18 (`lib/cjson/`, MIT, provenance in `lib/cjson/VERSION`); `src/dev_telemetry.{c,h}` + 18-scenario host test (`tests/test_dev_telemetry.c`, all pass). Length-bounded parse (`cJSON_ParseWithLength`), zeroed-on-failure contract, non-object-root rejection, percentage/MB sanitization, optional-host fallback. Schema mirrored from kpidash's `redis_parse_dev_telemetry_json` (`host`, `cpu_pct`, `top_core_pct`, `ram_used_mb`, `ram_total_mb`, `gpu:{compute_pct,vram_used_mb,vram_total_mb}|null`).
 
 **Goal:** Re-introduce JSON parsing (vendored cJSON) and a pure, host-testable
 parser that turns a `dev_telemetry` payload into a typed struct, handling the

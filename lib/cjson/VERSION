@@ -1,0 +1,8 @@
+cJSON 1.7.18
+Upstream: https://github.com/DaveGamble/cJSON (tag v1.7.18)
+Files vendored: cJSON.c, cJSON.h, LICENSE
+License: MIT (see LICENSE)
+
+Vendored verbatim — do not edit. Parsing uses the default CJSON_NESTING_LIMIT
+recursion guard. Pulled for kdeskdash dev mode (dev_telemetry JSON parsing) so
+the build has no libcjson sysroot dependency.

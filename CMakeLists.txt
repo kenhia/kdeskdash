@@ -103,4 +103,19 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_stopwatch PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_stopwatch PRIVATE -Wall -Wextra)
     add_test(NAME test_stopwatch COMMAND test_stopwatch)
+
+    # dev_telemetry parser pulls in vendored cJSON (needs lib/cjson on the
+    # include path and libm for cJSON's number handling).
+    add_executable(test_dev_telemetry
+        tests/test_dev_telemetry.c
+        src/dev_telemetry.c
+        lib/cjson/cJSON.c
+    )
+    target_include_directories(test_dev_telemetry PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/lib/cjson
+    )
+    target_compile_options(test_dev_telemetry PRIVATE -Wall -Wextra)
+    target_link_libraries(test_dev_telemetry m)
+    add_test(NAME test_dev_telemetry COMMAND test_dev_telemetry)
 endif()
