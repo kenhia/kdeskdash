@@ -71,11 +71,14 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | Environment variable | Default | Description |
 |----------------------|---------|-------------|
 | `KDESKDASH_DRM_DEV`    | `/dev/dri/card1`     | DRM device (card1 = vc4 GPU) |
-| `KDESKDASH_ROTATE_180` | _(off)_              | Flip the whole display 180° (panel mounts inverted); `1`/`true`/`yes`/`on` to enable |
+| `KDESKDASH_ROTATE_180` | _(off)_              | Parsed but currently a **no-op** — the DRM driver has no software-rotation path yet, so setting it only logs a warning (the panel is mounted the right way up via the case). Reserved for a future rotation path. |
 | `KDESKDASH_TOUCH_DEV`  | `/dev/input/by-id/usb-ILITEK_ILITEK-TOUCH-event-if00` | evdev touch device; the by-id symlink is stable across replug/reboot |
-| `KDESKDASH_REDIS_HOST` | `127.0.0.1`          | Redis host (optional)        |
-| `KDESKDASH_REDIS_PORT` | `6379`               | Redis port                   |
-| `REDISCLI_AUTH`        | _(unset)_            | Redis password, if any (AUTH)|
+| `KDESKDASH_REDIS_HOST` | `127.0.0.1`          | Control Redis host (optional) |
+| `KDESKDASH_REDIS_PORT` | `6379`               | Control Redis port           |
+| `REDISCLI_AUTH`        | _(unset)_            | Control Redis password, if any (AUTH) |
+| `KDESKDASH_TELEMETRY_REDIS_HOST` | `rpi53`    | Telemetry source Redis host (kpidash host metrics; read-only, separate from the control Redis). Used by `dev` mode. |
+| `KDESKDASH_TELEMETRY_REDIS_PORT` | `6379`     | Telemetry source Redis port |
+| `KDESKDASH_TELEMETRY_REDISCLI_AUTH` | _(unset)_ | Telemetry source Redis password, if any (AUTH) |
 
 ## Redis (optional)
 
@@ -90,8 +93,10 @@ Keys:
 
 | Key | Type | Purpose |
 |-----|------|---------|
-| `kdeskdash:active_mode`  | string | Active mode id; `SET` to switch remotely, written on every change (persistence). |
+| `kdeskdash:active_mode`  | string | Active mode id (e.g. `clock`, `game_of_life`, `dev`); `SET` to switch remotely, written on every change (persistence). |
 | `kdeskdash:gol:settings` | hash   | One-shot Game of Life settings, consumed (deleted) on the next GoL entry. |
+| `kdeskdash:dev:left`     | string | Dev mode: hostname assigned to the left charts; written on assign, restored on dev entry. |
+| `kdeskdash:dev:right`    | string | Dev mode: hostname assigned to the right charts; written on assign, restored on dev entry. |
 
 Examples (run on the Pi or any host pointed at its Redis):
 

@@ -17,6 +17,10 @@
  * band ~2.5x the single-line width. Primary Y is 0–100 %. */
 #define GPU_PCT_OFFSET 1
 
+/* Default secondary-Y (MB) axis ceiling until the first sample's
+ * ram_total/vram_total is known. */
+#define MB_AXIS_DEFAULT 16384
+
 /* Series colours. */
 #define COLOR_GPU   lv_color_hex(0x40c057) /* GPU compute % (green) */
 #define COLOR_CPU   lv_color_hex(0x4dabf7) /* CPU avg %     (blue)  */
@@ -101,7 +105,7 @@ static lv_obj_t *make_chart(lv_obj_t *parent) {
     lv_chart_set_point_count(chart, POINT_COUNT);
     lv_chart_set_div_line_count(chart, 4, 0);
     lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, 0, 100);
-    lv_chart_set_range(chart, LV_CHART_AXIS_SECONDARY_Y, 0, 16384);
+    lv_chart_set_range(chart, LV_CHART_AXIS_SECONDARY_Y, 0, MB_AXIS_DEFAULT);
     return chart;
 }
 
@@ -161,7 +165,7 @@ lv_obj_t *dev_graph_create(lv_obj_t *parent, dev_graph_kind_t kind) {
     priv->stat_lbl = stat_lbl;
     priv->overlay = overlay;
     priv->overlay_lbl = overlay_lbl;
-    priv->mb_max = 16384;
+    priv->mb_max = MB_AXIS_DEFAULT;
     priv->gap_idx = -1;
 
     lv_obj_add_event_cb(chart, chart_draw_gap_cb, LV_EVENT_DRAW_POST_END, priv);
@@ -318,13 +322,4 @@ void dev_graph_mark_gap(lv_obj_t *graph) {
         return;
     priv->gap_idx = POINT_COUNT - 1; /* right edge; scrolls left with the data */
     lv_obj_invalidate(priv->chart);
-}
-
-void dev_graph_destroy(lv_obj_t *graph) {
-    if (!graph)
-        return;
-    dev_graph_priv_t *priv = lv_obj_get_user_data(graph);
-    if (priv)
-        lv_free(priv);
-    lv_obj_delete(graph);
 }

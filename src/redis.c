@@ -81,13 +81,18 @@ bool redis_client_connect(redis_client_t *c) {
 bool redis_client_ensure(redis_client_t *c) {
     if (c->ctx && c->ctx->err == 0)
         return true;
+    time_t now = time(NULL);
     if (c->ctx) {
+        /* The context errored on a *command* (e.g. a read timeout against a
+         * reachable-but-slow remote). Reconnecting immediately would thrash
+         * connect+timeout every tick and stall the UI thread, so arm the same
+         * backoff used for connect failures before dropping it. */
         redisFree(c->ctx);
         c->ctx = NULL;
+        c->next_attempt = now + RECONNECT_BACKOFF_S;
     }
     /* Back off after a failed connect so we don't pay the connect timeout on
      * every op while the host is unreachable. */
-    time_t now = time(NULL);
     if (now < c->next_attempt)
         return false;
     if (!redis_client_connect(c)) {
@@ -142,10 +147,12 @@ void redis_set_active_mode(const char *id) {
         freeReplyObject(r);
 }
 
-bool redis_get_active_mode(char *buf, size_t buflen) {
+/* GET `key` into buf (truncated, always NUL-terminated). False on any error,
+ * missing key, wrong type, or empty value; buf is left untouched on failure. */
+static bool redis_get_string(const char *key, char *buf, size_t buflen) {
     if (!buf || buflen == 0 || !redis_client_ensure(&g_control))
         return false;
-    redisReply *r = redisCommand(g_control.ctx, "GET %s", KEY_ACTIVE_MODE);
+    redisReply *r = redisCommand(g_control.ctx, "GET %s", key);
     bool ok = false;
     if (r && r->type == REDIS_REPLY_STRING && r->len > 0) {
         strncpy(buf, r->str, buflen - 1);
@@ -155,6 +162,10 @@ bool redis_get_active_mode(char *buf, size_t buflen) {
     if (r)
         freeReplyObject(r);
     return ok;
+}
+
+bool redis_get_active_mode(char *buf, size_t buflen) {
+    return redis_get_string(KEY_ACTIVE_MODE, buf, buflen);
 }
 
 static const char *dev_side_key(redis_dev_side_t side) {
@@ -175,18 +186,7 @@ void redis_set_dev_assignment(redis_dev_side_t side, const char *host) {
 }
 
 bool redis_get_dev_assignment(redis_dev_side_t side, char *buf, size_t buflen) {
-    if (!buf || buflen == 0 || !redis_client_ensure(&g_control))
-        return false;
-    redisReply *r = redisCommand(g_control.ctx, "GET %s", dev_side_key(side));
-    bool ok = false;
-    if (r && r->type == REDIS_REPLY_STRING && r->len > 0) {
-        strncpy(buf, r->str, buflen - 1);
-        buf[buflen - 1] = '\0';
-        ok = true;
-    }
-    if (r)
-        freeReplyObject(r);
-    return ok;
+    return redis_get_string(dev_side_key(side), buf, buflen);
 }
 
 /* Apply one "field value" pair from the settings hash onto cfg. These are

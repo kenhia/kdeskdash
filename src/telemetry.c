@@ -73,6 +73,9 @@ static void publish_building(void) {
 bool telemetry_discover_step(void) {
     if (!redis_client_ensure(&g_tlm)) {
         g_reachable = false;
+        /* Abandon any in-flight pass so a reconnect starts from a clean cursor. */
+        g_cursor = 0;
+        g_building_n = 0;
         return false;
     }
 
@@ -81,8 +84,12 @@ bool telemetry_discover_step(void) {
     redisReply *r = redisCommand(g_tlm.ctx, "SCAN %s MATCH %s COUNT %d", curbuf,
                                  TELEMETRY_SCAN_MATCH, TELEMETRY_SCAN_COUNT);
     if (!r) {
-        /* Connection error: the next ensure() will reconnect after backoff. */
+        /* Connection error: the next ensure() will reconnect after backoff.
+         * Reset the pass so the reconnect resumes from a clean cursor rather
+         * than a stale one that could publish a partial host list. */
         g_reachable = false;
+        g_cursor = 0;
+        g_building_n = 0;
         return false;
     }
     g_reachable = true;

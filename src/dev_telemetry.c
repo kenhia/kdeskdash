@@ -22,17 +22,20 @@ static float clamp_pct(const cJSON *o) {
     return (float)v;
 }
 
-/* Clamp a JSON number field to a non-negative MB count in [0, UINT32_MAX].
- * Guards the double->uint32 conversion against undefined behaviour on
- * negative, non-finite, or out-of-range values. */
+/* Clamp a JSON number field to a non-negative MB count in [0, INT32_MAX].
+ * Guards the double->integer conversion against undefined behaviour on
+ * negative, non-finite, or out-of-range values. The ceiling is INT32_MAX (not
+ * UINT32_MAX) so every value stays safe to cast to the int32_t the LVGL chart
+ * axis uses downstream — a larger value would wrap negative and invert the
+ * axis. Real RAM/VRAM totals are millions of MB at most, far below the cap. */
 static uint32_t clamp_mb(const cJSON *o) {
     if (!cJSON_IsNumber(o))
         return 0;
     double v = o->valuedouble;
     if (!isfinite(v) || v < 0.0)
         return 0;
-    if (v > (double)UINT32_MAX)
-        return UINT32_MAX;
+    if (v > (double)INT32_MAX)
+        return (uint32_t)INT32_MAX;
     return (uint32_t)v;
 }
 

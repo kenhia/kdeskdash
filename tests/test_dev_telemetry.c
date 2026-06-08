@@ -175,14 +175,17 @@ static void test_over_100(void) {
     check_eqf(s.top_core_pct, 100.0f, "top_core clamped to 100");
 }
 
-/* Absurdly large MB clamps to UINT32_MAX (guards double->uint32 overflow). */
+/* Absurdly large MB clamps to INT32_MAX so the value stays safe to cast to the
+ * int32_t LVGL chart axis (a UINT32_MAX ceiling would wrap negative). */
 static void test_mb_overflow(void) {
     const char *json = "{\"ram_total_mb\":1e30,\"gpu\":{\"vram_total_mb\":1e30}}";
     dev_sample_t s;
     check(dev_telemetry_parse(json, strlen(json), &s), "overflow MB parses");
-    check_equ(s.ram_total_mb, UINT32_MAX, "ram_total clamped to UINT32_MAX");
+    check_equ(s.ram_total_mb, (uint32_t)INT32_MAX, "ram_total clamped to INT32_MAX");
     check(s.has_gpu, "overflow gpu present");
-    check_equ(s.vram_total_mb, UINT32_MAX, "vram_total clamped to UINT32_MAX");
+    check_equ(s.vram_total_mb, (uint32_t)INT32_MAX, "vram_total clamped to INT32_MAX");
+    check((int32_t)s.ram_total_mb >= 0, "clamped ram_total stays non-negative as int32");
+    check((int32_t)s.vram_total_mb >= 0, "clamped vram_total stays non-negative as int32");
 }
 
 /* vram_total_mb:0 is preserved verbatim (division guard is the caller's job). */

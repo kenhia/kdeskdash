@@ -17,6 +17,7 @@
  */
 #include "modes/dev.h"
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,6 +30,11 @@
 #include "redis.h"
 #include "telemetry.h"
 #include "telemetry_host.h"
+
+/* selector_refresh copies up to TELEMETRY_HOSTS_MAX discovered hosts into the
+ * dev_hostlist model, so the model must be able to hold at least that many. */
+_Static_assert(DEV_HOSTLIST_MAX >= TELEMETRY_HOSTS_MAX,
+               "host selector list must hold all discovered telemetry hosts");
 
 #define DEV_POLL_MS     1000  /* per-host GET cadence */
 #define DEV_DISCOVER_MS 5000  /* SCAN discovery cadence (slower than poll) */
@@ -56,7 +62,7 @@ typedef struct {
     bool            ever_live; /* received >= 1 OK sample since assignment */
     dev_side_view_t view;      /* last rendered state */
     dev_gpu_gate_t  gate;      /* CPU-only layout debounce */
-    bool            cpu_only;  /* last rendered layout (gpu hidden, cpu centered) */
+    bool            applied_cpu_only; /* last rendered layout (gpu hidden, cpu centered) */
 } dev_side_t;
 
 typedef struct dev_state dev_state_t;
@@ -132,9 +138,9 @@ static void row_cb(lv_event_t *e) {
  * (GPU/VRAM chart hidden, CPU/RAM chart at half width and centered in the side
  * footprint so it stays normal-size with balanced empty space, R14). */
 static void apply_side_layout(dev_side_t *side, bool cpu_only) {
-    if (cpu_only == side->cpu_only)
+    if (cpu_only == side->applied_cpu_only)
         return;
-    side->cpu_only = cpu_only;
+    side->applied_cpu_only = cpu_only;
     if (cpu_only) {
         lv_obj_add_flag(side->gpu, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_flex_grow(side->cpu, 0);
@@ -146,13 +152,24 @@ static void apply_side_layout(dev_side_t *side, bool cpu_only) {
     }
 }
 
+/* Mark a data discontinuity on both of a side's charts at once. */
+static void side_mark_gap(dev_side_t *side) {
+    dev_graph_mark_gap(side->cpu);
+    dev_graph_mark_gap(side->gpu);
+}
+
+/* Set (or clear, with NULL) the overlay status on both of a side's charts. */
+static void side_set_status(dev_side_t *side, const char *msg) {
+    dev_graph_set_status(side->cpu, msg);
+    dev_graph_set_status(side->gpu, msg);
+}
+
 static void assign_side(dev_side_t *side, const char *host) {
     snprintf(side->host, DEV_HOST_MAX, "%s", host);
     dev_graph_set_host(side->cpu, host);
     dev_graph_set_host(side->gpu, host);
     /* New host: the existing trace is unrelated data — flag the discontinuity. */
-    dev_graph_mark_gap(side->cpu);
-    dev_graph_mark_gap(side->gpu);
+    side_mark_gap(side);
     /* Reset liveness/layout so the new host re-evaluates from scratch. */
     side->ever_live = false;
     side->last_ok = 0;
@@ -377,11 +394,9 @@ static void poll_side(dev_state_t *st, dev_side_t *side) {
     if (view == DEV_SIDE_LIVE && got) {
         /* Recovering from a frozen state with existing history: flag the gap. */
         if (side->view != DEV_SIDE_LIVE && side->ever_live) {
-            dev_graph_mark_gap(side->cpu);
-            dev_graph_mark_gap(side->gpu);
+            side_mark_gap(side);
         }
-        dev_graph_set_status(side->cpu, NULL);
-        dev_graph_set_status(side->gpu, NULL);
+        side_set_status(side, NULL);
         dev_graph_update(side->cpu, &s);
         dev_graph_update(side->gpu, &s);
         apply_side_layout(side, dev_gpu_gate_update(&side->gate, s.has_gpu,
@@ -391,9 +406,7 @@ static void poll_side(dev_state_t *st, dev_side_t *side) {
          * Restore the full two-chart footprint so the message is centered. */
         apply_side_layout(side, false);
         dev_gpu_gate_init(&side->gate);
-        const char *msg = view_msg(view);
-        dev_graph_set_status(side->cpu, msg);
-        dev_graph_set_status(side->gpu, msg);
+        side_set_status(side, view_msg(view));
     }
     /* else: resolved LIVE but no fresh sample this tick (e.g. one absent poll
      * before the stale threshold) — leave the charts as-is, no overlay. */
@@ -429,12 +442,10 @@ static void activate(kd_mode_t *self) {
     /* Returning to the mode after time away: the trace resumes with a time gap,
      * so drop a start line on each assigned side's charts. */
     if (st->left.host[0] != '\0') {
-        dev_graph_mark_gap(st->left.cpu);
-        dev_graph_mark_gap(st->left.gpu);
+        side_mark_gap(&st->left);
     }
     if (st->right.host[0] != '\0') {
-        dev_graph_mark_gap(st->right.cpu);
-        dev_graph_mark_gap(st->right.gpu);
+        side_mark_gap(&st->right);
     }
 }
 

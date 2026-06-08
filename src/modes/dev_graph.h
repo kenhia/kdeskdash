@@ -49,7 +49,4 @@ void dev_graph_set_status(lv_obj_t *graph, const char *msg);
  * POINT_COUNT samples. */
 void dev_graph_mark_gap(lv_obj_t *graph);
 
-/* Free the chart's private state and delete the object tree. */
-void dev_graph_destroy(lv_obj_t *graph);
-
 #endif /* KDESKDASH_DEV_GRAPH_H */

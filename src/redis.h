@@ -43,7 +43,11 @@ void redis_client_init(redis_client_t *c, const char *host, int port,
 
 /* Attempt a connection now, ignoring backoff: 250 ms connect timeout, 50 ms
  * read timeout, optional AUTH. Returns true and sets c->ctx on success. Used for
- * a best-effort eager connect; does not arm the backoff on failure. */
+ * a best-effort eager connect; does not arm the backoff on failure.
+ * NOTE: the 250 ms timeout bounds the TCP connect but NOT hostname resolution
+ * (hiredis calls getaddrinfo() unbounded). For a remote endpoint configured by
+ * name, a slow/dead resolver can still stall the UI thread — prefer an IP or an
+ * /etc/hosts pin. A future async/at-init resolve is tracked as follow-up work. */
 bool redis_client_connect(redis_client_t *c);
 
 /* Ensure a live connection, honoring backoff. True if connected. Frees an
