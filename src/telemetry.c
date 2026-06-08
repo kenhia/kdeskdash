@@ -29,11 +29,15 @@ static int g_building_n;
 static char g_current[TELEMETRY_HOSTS_MAX][DEV_HOST_MAX];
 static int g_current_n;
 
+/* Endpoint reachability as of the last discover/sample attempt. */
+static bool g_reachable;
+
 void telemetry_init(const char *host, int port, const char *auth) {
     redis_client_init(&g_tlm, host, port, auth);
     g_cursor = 0;
     g_building_n = 0;
     g_current_n = 0;
+    g_reachable = false;
 }
 
 void telemetry_shutdown(void) {
@@ -41,6 +45,11 @@ void telemetry_shutdown(void) {
     g_cursor = 0;
     g_building_n = 0;
     g_current_n = 0;
+    g_reachable = false;
+}
+
+bool telemetry_reachable(void) {
+    return g_reachable;
 }
 
 /* Append `host` to the building list if new and there is room. */
@@ -62,8 +71,10 @@ static void publish_building(void) {
 }
 
 bool telemetry_discover_step(void) {
-    if (!redis_client_ensure(&g_tlm))
+    if (!redis_client_ensure(&g_tlm)) {
+        g_reachable = false;
         return false;
+    }
 
     char curbuf[32];
     snprintf(curbuf, sizeof(curbuf), "%llu", g_cursor);
@@ -71,8 +82,10 @@ bool telemetry_discover_step(void) {
                                  TELEMETRY_SCAN_MATCH, TELEMETRY_SCAN_COUNT);
     if (!r) {
         /* Connection error: the next ensure() will reconnect after backoff. */
+        g_reachable = false;
         return false;
     }
+    g_reachable = true;
 
     /* Expect a 2-tuple: [next-cursor (string), keys (array)]. Anything else is
      * treated as an empty, completed pass. */
@@ -120,15 +133,20 @@ telemetry_status_t telemetry_get_sample(const char *host, dev_sample_t *out) {
     if (!host || !telemetry_host_token_ok(host, strlen(host)))
         return TELEMETRY_ABSENT;
 
-    if (!redis_client_ensure(&g_tlm))
+    if (!redis_client_ensure(&g_tlm)) {
+        g_reachable = false;
         return TELEMETRY_UNAVAIL;
+    }
 
     char key[sizeof(TELEMETRY_KEY_PREFIX) + DEV_HOST_MAX + sizeof(TELEMETRY_KEY_SUFFIX)];
     snprintf(key, sizeof(key), TELEMETRY_KEY_PREFIX "%s" TELEMETRY_KEY_SUFFIX, host);
 
     redisReply *r = redisCommand(g_tlm.ctx, "GET %s", key);
-    if (!r)
+    if (!r) {
+        g_reachable = false;
         return TELEMETRY_UNAVAIL; /* connection error; reconnect next attempt */
+    }
+    g_reachable = true;
 
     telemetry_status_t status;
     if (r->type == REDIS_REPLY_STRING && r->len > 0 &&

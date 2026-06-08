@@ -47,6 +47,12 @@ bool telemetry_discover_step(void);
  * DEV_HOST_MAX). Returns the number of hosts written. */
 int telemetry_hosts(char out[][DEV_HOST_MAX], int max);
 
+/* Whether the telemetry endpoint responded on the most recent discover/sample
+ * attempt. False before the first successful round-trip and whenever the last
+ * attempt hit a connect/read error. Lets the UI show a single app-wide
+ * "telemetry unavailable" state instead of a misleading empty selector. */
+bool telemetry_reachable(void);
+
 /* Fetch and parse one host's latest sample. `host` is re-validated against the
  * token contract before any key is built. On TELEMETRY_OK, *out holds the
  * sample; otherwise *out is zeroed. Never blocks beyond one round-trip. */

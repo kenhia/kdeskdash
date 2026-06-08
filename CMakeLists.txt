@@ -49,6 +49,7 @@ add_executable(kdeskdash
     src/modes/dev.c
     src/modes/dev_graph.c
     src/modes/dev_hostlist.c
+    src/modes/dev_view.c
     src/modes/menu.c
 )
 
@@ -145,4 +146,13 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_dev_hostlist PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_dev_hostlist PRIVATE -Wall -Wextra)
     add_test(NAME test_dev_hostlist COMMAND test_dev_hostlist)
+
+    # Pure dev-mode view logic: liveness precedence ladder + CPU-only debounce.
+    add_executable(test_dev_view
+        tests/test_dev_view.c
+        src/modes/dev_view.c
+    )
+    target_include_directories(test_dev_view PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_dev_view PRIVATE -Wall -Wextra)
+    add_test(NAME test_dev_view COMMAND test_dev_view)
 endif()

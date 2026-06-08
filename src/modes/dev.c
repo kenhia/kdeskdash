@@ -25,13 +25,16 @@
 #include "lvgl.h"
 #include "modes/dev_graph.h"
 #include "modes/dev_hostlist.h"
+#include "modes/dev_view.h"
 #include "redis.h"
 #include "telemetry.h"
 #include "telemetry_host.h"
 
-#define DEV_POLL_MS     1000 /* per-host GET cadence */
-#define DEV_DISCOVER_MS 5000 /* SCAN discovery cadence (slower than poll) */
-#define CENTER_W        260  /* center selector column width (px) */
+#define DEV_POLL_MS     1000  /* per-host GET cadence */
+#define DEV_DISCOVER_MS 5000  /* SCAN discovery cadence (slower than poll) */
+#define DEV_STALE_MS    10000 /* no fresh sample for this long -> stale (R16) */
+#define DEV_CPU_ONLY_N  3     /* consecutive gpu-absent samples -> CPU-only (R14) */
+#define CENTER_W        260   /* center selector column width (px) */
 #define ROW_H           40
 
 #define COLOR_BG       lv_color_hex(0x05070d)
@@ -43,9 +46,17 @@
 #define COLOR_ASSIGN   lv_color_hex(0x394150)
 
 typedef struct {
+    lv_obj_t *box; /* side container holding the two charts */
     lv_obj_t *cpu;
     lv_obj_t *gpu;
     char host[DEV_HOST_MAX];
+
+    /* Liveness tracking (Unit 7). */
+    uint32_t        last_ok;   /* tick of the last TELEMETRY_OK sample */
+    bool            ever_live; /* received >= 1 OK sample since assignment */
+    dev_side_view_t view;      /* last rendered state */
+    dev_gpu_gate_t  gate;      /* CPU-only layout debounce */
+    bool            cpu_only;  /* last rendered layout (gpu hidden, cpu centered) */
 } dev_side_t;
 
 typedef struct dev_state dev_state_t;
@@ -117,6 +128,24 @@ static void row_cb(lv_event_t *e) {
     repaint_rows(ctx->st);
 }
 
+/* Switch a side between the normal two-chart layout and the CPU-only layout
+ * (GPU/VRAM chart hidden, CPU/RAM chart at half width and centered in the side
+ * footprint so it stays normal-size with balanced empty space, R14). */
+static void apply_side_layout(dev_side_t *side, bool cpu_only) {
+    if (cpu_only == side->cpu_only)
+        return;
+    side->cpu_only = cpu_only;
+    if (cpu_only) {
+        lv_obj_add_flag(side->gpu, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_flex_grow(side->cpu, 0);
+        lv_obj_set_width(side->cpu, LV_PCT(50));
+    } else {
+        lv_obj_clear_flag(side->gpu, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_flex_grow(side->cpu, 1);
+        lv_obj_set_width(side->cpu, LV_PCT(100));
+    }
+}
+
 static void assign_side(dev_side_t *side, const char *host) {
     snprintf(side->host, DEV_HOST_MAX, "%s", host);
     dev_graph_set_host(side->cpu, host);
@@ -124,6 +153,14 @@ static void assign_side(dev_side_t *side, const char *host) {
     /* New host: the existing trace is unrelated data — flag the discontinuity. */
     dev_graph_mark_gap(side->cpu);
     dev_graph_mark_gap(side->gpu);
+    /* Reset liveness/layout so the new host re-evaluates from scratch. */
+    side->ever_live = false;
+    side->last_ok = 0;
+    side->view = DEV_SIDE_EMPTY;
+    dev_gpu_gate_init(&side->gate);
+    apply_side_layout(side, false);
+    dev_graph_set_status(side->cpu, NULL);
+    dev_graph_set_status(side->gpu, NULL);
 }
 
 static void assign_cb(lv_event_t *e) {
@@ -240,6 +277,22 @@ static void make_center(dev_state_t *st, lv_obj_t *parent) {
     st->list = list;
 }
 
+/* A side's two charts live in their own flex-row container so CPU-only
+ * collapsing and overlays affect only that side's footprint. Centered main-axis
+ * alignment keeps a single half-width chart (CPU-only) centered. */
+static lv_obj_t *make_side_box(lv_obj_t *parent) {
+    lv_obj_t *box = lv_obj_create(parent);
+    lv_obj_remove_style_all(box);
+    lv_obj_set_height(box, LV_PCT(100));
+    lv_obj_set_flex_grow(box, 2); /* two grow-1 charts; balances vs other side */
+    lv_obj_set_style_pad_column(box, 6, 0);
+    lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(box, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    return box;
+}
+
 static void build_screen(kd_mode_t *self) {
     dev_state_t *st = self->state;
 
@@ -253,11 +306,13 @@ static void build_screen(kd_mode_t *self) {
                           LV_FLEX_ALIGN_CENTER);
 
     /* Mirrored order: CPU/RAM outer, GPU/VRAM inner on both sides. */
-    st->left.cpu = dev_graph_create(scr, DEV_GRAPH_CPU_RAM);
-    st->left.gpu = dev_graph_create(scr, DEV_GRAPH_GPU_VRAM);
+    st->left.box = make_side_box(scr);
+    st->left.cpu = dev_graph_create(st->left.box, DEV_GRAPH_CPU_RAM);
+    st->left.gpu = dev_graph_create(st->left.box, DEV_GRAPH_GPU_VRAM);
     make_center(st, scr);
-    st->right.gpu = dev_graph_create(scr, DEV_GRAPH_GPU_VRAM);
-    st->right.cpu = dev_graph_create(scr, DEV_GRAPH_CPU_RAM);
+    st->right.box = make_side_box(scr);
+    st->right.gpu = dev_graph_create(st->right.box, DEV_GRAPH_GPU_VRAM);
+    st->right.cpu = dev_graph_create(st->right.box, DEV_GRAPH_CPU_RAM);
 
     self->screen = scr;
 }
@@ -276,14 +331,74 @@ static void selector_refresh(dev_state_t *st) {
     repaint_rows(st);
 }
 
-static void poll_side(dev_side_t *side) {
-    if (side->host[0] == '\0')
-        return;
+/* Whether an assigned host is currently online in the discovered host list.
+ * The host list keeps vanished assignments (via the keep set) but marks them
+ * offline, so a missing/absent host reads as not-online here. */
+static bool side_online(dev_state_t *st, const char *host) {
+    for (int i = 0; i < st->hosts.count; i++)
+        if (strcmp(st->hosts.entries[i].host, host) == 0)
+            return st->hosts.entries[i].online;
+    return false;
+}
+
+/* Overlay text for a non-live state (NULL == live, no overlay). */
+static const char *view_msg(dev_side_view_t v) {
+    switch (v) {
+    case DEV_SIDE_UNAVAIL: return "telemetry unavailable";
+    case DEV_SIDE_EMPTY:   return "Select a host";
+    case DEV_SIDE_OFFLINE: return "offline";
+    case DEV_SIDE_STALE:   return "no new data";
+    default:               return NULL;
+    }
+}
+
+/* Fetch one side's sample, resolve its display state via the precedence ladder,
+ * and render: advance the charts when live, otherwise freeze history and show
+ * the matching overlay. */
+static void poll_side(dev_state_t *st, dev_side_t *side) {
     dev_sample_t s;
-    if (telemetry_get_sample(side->host, &s) == TELEMETRY_OK) {
+    bool got = false;
+    if (side->host[0] != '\0' &&
+        telemetry_get_sample(side->host, &s) == TELEMETRY_OK) {
+        got = true;
+        side->last_ok = lv_tick_get();
+        side->ever_live = true;
+    }
+
+    dev_side_inputs_t in = {
+        .telemetry_ok = telemetry_reachable(),
+        .assigned = side->host[0] != '\0',
+        .seen_in_discovery = side->host[0] != '\0' && side_online(st, side->host),
+        .ever_live = side->ever_live,
+        .ms_since_ok = side->ever_live ? lv_tick_elaps(side->last_ok) : 0,
+    };
+    dev_side_view_t view = dev_side_resolve(&in, DEV_STALE_MS);
+
+    if (view == DEV_SIDE_LIVE && got) {
+        /* Recovering from a frozen state with existing history: flag the gap. */
+        if (side->view != DEV_SIDE_LIVE && side->ever_live) {
+            dev_graph_mark_gap(side->cpu);
+            dev_graph_mark_gap(side->gpu);
+        }
+        dev_graph_set_status(side->cpu, NULL);
+        dev_graph_set_status(side->gpu, NULL);
         dev_graph_update(side->cpu, &s);
         dev_graph_update(side->gpu, &s);
+        apply_side_layout(side, dev_gpu_gate_update(&side->gate, s.has_gpu,
+                                                    DEV_CPU_ONLY_N));
+    } else if (view != DEV_SIDE_LIVE) {
+        /* Freeze history (stop pushing points) and show the state overlay.
+         * Restore the full two-chart footprint so the message is centered. */
+        apply_side_layout(side, false);
+        dev_gpu_gate_init(&side->gate);
+        const char *msg = view_msg(view);
+        dev_graph_set_status(side->cpu, msg);
+        dev_graph_set_status(side->gpu, msg);
     }
+    /* else: resolved LIVE but no fresh sample this tick (e.g. one absent poll
+     * before the stale threshold) — leave the charts as-is, no overlay. */
+
+    side->view = view;
 }
 
 /* Load one persisted side assignment from the local control Redis. The stored
@@ -336,8 +451,8 @@ static void tick(kd_mode_t *self) {
     }
 
     if (st->last_poll == 0 || lv_tick_elaps(st->last_poll) >= DEV_POLL_MS) {
-        poll_side(&st->left);
-        poll_side(&st->right);
+        poll_side(st, &st->left);
+        poll_side(st, &st->right);
         st->last_poll = lv_tick_get();
     }
 }

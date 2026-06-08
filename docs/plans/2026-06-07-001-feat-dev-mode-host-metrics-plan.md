@@ -600,7 +600,7 @@ MVP active-mode restore), and persistence is independent of telemetry reachabili
 
 ---
 
-- [ ] **Unit 7: Liveness, empty, CPU-only, and unavailable states**
+- [x] **Unit 7: Liveness, empty, CPU-only, and unavailable states** — done 2026-06-08. Pure `dev_view` module (precedence ladder `dev_side_resolve` + debounced `dev_gpu_gate` for CPU-only, N=3) with host test; `telemetry_reachable()` global signal; `dev_graph` translucent status overlay (frozen history behind it); per-side flex box restructure so CPU-only collapses to one centered half-width chart. Hardware-verified all 6 states on `rpidash2`: live, stale+recover (gap line), empty, offline (R18), CPU-only (kubsdb `gpu:null`), unavailable (dead endpoint, Clock/GoL still navigable).
 
 **Goal:** Handle the non-happy display states — stale host overlay with frozen
 history, empty-side placeholder, vanished-but-persisted host kept visible, CPU-only

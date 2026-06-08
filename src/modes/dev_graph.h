@@ -35,6 +35,13 @@ void dev_graph_update(lv_obj_t *graph, const dev_sample_t *s);
 /* Set the host label shown above the chart (no-op if unchanged). */
 void dev_graph_set_host(lv_obj_t *graph, const char *host);
 
+/* Show a centered translucent status overlay over the chart (e.g. "no new
+ * data", "offline", "Select a host"), leaving any existing history visible
+ * behind it. Pass NULL or "" to clear the overlay. Used for the non-live
+ * liveness states; the caller freezes the chart by simply not pushing new
+ * samples while an overlay is shown. */
+void dev_graph_set_status(lv_obj_t *graph, const char *msg);
+
 /* Mark a data discontinuity at the current right edge: a vertical "start line"
  * is drawn that scrolls left with the data, flagging that the samples to its
  * left and right are not contiguous in time (e.g. after the mode was inactive

@@ -34,6 +34,8 @@ typedef struct {
     lv_obj_t *chart;
     lv_obj_t *host_lbl;
     lv_obj_t *stat_lbl; /* compact current-values line */
+    lv_obj_t *overlay;  /* centered status panel (hidden unless set) */
+    lv_obj_t *overlay_lbl;
 
     /* CPU/RAM series. */
     lv_chart_series_t *cpu_ser;
@@ -130,12 +132,35 @@ lv_obj_t *dev_graph_create(lv_obj_t *parent, dev_graph_kind_t kind) {
 
     lv_obj_t *chart = make_chart(cont);
 
+    /* Status overlay: a translucent rounded panel centered on the chart, hidden
+     * until a non-live state sets it. A child of the chart so it floats above
+     * the series without scrolling with the data. */
+    lv_obj_t *overlay = lv_obj_create(chart);
+    lv_obj_remove_style_all(overlay);
+    lv_obj_set_size(overlay, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(overlay, COLOR_BG, 0);
+    lv_obj_set_style_bg_opa(overlay, LV_OPA_70, 0);
+    lv_obj_set_style_radius(overlay, 6, 0);
+    lv_obj_set_style_border_width(overlay, 1, 0);
+    lv_obj_set_style_border_color(overlay, COLOR_GRID, 0);
+    lv_obj_set_style_pad_all(overlay, 8, 0);
+    lv_obj_clear_flag(overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_align(overlay, LV_ALIGN_CENTER, 0, 0);
+
+    lv_obj_t *overlay_lbl = lv_label_create(overlay);
+    lv_obj_set_style_text_font(overlay_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(overlay_lbl, COLOR_HOST, 0);
+    lv_obj_center(overlay_lbl);
+
     dev_graph_priv_t *priv = lv_malloc(sizeof(*priv));
     memset(priv, 0, sizeof(*priv));
     priv->kind = kind;
     priv->chart = chart;
     priv->host_lbl = host_lbl;
     priv->stat_lbl = stat_lbl;
+    priv->overlay = overlay;
+    priv->overlay_lbl = overlay_lbl;
     priv->mb_max = 16384;
     priv->gap_idx = -1;
 
@@ -266,6 +291,23 @@ void dev_graph_set_host(lv_obj_t *graph, const char *host) {
     if (cur && strcmp(cur, host) == 0)
         return;
     lv_label_set_text(priv->host_lbl, host);
+}
+
+void dev_graph_set_status(lv_obj_t *graph, const char *msg) {
+    if (!graph)
+        return;
+    dev_graph_priv_t *priv = lv_obj_get_user_data(graph);
+    if (!priv || !priv->overlay)
+        return;
+    if (!msg || !msg[0]) {
+        lv_obj_add_flag(priv->overlay, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    const char *cur = lv_label_get_text(priv->overlay_lbl);
+    if (!cur || strcmp(cur, msg) != 0)
+        lv_label_set_text(priv->overlay_lbl, msg);
+    lv_obj_clear_flag(priv->overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_align(priv->overlay, LV_ALIGN_CENTER, 0, 0);
 }
 
 void dev_graph_mark_gap(lv_obj_t *graph) {
