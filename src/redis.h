@@ -17,8 +17,46 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <time.h>
+
+#include <hiredis/hiredis.h>
 
 #include "gol.h"
+
+/* Generic synchronous Redis connection handle: owns a hiredis context plus the
+ * endpoint/auth and a per-handle reconnect backoff deadline. Independent
+ * endpoints (control + telemetry) each use their own handle so a stall or
+ * backoff on one never affects the other. Single-threaded; no locking. */
+typedef struct {
+    redisContext *ctx;
+    char host[128];
+    int port;
+    char auth[256];
+    time_t next_attempt;
+} redis_client_t;
+
+/* Store endpoint/auth on the handle (host NULL -> loopback, port <= 0 -> 6379).
+ * Does not connect; the caller chooses eager (redis_client_connect) or lazy
+ * (redis_client_ensure on first use). `auth` may be NULL. */
+void redis_client_init(redis_client_t *c, const char *host, int port,
+                       const char *auth);
+
+/* Attempt a connection now, ignoring backoff: 250 ms connect timeout, 50 ms
+ * read timeout, optional AUTH. Returns true and sets c->ctx on success. Used for
+ * a best-effort eager connect; does not arm the backoff on failure.
+ * NOTE: the 250 ms timeout bounds the TCP connect but NOT hostname resolution
+ * (hiredis calls getaddrinfo() unbounded). For a remote endpoint configured by
+ * name, a slow/dead resolver can still stall the UI thread — prefer an IP or an
+ * /etc/hosts pin. A future async/at-init resolve is tracked as follow-up work. */
+bool redis_client_connect(redis_client_t *c);
+
+/* Ensure a live connection, honoring backoff. True if connected. Frees an
+ * errored context, and after a failed connect waits before the next attempt so
+ * an unreachable endpoint can't stall the UI loop on every op. */
+bool redis_client_ensure(redis_client_t *c);
+
+/* Close and free the handle's context (idempotent). */
+void redis_client_close(redis_client_t *c);
 
 /* Store host/port/auth and attempt an initial connection. `auth` may be NULL.
  * Always succeeds from the caller's view; a failed connect simply leaves the
@@ -45,5 +83,20 @@ bool redis_get_active_mode(char *buf, size_t buflen);
  * the caller's randomized defaults survive. Returns true if any field was
  * applied. No-op/false when Redis is down or the key is absent. */
 bool redis_apply_gol_settings(gol_settings_t *cfg);
+
+/* Which dev-mode chart side a host assignment belongs to. */
+typedef enum {
+    REDIS_DEV_SIDE_LEFT = 0,
+    REDIS_DEV_SIDE_RIGHT,
+} redis_dev_side_t;
+
+/* Persist a dev-mode host assignment (SET kdeskdash:dev:left|right). An empty
+ * or NULL host clears the slot (DEL). No-op when the control Redis is down. */
+void redis_set_dev_assignment(redis_dev_side_t side, const char *host);
+
+/* Read a persisted dev-mode host assignment into `buf` (GET). Returns true if a
+ * non-empty value was read. The value is untrusted — the caller must re-validate
+ * it against the host-token contract before using it to build a telemetry key. */
+bool redis_get_dev_assignment(redis_dev_side_t side, char *buf, size_t buflen);
 
 #endif /* KDESKDASH_REDIS_H */

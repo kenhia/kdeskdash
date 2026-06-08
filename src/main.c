@@ -13,10 +13,12 @@
 #include "config.h"
 #include "lvgl.h"
 #include "modes/clock.h"
+#include "modes/dev.h"
 #include "modes/game_of_life.h"
 #include "modes/menu.h"
 #include "redis.h"
 #include "shell.h"
+#include "telemetry.h"
 #include "src/drivers/display/drm/lv_linux_drm.h"
 #include "src/drivers/evdev/lv_evdev.h"
 
@@ -50,6 +52,18 @@ int main(void) {
     }
     lv_linux_drm_set_file(disp, cfg.drm_dev, -1);
 
+    /* Optional global 180° flip: the panel mounts inverted in the case.
+     * SPIKE RESULT (2026-06-07): lv_display_set_rotation() does NOT work here —
+     * the lv_linux_drm flush ignores disp->rotation (display stays unrotated)
+     * while lv_indev still transforms touch, which kills touch. So the toggle is
+     * parsed but the rotation is NOT applied via the LVGL display rotation API.
+     * A working path (driver-side lv_draw_sw_rotate / DRM plane rotation property,
+     * or physical mounting) is pending the Unit 1 regroup — see the plan. */
+    if (cfg.rotate_180) {
+        fprintf(stderr, "kdeskdash: KDESKDASH_ROTATE_180 set, but software "
+                        "rotation is not yet supported on this DRM driver — "
+                        "ignoring (see plan Unit 1).\n");
+    }
     /* Mode shell: Game of Life and Clock are content modes; the Menu launcher
      * is the swipe-down target and startup default. */
     shell_init();
@@ -57,6 +71,8 @@ int main(void) {
         game_of_life_mode_create("game_of_life", "Game of Life"));
     shell_register_content_mode(
         clock_mode_create("clock", "Clock"));
+    shell_register_content_mode(
+        dev_mode_create("dev", "Dev"));
     shell_register_menu(menu_mode_create("menu", "Menu"));
 
     /* Optional Redis: remote control + last-mode persistence. Safe when absent.
@@ -69,6 +85,11 @@ int main(void) {
         redis_get_active_mode(last_mode, sizeof(last_mode)) ? last_mode : NULL;
     shell_start(restore);
 
+    /* Telemetry source (kpidash host metrics). Lazy connect on its own handle:
+     * a down/slow endpoint never stalls boot or the control path. */
+    telemetry_init(cfg.telemetry_redis_host, cfg.telemetry_redis_port,
+                   cfg.telemetry_redis_auth);
+
     /* Capacitive touch via evdev (ILITEK, default /dev/input/event1).
      * Touch is optional: if it cannot be opened, the display still runs. */
     lv_indev_t *touch = lv_evdev_create(LV_INDEV_TYPE_POINTER, cfg.touch_dev);
@@ -77,7 +98,8 @@ int main(void) {
                         "running display-only\n", cfg.touch_dev);
     }
 
-    printf("kdeskdash: running (DRM %s, touch %s)\n", cfg.drm_dev, cfg.touch_dev);
+    printf("kdeskdash: running (DRM %s, touch %s, rotate_180 %s)\n",
+           cfg.drm_dev, cfg.touch_dev, cfg.rotate_180 ? "on" : "off");
 
     /* Main loop */
     uint32_t last_poll = lv_tick_get();
@@ -96,6 +118,7 @@ int main(void) {
 
     printf("\nkdeskdash: shutting down\n");
     redis_shutdown();
+    telemetry_shutdown();
     lv_deinit();
     return 0;
 }

@@ -40,14 +40,23 @@ add_executable(kdeskdash
     src/gol.c
     src/stopwatch.c
     src/redis.c
+    src/dev_telemetry.c
+    src/telemetry.c
+    src/telemetry_host.c
+    lib/cjson/cJSON.c
     src/modes/game_of_life.c
     src/modes/clock.c
+    src/modes/dev.c
+    src/modes/dev_graph.c
+    src/modes/dev_hostlist.c
+    src/modes/dev_view.c
     src/modes/menu.c
 )
 
 target_include_directories(kdeskdash PRIVATE
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/lib/cjson
     ${DRM_INCLUDE_DIRS}
 )
 
@@ -103,4 +112,47 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_stopwatch PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_stopwatch PRIVATE -Wall -Wextra)
     add_test(NAME test_stopwatch COMMAND test_stopwatch)
+
+    # dev_telemetry parser pulls in vendored cJSON (needs lib/cjson on the
+    # include path and libm for cJSON's number handling).
+    add_executable(test_dev_telemetry
+        tests/test_dev_telemetry.c
+        src/dev_telemetry.c
+        lib/cjson/cJSON.c
+    )
+    target_include_directories(test_dev_telemetry PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/lib/cjson
+    )
+    target_compile_options(test_dev_telemetry PRIVATE -Wall -Wextra)
+    target_link_libraries(test_dev_telemetry m)
+    add_test(NAME test_dev_telemetry COMMAND test_dev_telemetry)
+
+    # Pure host-token contract for telemetry discovery keys (no Redis/LVGL).
+    add_executable(test_telemetry_host
+        tests/test_telemetry_host.c
+        src/telemetry_host.c
+    )
+    target_include_directories(test_telemetry_host PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_telemetry_host PRIVATE -Wall -Wextra)
+    add_test(NAME test_telemetry_host COMMAND test_telemetry_host)
+
+    # Pure host-selector list model: lexicographic sort + drop/re-add debounce
+    # + keep-selected (no LVGL/Redis).
+    add_executable(test_dev_hostlist
+        tests/test_dev_hostlist.c
+        src/modes/dev_hostlist.c
+    )
+    target_include_directories(test_dev_hostlist PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_dev_hostlist PRIVATE -Wall -Wextra)
+    add_test(NAME test_dev_hostlist COMMAND test_dev_hostlist)
+
+    # Pure dev-mode view logic: liveness precedence ladder + CPU-only debounce.
+    add_executable(test_dev_view
+        tests/test_dev_view.c
+        src/modes/dev_view.c
+    )
+    target_include_directories(test_dev_view PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_dev_view PRIVATE -Wall -Wextra)
+    add_test(NAME test_dev_view COMMAND test_dev_view)
 endif()
