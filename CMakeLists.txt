@@ -46,6 +46,7 @@ add_executable(kdeskdash
     src/telemetry_host.c
     lib/cjson/cJSON.c
     src/modes/game_of_life.c
+    src/modes/golz.c
     src/modes/clock.c
     src/modes/dev.c
     src/modes/dev_graph.c

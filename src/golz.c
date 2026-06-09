@@ -78,6 +78,7 @@ void golz_free(golz_t *g) {
     free(g->died_mask);
     free(g->empties);
     g->zombies = g->z_new = g->prev_living = g->snapshot = g->died_mask = NULL;
+    g->z_trail = NULL;
     g->empties = NULL;
     g->cols = g->rows = 0;
 }

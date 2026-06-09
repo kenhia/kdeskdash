@@ -15,6 +15,7 @@
 #include "modes/clock.h"
 #include "modes/dev.h"
 #include "modes/game_of_life.h"
+#include "modes/golz.h"
 #include "modes/menu.h"
 #include "redis.h"
 #include "shell.h"
@@ -69,6 +70,8 @@ int main(void) {
     shell_init();
     shell_register_content_mode(
         game_of_life_mode_create("game_of_life", "Game of Life"));
+    shell_register_content_mode(
+        golz_mode_create("golz", "GoLZ"));
     shell_register_content_mode(
         clock_mode_create("clock", "Clock"));
     shell_register_content_mode(

@@ -373,7 +373,7 @@ flowchart TB
 
 **Verification:** Counter parse helper passes host tests; with Redis present, a win increments `kdeskdash:golz:wins` exactly once; with Redis absent the app runs and the in-memory mirror displays.
 
-- [ ] **Unit 5: GoLZ content mode, render, and registration**
+- [x] **Unit 5: GoLZ content mode, render, and registration**
 
 **Goal:** Wire the pure core into a `kd_mode_t` content mode — canvas render of the two-faction board (with own-color trails and occupant override), the in-mode win-counter readout, the two-turn `tick` cadence, per-round randomized settings, and registration in `main.c`.
 
