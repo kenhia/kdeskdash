@@ -95,4 +95,17 @@ uint32_t golz_compose_pixel(const golz_t *g, int x, int y);
  * the zombie trail update. Advances the generation counter. */
 void golz_step(golz_t *g);
 
+/* Per-generation terminal decision, evaluated by the mode after golz_step.
+ * Precedence: (1) zombie win = no living and >=1 zombie; (2) backstop =
+ * generation counter reached cfg.max_generations; (3) living-cells-only
+ * cycle/extinction via the reused hash ring. Otherwise the round continues.
+ * Advances the cycle ring, so call exactly once per generation. */
+typedef enum {
+    GOLZ_CONTINUE = 0,
+    GOLZ_ZOMBIE_WIN,
+    GOLZ_QUIET_RESTART,
+} golz_terminal_t;
+
+golz_terminal_t golz_terminal(golz_t *g);
+
 #endif /* KDESKDASH_GOLZ_H */

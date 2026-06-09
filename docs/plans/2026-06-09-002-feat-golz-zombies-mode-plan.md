@@ -312,7 +312,7 @@ flowchart TB
 
 **Verification:** All eat/kill buckets, reinfection extremes, double-eat no-op, and spawn count/timing pass under seeded host tests.
 
-- [ ] **Unit 4: Terminal-state logic — win / extinction / cycle / backstop**
+- [x] **Unit 4: Terminal-state logic — win / extinction / cycle / backstop**
 
 **Goal:** Provide the per-generation terminal decision used by the mode: zombie-win precedence, living-only cycle/extinction reuse, and the unconditional restart backstop.
 

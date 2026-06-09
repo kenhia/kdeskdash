@@ -346,3 +346,15 @@ void golz_step(golz_t *g) {
 
     g->generation++;
 }
+
+golz_terminal_t golz_terminal(golz_t *g) {
+    if (!g)
+        return GOLZ_CONTINUE;
+    if (gol_live_count(&g->living) == 0 && golz_zombie_count(g) > 0)
+        return GOLZ_ZOMBIE_WIN; /* R13 win, checked before any restart */
+    if (g->generation >= (uint32_t)g->cfg.max_generations)
+        return GOLZ_QUIET_RESTART; /* R23 unconditional backstop */
+    if (gol_cycle_record(&g->cycle, &g->living))
+        return GOLZ_QUIET_RESTART; /* R16 living-only cycle/extinction */
+    return GOLZ_CONTINUE;          /* R15 keep running */
+}

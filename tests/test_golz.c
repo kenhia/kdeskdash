@@ -591,6 +591,115 @@ static void test_compose_pixel(void) {
     golz_free(&g);
 }
 
+/* Zombie win: no living and at least one zombie -> ZOMBIE_WIN (R13). */
+static void test_terminal_zombie_win(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t cfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 1;
+    golz_t g;
+    golz_init(&g, 16, 16, &living, &cfg, &rng);
+    g.zombies[5 * 16 + 5] = 1; /* no living anywhere */
+    check(golz_terminal(&g) == GOLZ_ZOMBIE_WIN, "no living + zombie -> win");
+    golz_free(&g);
+}
+
+/* Win precedence: even with the generation counter past the backstop, a win is
+ * still reported first (R13 over R23). */
+static void test_terminal_win_precedence(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t cfg = mk_cfg(0, 0, 0);
+    cfg.max_generations = 3;
+    uint32_t rng = 1;
+    golz_t g;
+    golz_init(&g, 16, 16, &living, &cfg, &rng);
+    g.zombies[2 * 16 + 2] = 1;
+    g.generation = 100; /* well past the cap */
+    check(golz_terminal(&g) == GOLZ_ZOMBIE_WIN,
+          "win precedes backstop when both apply");
+    golz_free(&g);
+}
+
+/* Backstop: living still present and active, but the generation cap is hit ->
+ * QUIET_RESTART, not a win (R23). */
+static void test_terminal_backstop(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t cfg = mk_cfg(0, 0, 0);
+    cfg.max_generations = 5;
+    uint32_t rng = 7;
+    golz_t g;
+    golz_init(&g, 16, 16, &living, &cfg, &rng);
+    gol_set(&g.living, 8, 8, true);
+    gol_set(&g.living, 9, 8, true);
+    g.generation = 5; /* exactly at the cap */
+    check(golz_terminal(&g) == GOLZ_QUIET_RESTART,
+          "generation at cap -> backstop restart");
+    golz_free(&g);
+}
+
+/* R15: living present, no zombies, no cycle yet -> CONTINUE. */
+static void test_terminal_continue(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t cfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 3;
+    golz_t g;
+    golz_init(&g, 16, 16, &living, &cfg, &rng);
+    gol_set(&g.living, 5, 5, true); /* blinker (changes each gen) */
+    gol_set(&g.living, 6, 5, true);
+    gol_set(&g.living, 7, 5, true);
+    check(golz_terminal(&g) == GOLZ_CONTINUE,
+          "living, no zombies, no cycle -> continue");
+    check(golz_zombie_count(&g) == 0, "no zombies in this scenario");
+    golz_free(&g);
+}
+
+/* A still-life living region with a far-off wandering zombie still trips the
+ * living-only cycle detector (the moving zombie is not hashed) -> QUIET_RESTART
+ * before the zombie can reach the block (R16). */
+static void test_terminal_cycle_ignores_zombie(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t cfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 99;
+    golz_t g;
+    golz_init(&g, 16, 16, &living, &cfg, &rng);
+    gol_set(&g.living, 1, 1, true); /* 2x2 still-life block */
+    gol_set(&g.living, 2, 1, true);
+    gol_set(&g.living, 1, 2, true);
+    gol_set(&g.living, 2, 2, true);
+    g.zombies[15 * 16 + 15] = 1; /* far corner */
+
+    golz_terminal_t t = GOLZ_CONTINUE;
+    int gens = 0;
+    for (; gens < 8; gens++) {
+        golz_step(&g);
+        t = golz_terminal(&g);
+        if (t != GOLZ_CONTINUE)
+            break;
+    }
+    check(t == GOLZ_QUIET_RESTART, "still-life living trips cycle restart");
+    check(gol_live_count(&g.living) == 4, "block survived (zombie never reached)");
+    golz_free(&g);
+}
+
+/* Both factions extinct (empty board) -> QUIET_RESTART (never a win). */
+static void test_terminal_both_extinct(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t cfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 1;
+    golz_t g;
+    golz_init(&g, 16, 16, &living, &cfg, &rng);
+    /* empty living, empty zombies: repeated empty hash trips the detector */
+    golz_terminal_t t = GOLZ_CONTINUE;
+    int gens = 0;
+    for (; gens < 4; gens++) {
+        t = golz_terminal(&g);
+        if (t != GOLZ_CONTINUE)
+            break;
+    }
+    check(t == GOLZ_QUIET_RESTART, "double extinction -> quiet restart");
+    check(t != GOLZ_ZOMBIE_WIN, "double extinction is not a win");
+    golz_free(&g);
+}
+
 int main(void) {
     test_init_free();
     test_settings_clamp();
@@ -613,6 +722,12 @@ int main(void) {
     test_spawn_count_range();
     test_reinfect_bookkeeping();
     test_compose_pixel();
+    test_terminal_zombie_win();
+    test_terminal_win_precedence();
+    test_terminal_backstop();
+    test_terminal_continue();
+    test_terminal_cycle_ignores_zombie();
+    test_terminal_both_extinct();
 
     if (failures) {
         fprintf(stderr, "%d test(s) failed\n", failures);
