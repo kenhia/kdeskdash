@@ -403,7 +403,7 @@ flowchart TB
 
 **Verification:** On rpidash2 the GoLZ tile appears in the swipe cycle and menu; a round renders green living + red zombies with fading own-color trails; the corner "Zombie wins: N" readout is visible even on a 0-initial-zombie round; the instrumented worst-case generation (`cell_size=2`, zombie-saturated) stays ≤ 50% of the minimum `speed_ms` floor.
 
-- [ ] **Unit 6: Tap menu reuse, victory lap, and "The Zombies Won" banner**
+- [x] **Unit 6: Tap menu reuse, victory lap, and "The Zombies Won" banner**
 
 **Goal:** Reuse the GoL tap control menu under GoLZ and implement the zombie-win celebration — the downward victory lap, trail-drain-to-black, the centered banner with scrim, the 30 s hold, and the re-roll restart.
 
