@@ -10,6 +10,7 @@
 #define KDESKDASH_GOL_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct {
@@ -70,5 +71,26 @@ uint8_t gol_channel_intensity(bool alive, uint8_t trail_t, int trail_turns);
  * board_count == 1 -> single green board (byte-identical to the legacy render);
  * board_count == 3 -> c0/c1/c2 map to the red/green/blue channels. */
 uint32_t gol_compose_pixel(uint8_t c0, uint8_t c1, uint8_t c2, int board_count);
+
+/* --- Cycle detection -------------------------------------------------------
+ * A fixed ring of recent generation hashes, used to spot a board that has
+ * settled into a still life or a short-period oscillator. Pure (no LVGL). */
+#define GOL_CYCLE_SLOTS 16
+
+typedef struct {
+    uint64_t slots[GOL_CYCLE_SLOTS]; /* recent hashes; index = counter % SLOTS */
+    uint32_t counter;                /* total hashes recorded since reset */
+} gol_cycle_t;
+
+/* FNV-1a 64-bit hash over a byte buffer. */
+uint64_t gol_fnv1a64(const void *data, size_t len);
+
+/* Clear the ring (zero every slot and the counter). */
+void gol_cycle_reset(gol_cycle_t *c);
+
+/* Hash the board's current cells, test that hash against the up-to-16 stored
+ * slots, then store it. Returns true when the hash repeats a stored value,
+ * i.e. the board has returned to a state seen within the last 16 generations. */
+bool gol_cycle_record(gol_cycle_t *c, const gol_t *g);
 
 #endif /* KDESKDASH_GOL_H */

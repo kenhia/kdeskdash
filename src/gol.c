@@ -33,6 +33,40 @@ uint32_t gol_compose_pixel(uint8_t c0, uint8_t c1, uint8_t c2, int board_count) 
            (uint32_t)c2;
 }
 
+uint64_t gol_fnv1a64(const void *data, size_t len) {
+    const uint8_t *p = (const uint8_t *)data;
+    uint64_t h = 14695981039346656037ull; /* FNV-1a 64-bit offset basis */
+    for (size_t i = 0; i < len; i++) {
+        h ^= p[i];
+        h *= 1099511628211ull; /* FNV-1a 64-bit prime */
+    }
+    return h;
+}
+
+void gol_cycle_reset(gol_cycle_t *c) {
+    for (int i = 0; i < GOL_CYCLE_SLOTS; i++)
+        c->slots[i] = 0;
+    c->counter = 0;
+}
+
+bool gol_cycle_record(gol_cycle_t *c, const gol_t *g) {
+    uint64_t h = gol_fnv1a64(g->cur, (size_t)g->cols * g->rows);
+    /* Only the slots actually written so far are valid comparands; unused
+     * zeroed slots are never matched against. */
+    uint32_t seen =
+        c->counter < GOL_CYCLE_SLOTS ? c->counter : GOL_CYCLE_SLOTS;
+    bool matched = false;
+    for (uint32_t i = 0; i < seen; i++) {
+        if (c->slots[i] == h) {
+            matched = true;
+            break;
+        }
+    }
+    c->slots[c->counter % GOL_CYCLE_SLOTS] = h;
+    c->counter++;
+    return matched;
+}
+
 static int idx(const gol_t *g, int x, int y) {
     return y * g->cols + x;
 }

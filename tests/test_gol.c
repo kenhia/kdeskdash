@@ -243,6 +243,114 @@ static void test_rgb_board_independence(void) {
     gol_free(&b);
 }
 
+/* FNV-1a 64-bit matches the published test vectors; distinct inputs differ. */
+static void test_fnv1a(void) {
+    check(gol_fnv1a64("", 0) == 0xcbf29ce484222325ull, "fnv1a(\"\") = basis");
+    check(gol_fnv1a64("a", 1) == 0xaf63dc4c8601ec8cull, "fnv1a(\"a\") vector");
+    check(gol_fnv1a64("a", 1) != gol_fnv1a64("b", 1), "fnv1a distinguishes inputs");
+}
+
+/* A period-2 blinker returns to a prior state and is detected within the ring. */
+static void test_cycle_blinker(void) {
+    gol_settings_t cfg = {.trail_turns = 1};
+    gol_t g;
+    gol_init(&g, 6, 6, &cfg);
+    gol_set(&g, 1, 2, true);
+    gol_set(&g, 2, 2, true);
+    gol_set(&g, 3, 2, true);
+    gol_cycle_t c;
+    gol_cycle_reset(&c);
+    bool detected = false;
+    for (int i = 0; i < 6 && !detected; i++) {
+        gol_step(&g);
+        detected = gol_cycle_record(&c, &g);
+    }
+    check(detected, "blinker cycle detected");
+    gol_free(&g);
+}
+
+/* A 2x2 block is a still life: the next state repeats immediately. */
+static void test_cycle_block(void) {
+    gol_settings_t cfg = {.trail_turns = 1};
+    gol_t g;
+    gol_init(&g, 6, 6, &cfg);
+    gol_set(&g, 2, 2, true);
+    gol_set(&g, 3, 2, true);
+    gol_set(&g, 2, 3, true);
+    gol_set(&g, 3, 3, true);
+    gol_cycle_t c;
+    gol_cycle_reset(&c);
+    gol_step(&g);
+    gol_cycle_record(&c, &g); /* store the (unchanged) block */
+    gol_step(&g);
+    check(gol_cycle_record(&c, &g), "still-life detected");
+    gol_free(&g);
+}
+
+/* A glider translates across a large board and never repeats within 16 gens. */
+static void test_cycle_glider(void) {
+    gol_settings_t cfg = {.trail_turns = 1};
+    gol_t g;
+    gol_init(&g, 40, 40, &cfg);
+    gol_set(&g, 1, 0, true);
+    gol_set(&g, 2, 1, true);
+    gol_set(&g, 0, 2, true);
+    gol_set(&g, 1, 2, true);
+    gol_set(&g, 2, 2, true);
+    gol_cycle_t c;
+    gol_cycle_reset(&c);
+    bool detected = false;
+    for (int i = 0; i < 16 && !detected; i++) {
+        gol_step(&g);
+        detected = gol_cycle_record(&c, &g);
+    }
+    check(!detected, "glider not detected within 16 gens");
+    gol_free(&g);
+}
+
+/* Resetting the ring clears prior hashes: a repeat after reset is not matched. */
+static void test_cycle_reset(void) {
+    gol_settings_t cfg = {.trail_turns = 1};
+    gol_t g;
+    gol_init(&g, 6, 6, &cfg);
+    gol_set(&g, 2, 2, true);
+    gol_set(&g, 3, 2, true);
+    gol_set(&g, 2, 3, true);
+    gol_set(&g, 3, 3, true);
+    gol_cycle_t c;
+    gol_cycle_reset(&c);
+    gol_step(&g);
+    gol_cycle_record(&c, &g); /* store block hash */
+    gol_cycle_reset(&c);      /* simulate reseed clearing the ring */
+    gol_step(&g);
+    check(!gol_cycle_record(&c, &g), "cleared ring does not match prior run");
+    gol_free(&g);
+}
+
+/* With counter > 16, the oldest slot is evicted; an evicted hash no longer
+ * matches while a still-live one does. */
+static void test_cycle_ring_wrap(void) {
+    gol_settings_t cfg = {.trail_turns = 1};
+    gol_t g;
+    gol_init(&g, 20, 2, &cfg); /* 40 cells: room for 17 distinct one-cell boards */
+    gol_cycle_t c;
+    gol_cycle_reset(&c);
+    /* Record 17 distinct boards (only cell i alive). Pattern 0 is stored at
+     * slot 0 (counter 0), then overwritten when counter reaches 16. */
+    for (int i = 0; i < 17; i++) {
+        gol_clear(&g);
+        gol_set(&g, i, 0, true);
+        gol_cycle_record(&c, &g);
+    }
+    gol_clear(&g);
+    gol_set(&g, 0, 0, true);
+    check(!gol_cycle_record(&c, &g), "evicted hash no longer detected");
+    gol_clear(&g);
+    gol_set(&g, 5, 0, true); /* still inside the live 16-slot window */
+    check(gol_cycle_record(&c, &g), "in-window hash still detected");
+    gol_free(&g);
+}
+
 int main(void) {
     test_blinker();
     test_block();
@@ -255,6 +363,12 @@ int main(void) {
     test_compose_pixel();
     test_rgb_off_parity();
     test_rgb_board_independence();
+    test_fnv1a();
+    test_cycle_blinker();
+    test_cycle_block();
+    test_cycle_glider();
+    test_cycle_reset();
+    test_cycle_ring_wrap();
 
     if (failures) {
         fprintf(stderr, "%d test(s) failed\n", failures);

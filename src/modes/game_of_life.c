@@ -18,6 +18,9 @@
 #include "lvgl.h"
 #include "redis.h"
 
+/* Grace period after a cycle is first detected before auto-Restart (R-C8). */
+#define GOL_CYCLE_GRACE_MS 30000
+
 typedef struct {
     lv_obj_t *canvas;
     uint32_t *cbuf;   /* full-screen XRGB8888 pixels, disp_w * disp_h */
@@ -29,6 +32,11 @@ typedef struct {
     uint32_t  rng;        /* PRNG state for settings + seeding */
     uint32_t  last_step;  /* lv_tick at last generation advance */
     uint32_t  generation; /* generations since the last (re)seed */
+
+    bool        cycle_detect; /* spot still-lifes/oscillators (on when !rgb) */
+    gol_cycle_t cycle;        /* recent-generation hash ring */
+    bool        cycle_armed;  /* a cycle was seen; grace countdown running */
+    uint32_t    cycle_since;  /* lv_tick the countdown (re)started at */
 
     lv_point_t press_pt;   /* canvas press point, captured on PRESSED */
     lv_obj_t  *menu;       /* control overlay root; NULL when closed */
@@ -138,6 +146,11 @@ static void reseed(gol_mode_state_t *st, const gol_settings_t *cfg) {
         fprintf(stderr, "game_of_life: board alloc failed (%dx%d x%d)\n", cols,
                 rows, n);
     }
+    /* Cycle detection runs only on the single (non-rgb) board; reset its ring
+     * on every reseed so stale hashes can't trigger a false Restart (R-C6). */
+    st->cycle_detect = !cfg->rgb;
+    gol_cycle_reset(&st->cycle);
+    st->cycle_armed = false;
     st->generation = 0;
     render(st);
     st->last_step = lv_tick_get();
@@ -356,6 +369,20 @@ static void tick(kd_mode_t *self) {
     /* The sim keeps running while the menu is open; keep the readout live. */
     if (st->menu_open)
         update_info_label(st);
+
+    /* Cycle detection: only on the single-board (non-rgb) path (R-C1). */
+    if (st->cycle_detect && st->board_count == 1) {
+        if (gol_cycle_record(&st->cycle, &st->boards[0]) && !st->cycle_armed) {
+            st->cycle_armed = true;
+            st->cycle_since = lv_tick_get(); /* start the ~30s grace window */
+        }
+        if (st->cycle_armed) {
+            if (st->menu_open)
+                st->cycle_since = lv_tick_get(); /* pause+reset while menu open (R-C9) */
+            else if (lv_tick_elaps(st->cycle_since) >= GOL_CYCLE_GRACE_MS)
+                roll_and_reseed(st); /* auto-Restart with fresh settings (R-C8) */
+        }
+    }
 }
 
 kd_mode_t *game_of_life_mode_create(const char *id, const char *title) {
