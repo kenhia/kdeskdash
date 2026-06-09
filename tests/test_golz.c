@@ -700,6 +700,18 @@ static void test_terminal_both_extinct(void) {
     golz_free(&g);
 }
 
+/* Pure win-counter parse-and-clamp (R17 read path). */
+static void test_parse_wins(void) {
+    check_eq((int)golz_parse_wins("0", 5), 0, "\"0\" -> 0");
+    check_eq((int)golz_parse_wins("42", 0), 42, "\"42\" -> 42");
+    check_eq((int)golz_parse_wins(NULL, 7), 7, "NULL -> fallback");
+    check_eq((int)golz_parse_wins("", 7), 7, "empty -> fallback");
+    check_eq((int)golz_parse_wins("-3", 7), 7, "negative -> fallback");
+    check_eq((int)golz_parse_wins("abc", 7), 7, "non-numeric -> fallback");
+    check_eq((int)golz_parse_wins("12x", 7), 7, "trailing junk -> fallback");
+    check_eq((int)golz_parse_wins("  9", 0), 9, "leading space tolerated -> 9");
+}
+
 int main(void) {
     test_init_free();
     test_settings_clamp();
@@ -728,6 +740,7 @@ int main(void) {
     test_terminal_continue();
     test_terminal_cycle_ignores_zombie();
     test_terminal_both_extinct();
+    test_parse_wins();
 
     if (failures) {
         fprintf(stderr, "%d test(s) failed\n", failures);

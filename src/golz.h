@@ -108,4 +108,9 @@ typedef enum {
 
 golz_terminal_t golz_terminal(golz_t *g);
 
+/* Parse a persisted win-counter string into a non-negative count, returning
+ * `fallback` for NULL/empty/non-numeric/trailing-junk/negative input. Pure;
+ * used by the Redis win-counter read. */
+long golz_parse_wins(const char *s, long fallback);
+
 #endif /* KDESKDASH_GOLZ_H */

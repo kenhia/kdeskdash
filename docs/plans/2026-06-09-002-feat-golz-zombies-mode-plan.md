@@ -340,7 +340,7 @@ flowchart TB
 
 **Verification:** Terminal ordering and living-only hashing hold under seeded tests; no terminal state returns `CONTINUE` indefinitely (backstop guarantees termination).
 
-- [ ] **Unit 7: Redis win counter and settings injection**
+- [x] **Unit 7: Redis win counter and settings injection**
 
 **Goal:** Add the persistent zombie-win counter (atomic INCR + defensive GET) and the GoLZ settings-injection read, with safe in-memory fallback.
 

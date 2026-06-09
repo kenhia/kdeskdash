@@ -4,6 +4,7 @@
  */
 #include "golz.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -357,4 +358,15 @@ golz_terminal_t golz_terminal(golz_t *g) {
     if (gol_cycle_record(&g->cycle, &g->living))
         return GOLZ_QUIET_RESTART; /* R16 living-only cycle/extinction */
     return GOLZ_CONTINUE;          /* R15 keep running */
+}
+
+long golz_parse_wins(const char *s, long fallback) {
+    if (!s || !*s)
+        return fallback;
+    errno = 0;
+    char *end = NULL;
+    long v = strtol(s, &end, 10);
+    if (errno != 0 || end == s || *end != '\0' || v < 0)
+        return fallback; /* unparseable, trailing junk, or negative */
+    return v;
 }
