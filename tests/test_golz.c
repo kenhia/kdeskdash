@@ -710,6 +710,8 @@ static void test_parse_wins(void) {
     check_eq((int)golz_parse_wins("abc", 7), 7, "non-numeric -> fallback");
     check_eq((int)golz_parse_wins("12x", 7), 7, "trailing junk -> fallback");
     check_eq((int)golz_parse_wins("  9", 0), 9, "leading space tolerated -> 9");
+    check_eq((int)golz_parse_wins("9999999999999999999999999", 7), 7,
+             "overflow -> fallback (errno guard)");
 }
 
 int main(void) {
