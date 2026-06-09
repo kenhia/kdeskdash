@@ -3,6 +3,7 @@
  * Host-only unit tests for the pure GoLZ core (no LVGL/Redis dependency).
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "golz.h"
@@ -177,6 +178,234 @@ static void test_sampler_excludes_znew_and_full(void) {
     golz_free(&g);
 }
 
+/* Conway living turn matches gol_step exactly when no zombies are present. */
+static void test_living_parity_no_zombies(void) {
+    gol_settings_t living = {.trail = true, .trail_turns = 4};
+    golz_settings_t zcfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 1;
+    golz_t g;
+    golz_init(&g, 8, 8, &living, &zcfg, &rng);
+    gol_set(&g.living, 3, 2, true);
+    gol_set(&g.living, 3, 3, true);
+    gol_set(&g.living, 3, 4, true);
+
+    gol_t plain;
+    gol_init(&plain, 8, 8, &living);
+    gol_set(&plain, 3, 2, true);
+    gol_set(&plain, 3, 3, true);
+    gol_set(&plain, 3, 4, true);
+
+    bool match = true;
+    for (int gen = 0; gen < 6 && match; gen++) {
+        golz_step(&g);
+        gol_step(&plain);
+        if (memcmp(g.living.cur, plain.cur, 64) != 0)
+            match = false;
+    }
+    check(match, "living turn matches gol_step with no zombies");
+    check_eq(golz_zombie_count(&g), 0, "no zombies appear from nowhere");
+    gol_free(&plain);
+    golz_free(&g);
+}
+
+/* A Conway birth landing on a zombie cell is suppressed: no living cell, no
+ * trail, and the zombie itself survives. */
+static void test_birth_suppression(void) {
+    gol_settings_t living = {.trail = true, .trail_turns = 4};
+    golz_settings_t zcfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 5;
+    golz_t g;
+    golz_init(&g, 9, 9, &living, &zcfg, &rng);
+    /* three living neighbours of (3,3) -> Conway would birth (3,3) */
+    gol_set(&g.living, 2, 3, true);
+    gol_set(&g.living, 4, 3, true);
+    gol_set(&g.living, 3, 2, true);
+    g.zombies[3 * 9 + 3] = 1; /* zombie sits on the birth cell */
+
+    golz_step(&g);
+    check(!gol_get(&g.living, 3, 3), "birth onto a zombie cell is suppressed");
+    check_eq(gol_trail(&g.living, 3, 3), 0,
+             "no phantom trail seeded on a suppressed birth");
+    check_eq(golz_zombie_count(&g), 1,
+             "suppression does not destroy the zombie");
+    golz_free(&g);
+}
+
+/* Zombies are never Conway neighbours: a living cell with three living
+ * neighbours survives even with an adjacent zombie (which, if miscounted as a
+ * fourth neighbour, would kill it by overpopulation). */
+static void test_zombies_not_neighbors(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t zcfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 7;
+    golz_t g;
+    golz_init(&g, 10, 10, &living, &zcfg, &rng);
+    /* target (5,4) with exactly three living neighbours */
+    gol_set(&g.living, 5, 4, true);
+    gol_set(&g.living, 5, 5, true);
+    gol_set(&g.living, 4, 4, true);
+    gol_set(&g.living, 6, 4, true);
+    g.zombies[3 * 10 + 5] = 1; /* zombie at (5,3), a fourth (non-)neighbour */
+
+    golz_step(&g);
+    check(gol_get(&g.living, 5, 4),
+          "living cell survives: adjacent zombie is not a Conway neighbour");
+    golz_free(&g);
+}
+
+/* A lone zombie on an otherwise empty board always moves to a toroidal
+ * neighbour of its origin. */
+static void test_lone_zombie_moves(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t zcfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 0xBEEF;
+    golz_t g;
+    golz_init(&g, 10, 10, &living, &zcfg, &rng);
+    int ox = 5, oy = 5;
+    g.zombies[oy * 10 + ox] = 1;
+
+    golz_step(&g);
+    check_eq(golz_zombie_count(&g), 1, "lone zombie count conserved");
+    check(g.zombies[oy * 10 + ox] == 0,
+          "lone zombie leaves its origin (all neighbours empty)");
+    int found = -1;
+    for (int i = 0; i < 100; i++)
+        if (g.zombies[i])
+            found = i;
+    int fx = found % 10, fy = found / 10;
+    int ddx = abs(fx - ox);
+    if (ddx > 5)
+        ddx = 10 - ddx;
+    int ddy = abs(fy - oy);
+    if (ddy > 5)
+        ddy = 10 - ddy;
+    check(found >= 0 && ddx <= 1 && ddy <= 1 && !(ddx == 0 && ddy == 0),
+          "moved to an adjacent (toroidal) cell");
+    golz_free(&g);
+}
+
+/* A lone zombie at corner (0,0) moves to a toroidal neighbour, exercising the
+ * wrap to the opposite edges. */
+static void test_toroidal_wrap_move(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t zcfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 0x1234;
+    golz_t g;
+    golz_init(&g, 8, 8, &living, &zcfg, &rng);
+    g.zombies[0] = 1; /* (0,0) */
+
+    golz_step(&g);
+    int found = -1;
+    for (int i = 0; i < 64; i++)
+        if (g.zombies[i])
+            found = i;
+    int fx = found % 8, fy = found / 8;
+    int ddx = fx;
+    if (ddx > 4)
+        ddx = 8 - ddx;
+    int ddy = fy;
+    if (ddy > 4)
+        ddy = 8 - ddy;
+    check(found >= 0 && ddx <= 1 && ddy <= 1 && !(ddx == 0 && ddy == 0),
+          "corner zombie wraps toroidally to an adjacent cell");
+    golz_free(&g);
+}
+
+/* When every cell is a zombie, every neighbour is occupied so no zombie moves
+ * (single attempt, blocked -> stay). */
+static void test_fully_blocked_no_move(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t zcfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 3;
+    golz_t g;
+    golz_init(&g, 5, 5, &living, &zcfg, &rng);
+    for (int i = 0; i < 25; i++)
+        g.zombies[i] = 1;
+    uint8_t before[25];
+    memcpy(before, g.zombies, 25);
+
+    golz_step(&g);
+    check_eq(golz_zombie_count(&g), 25, "fully-zombie board conserves count");
+    check(memcmp(before, g.zombies, 25) == 0,
+          "no zombie moves when every neighbour is occupied");
+    golz_free(&g);
+}
+
+/* died_mask records exactly this generation's Conway deaths and is reset each
+ * step (no accumulation across generations). */
+static void test_died_mask_and_reset(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t zcfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 11;
+    golz_t g;
+    golz_init(&g, 7, 7, &living, &zcfg, &rng);
+    gol_set(&g.living, 3, 2, true);
+    gol_set(&g.living, 3, 3, true);
+    gol_set(&g.living, 3, 4, true);
+
+    golz_step(&g);
+    check(g.died_mask[2 * 7 + 3] == 1, "blinker end (3,2) recorded as died");
+    check(g.died_mask[4 * 7 + 3] == 1, "blinker end (3,4) recorded as died");
+    check(g.died_mask[3 * 7 + 3] == 0, "blinker centre not recorded as died");
+    int dc = 0;
+    for (int i = 0; i < 49; i++)
+        dc += g.died_mask[i];
+    check_eq(dc, 2, "exactly two Conway deaths recorded");
+
+    golz_step(&g);
+    check(g.died_mask[2 * 7 + 3] == 0, "stale death (3,2) cleared next gen");
+    check(g.died_mask[4 * 7 + 3] == 0, "stale death (3,4) cleared next gen");
+    check(g.died_mask[3 * 7 + 2] == 1 && g.died_mask[3 * 7 + 4] == 1,
+          "this generation's deaths recorded");
+    dc = 0;
+    for (int i = 0; i < 49; i++)
+        dc += g.died_mask[i];
+    check_eq(dc, 2, "died_mask reflects only the latest generation");
+    golz_free(&g);
+}
+
+/* A z_new zombie is inactive until promoted at the start of the next step. */
+static void test_znew_promotion(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t zcfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 99;
+    golz_t g;
+    golz_init(&g, 8, 8, &living, &zcfg, &rng);
+    g.z_new[3 * 8 + 3] = 1;
+    check_eq(golz_zombie_count(&g), 0, "z_new is not an active zombie yet");
+
+    golz_step(&g);
+    check_eq(golz_zombie_count(&g), 1, "z_new promoted to an active zombie");
+    int zc = 0;
+    for (int i = 0; i < 64; i++)
+        zc += g.z_new[i];
+    check_eq(zc, 0, "z_new grid cleared after promotion");
+    golz_free(&g);
+}
+
+/* golz_step is deterministic: two boards seeded and stepped from the same PRNG
+ * state evolve identically. */
+static void test_step_deterministic(void) {
+    gol_settings_t living = {.density = 0.3, .trail_turns = 2};
+    golz_settings_t zcfg = mk_cfg(4, 10, 20);
+    uint32_t r1 = 24680, r2 = 24680;
+    golz_t a, b;
+    golz_init(&a, 20, 10, &living, &zcfg, &r1);
+    golz_init(&b, 20, 10, &living, &zcfg, &r2);
+    golz_seed(&a);
+    golz_seed(&b);
+    check(memcmp(a.zombies, b.zombies, 200) == 0, "identical seeds match");
+    for (int s = 0; s < 5; s++) {
+        golz_step(&a);
+        golz_step(&b);
+    }
+    check(memcmp(a.living.cur, b.living.cur, 200) == 0 &&
+              memcmp(a.zombies, b.zombies, 200) == 0,
+          "identical PRNG state yields identical evolution");
+    golz_free(&a);
+    golz_free(&b);
+}
+
 int main(void) {
     test_init_free();
     test_settings_clamp();
@@ -184,6 +413,15 @@ int main(void) {
     test_seed_zero_zombies();
     test_sampler_overrequest();
     test_sampler_excludes_znew_and_full();
+    test_living_parity_no_zombies();
+    test_birth_suppression();
+    test_zombies_not_neighbors();
+    test_lone_zombie_moves();
+    test_toroidal_wrap_move();
+    test_fully_blocked_no_move();
+    test_died_mask_and_reset();
+    test_znew_promotion();
+    test_step_deterministic();
 
     if (failures) {
         fprintf(stderr, "%d test(s) failed\n", failures);

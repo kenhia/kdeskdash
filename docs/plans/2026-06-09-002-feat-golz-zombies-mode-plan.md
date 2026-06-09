@@ -239,7 +239,7 @@ flowchart TB
 
 **Verification:** `test_golz` builds and passes under `ctest --test-dir build`; no LVGL/Redis symbols are referenced by `src/golz.c`.
 
-- [ ] **Unit 2: Living turn and zombie movement pass**
+- [x] **Unit 2: Living turn and zombie movement pass**
 
 **Goal:** Implement the first half of `golz_step` — the Conway living turn (with zombie-aware birth suppression and death recording) and the sequential movement pass.
 

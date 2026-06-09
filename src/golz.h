@@ -69,4 +69,10 @@ int golz_sample_empty(golz_t *g, int want);
 /* Number of currently-active zombies (excludes z_new). */
 int golz_zombie_count(const golz_t *g);
 
+/* Advance one full GoLZ generation: promote z_new, run the Conway living turn
+ * (with zombie-aware birth suppression and death recording), then the zombie
+ * movement pass. (The eat/kill, reinfect, and spawn passes are appended by the
+ * eat/kill unit.) Advances the generation counter. */
+void golz_step(golz_t *g);
+
 #endif /* KDESKDASH_GOLZ_H */
