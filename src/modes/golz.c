@@ -24,7 +24,7 @@
 
 /* How long the "The Zombies Won" banner holds before auto re-roll (a tap
  * short-circuits it). */
-#define GOLZ_BANNER_HOLD_MS 30000
+#define GOLZ_BANNER_HOLD_MS 5000
 
 /* Mode phases: the normal simulation, the zombie-win victory lap (zombies march
  * off the bottom and trails drain), and the win banner hold. */
@@ -48,7 +48,7 @@ typedef struct {
 
     long      wins;         /* in-memory mirror of the persistent win counter */
     bool      win_recorded; /* per-round latch: counter incremented once (R17) */
-    lv_obj_t *wins_label;   /* corner "Zombie wins: N" readout + identity marker */
+    lv_obj_t *wins_label;   /* corner "Zombie wins: N" readout; shown only on a win */
 
     bool     cycle_armed; /* a quiet-restart was seen; grace countdown running */
     uint32_t cycle_since; /* lv_tick the countdown (re)started at */
@@ -75,9 +75,9 @@ static void roll_settings(uint32_t *rng, gol_settings_t *living,
     living->speed_ms = 80 + (int)(gol_rand_u32(rng) % 620); /* 80..700 ms */
     living->rgb = false; /* GoLZ is always two-color */
     /* GoLZ-specific, drawn last. */
-    z->initial_count = 1 + (int)(gol_rand_u32(rng) % 5);          /* 1..5 */
+    z->initial_count = (int)(gol_rand_u32(rng) % 3);             /* 0..2 */
     z->zombie_reinfect = (int)(gol_rand_u32(rng) % 101);         /* 0..100 % */
-    z->zombie_spawn_chance = (int)(gol_rand_u32(rng) % 101);     /* 0..100 % */
+    z->zombie_spawn_chance = (int)(gol_rand_u32(rng) % 41);      /* 0..40 % */
     z->max_generations = 2000 + (int)(gol_rand_u32(rng) % 2000); /* 2000..3999 */
 }
 
@@ -167,6 +167,10 @@ static void start_round(golz_mode_state_t *st, const gol_settings_t *living,
     st->cycle_armed = false;
     st->last_step = lv_tick_get();
     update_wins_label(st);
+    /* The corner readout is a win-only payoff: hidden during the live run, shown
+     * once the zombies win (kept through the victory lap and banner). */
+    if (st->wins_label)
+        lv_obj_add_flag(st->wins_label, LV_OBJ_FLAG_HIDDEN);
     render(st);
 }
 
@@ -225,6 +229,8 @@ static void record_win(golz_mode_state_t *st) {
         st->wins++;
     st->win_recorded = true;
     update_wins_label(st);
+    if (st->wins_label)
+        lv_obj_clear_flag(st->wins_label, LV_OBJ_FLAG_HIDDEN);
 }
 
 /* Route the per-generation terminal decision while running. */
@@ -472,6 +478,8 @@ static void build_screen(kd_mode_t *self) {
     lv_obj_set_style_pad_all(wins, 6, LV_PART_MAIN);
     lv_obj_align(wins, LV_ALIGN_TOP_LEFT, 8, 8);
     lv_obj_add_flag(wins, LV_OBJ_FLAG_GESTURE_BUBBLE);
+    /* Hidden until a win; revealed in record_win, re-hidden on reseed. */
+    lv_obj_add_flag(wins, LV_OBJ_FLAG_HIDDEN);
     st->wins_label = wins;
 
     self->screen = scr;

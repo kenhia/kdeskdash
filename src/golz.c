@@ -217,8 +217,11 @@ golz_eat_action_t golz_eat_action(int living_neighbors) {
         return GOLZ_EAT_ONE;
     case 4:
     case 5:
+    case 6:
+    case 7:
+    case 8:
         return GOLZ_EAT_KILLED;
-    default: /* 0, 3, 6, 7, 8 */
+    default: /* 0, 3 */
         return GOLZ_EAT_NONE;
     }
 }
@@ -226,8 +229,7 @@ golz_eat_action_t golz_eat_action(int living_neighbors) {
 int golz_spawn_count(int pct, int deaths) {
     if (deaths <= 0)
         return 0;
-    int n = (pct * deaths + 99) / 100; /* ceil(pct/100 * deaths) */
-    return n < 1 ? 1 : n;
+    return (pct * deaths + 99) / 100; /* ceil(pct/100 * deaths); 0 when pct==0 */
 }
 
 /* Eat/kill pass: counts read a frozen post-movement snapshot of the living
@@ -289,7 +291,7 @@ static void gz_spawn(golz_t *g) {
         return;
     if ((int)(gol_rand_u32(g->rng) % 100u) >= g->cfg.zombie_spawn_chance)
         return; /* R10 spawn roll missed */
-    int pct = 1 + (int)(gol_rand_u32(g->rng) % 30u); /* 1..30 % */
+    int pct = (int)(gol_rand_u32(g->rng) % 6u); /* 0..5 % */
     int want = golz_spawn_count(pct, deaths);
     int k = golz_sample_empty(g, want); /* R11 bounded placement */
     for (int i = 0; i < k; i++)

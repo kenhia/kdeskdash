@@ -414,15 +414,16 @@ static void test_eat_action_table(void) {
     check(golz_eat_action(3) == GOLZ_EAT_NONE, "3 neighbours -> standoff");
     check(golz_eat_action(4) == GOLZ_EAT_KILLED, "4 neighbours -> killed");
     check(golz_eat_action(5) == GOLZ_EAT_KILLED, "5 neighbours -> killed");
-    check(golz_eat_action(6) == GOLZ_EAT_NONE, "6 neighbours -> survives");
-    check(golz_eat_action(7) == GOLZ_EAT_NONE, "7 neighbours -> survives");
-    check(golz_eat_action(8) == GOLZ_EAT_NONE, "8 neighbours -> survives");
+    check(golz_eat_action(6) == GOLZ_EAT_KILLED, "6 neighbours -> killed");
+    check(golz_eat_action(7) == GOLZ_EAT_KILLED, "7 neighbours -> killed");
+    check(golz_eat_action(8) == GOLZ_EAT_KILLED, "8 neighbours -> killed");
 }
 
-/* Spawn-count math: ceil(pct/100 * deaths), floored at 1 when deaths > 0 (R10). */
+/* Spawn-count math: ceil(pct/100 * deaths), 0 when pct==0 or deaths==0 (R10). */
 static void test_spawn_count_math(void) {
     check_eq(golz_spawn_count(30, 0), 0, "no deaths -> 0 spawn");
-    check_eq(golz_spawn_count(1, 1), 1, "deaths 1, 1pct -> floor at 1");
+    check_eq(golz_spawn_count(0, 10), 0, "0pct -> 0 spawn (roll can miss)");
+    check_eq(golz_spawn_count(1, 1), 1, "deaths 1, 1pct -> ceil(0.01)=1");
     check_eq(golz_spawn_count(30, 1), 1, "deaths 1, 30pct -> 1");
     check_eq(golz_spawn_count(1, 10), 1, "deaths 10, 1pct -> ceil(0.1)=1");
     check_eq(golz_spawn_count(15, 10), 2, "deaths 10, 15pct -> ceil(1.5)=2");
@@ -484,7 +485,8 @@ static void test_spawn_presence(void) {
     golz_free(&g3);
 }
 
-/* With deaths=10 and a forced roll, the spawn count lands in 1..3 (R10). */
+/* With deaths=10 and a forced spawn roll, the count lands in 0..1: the pct roll
+ * (0..5%) may be 0, so a passed spawn_chance need not place any zombie (R10). */
 static void test_spawn_count_range(void) {
     gol_settings_t living = {.trail_turns = 1};
     golz_settings_t hit = mk_cfg(0, 0, 100);
@@ -497,7 +499,7 @@ static void test_spawn_count_range(void) {
     int zn = 0;
     for (int i = 0; i < 150; i++)
         zn += g.z_new[i];
-    check(zn >= 1 && zn <= 3, "deaths=10 spawns 1..3");
+    check(zn >= 0 && zn <= 1, "deaths=10 spawns 0..1");
     golz_free(&g);
 }
 
