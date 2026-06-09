@@ -21,6 +21,8 @@
 
 #define KEY_ACTIVE_MODE  "kdeskdash:active_mode"
 #define KEY_GOL_SETTINGS "kdeskdash:gol:settings"
+#define KEY_GOLZ_WINS     "kdeskdash:golz:wins"
+#define KEY_GOLZ_SETTINGS "kdeskdash:golz:settings"
 #define KEY_DEV_LEFT     "kdeskdash:dev:left"
 #define KEY_DEV_RIGHT    "kdeskdash:dev:right"
 
@@ -244,6 +246,77 @@ bool redis_apply_gol_settings(gol_settings_t *cfg) {
 
     if (applied) {
         redisReply *d = redisCommand(g_control.ctx, "DEL %s", KEY_GOL_SETTINGS);
+        if (d)
+            freeReplyObject(d);
+    }
+    return applied;
+}
+
+long redis_golz_incr_wins(void) {
+    if (!redis_client_ensure(&g_control))
+        return -1;
+    redisReply *r = redisCommand(g_control.ctx, "INCR %s", KEY_GOLZ_WINS);
+    long count = -1;
+    if (r && r->type == REDIS_REPLY_INTEGER)
+        count = (long)r->integer;
+    if (r)
+        freeReplyObject(r);
+    return count;
+}
+
+long redis_golz_get_wins(long default_val) {
+    char buf[32];
+    if (!redis_get_string(KEY_GOLZ_WINS, buf, sizeof(buf)))
+        return default_val;
+    return golz_parse_wins(buf, default_val);
+}
+
+/* Apply one "field value" pair from the GoLZ settings hash onto cfg, with hard
+ * safety bounds mirroring golz_settings_clamp() (intentionally wider than the
+ * mode's random roller so a remote client can experiment). */
+static void apply_golz_field(golz_settings_t *cfg, const char *field,
+                             const char *val) {
+    if (strcmp(field, "initial_count") == 0) {
+        int v = atoi(val);
+        if (v >= 0 && v <= 5)
+            cfg->initial_count = v;
+    } else if (strcmp(field, "zombie_reinfect") == 0) {
+        int v = atoi(val);
+        if (v >= 0 && v <= 100)
+            cfg->zombie_reinfect = v;
+    } else if (strcmp(field, "zombie_spawn_chance") == 0) {
+        int v = atoi(val);
+        if (v >= 0 && v <= 100)
+            cfg->zombie_spawn_chance = v;
+    } else if (strcmp(field, "max_generations") == 0) {
+        int v = atoi(val);
+        if (v >= 1 && v <= 1000000)
+            cfg->max_generations = v;
+    }
+}
+
+bool redis_apply_golz_settings(golz_settings_t *cfg) {
+    if (!cfg || !redis_client_ensure(&g_control))
+        return false;
+
+    redisReply *r = redisCommand(g_control.ctx, "HGETALL %s", KEY_GOLZ_SETTINGS);
+    bool applied = false;
+    if (r && r->type == REDIS_REPLY_ARRAY && r->elements >= 2) {
+        for (size_t i = 0; i + 1 < r->elements; i += 2) {
+            redisReply *k = r->element[i];
+            redisReply *v = r->element[i + 1];
+            if (k && v && k->type == REDIS_REPLY_STRING &&
+                v->type == REDIS_REPLY_STRING) {
+                apply_golz_field(cfg, k->str, v->str);
+                applied = true;
+            }
+        }
+    }
+    if (r)
+        freeReplyObject(r);
+
+    if (applied) {
+        redisReply *d = redisCommand(g_control.ctx, "DEL %s", KEY_GOLZ_SETTINGS);
         if (d)
             freeReplyObject(d);
     }

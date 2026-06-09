@@ -38,6 +38,7 @@ add_executable(kdeskdash
     src/registry.c
     src/shell.c
     src/gol.c
+    src/golz.c
     src/stopwatch.c
     src/redis.c
     src/dev_telemetry.c
@@ -45,6 +46,7 @@ add_executable(kdeskdash
     src/telemetry_host.c
     lib/cjson/cJSON.c
     src/modes/game_of_life.c
+    src/modes/golz.c
     src/modes/clock.c
     src/modes/dev.c
     src/modes/dev_graph.c
@@ -107,6 +109,11 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_gol PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_gol PRIVATE -Wall -Wextra)
     add_test(NAME test_gol COMMAND test_gol)
+
+    add_executable(test_golz tests/test_golz.c src/golz.c src/gol.c)
+    target_include_directories(test_golz PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_golz PRIVATE -Wall -Wextra)
+    add_test(NAME test_golz COMMAND test_golz)
 
     add_executable(test_stopwatch tests/test_stopwatch.c src/stopwatch.c)
     target_include_directories(test_stopwatch PRIVATE ${CMAKE_SOURCE_DIR}/src)

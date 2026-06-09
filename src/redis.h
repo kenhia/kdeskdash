@@ -9,8 +9,10 @@
  * dependency — the dashboard runs fully by touch without it.
  *
  * Schema:
- *   kdeskdash:active_mode   (string) currently active mode id
- *   kdeskdash:gol:settings  (hash)   one-shot Game of Life settings injection
+ *   kdeskdash:active_mode    (string) currently active mode id
+ *   kdeskdash:gol:settings   (hash)   one-shot Game of Life settings injection
+ *   kdeskdash:golz:wins      (string) persistent GoLZ zombie-win counter
+ *   kdeskdash:golz:settings  (hash)   one-shot GoLZ settings injection
  */
 #ifndef KDESKDASH_REDIS_H
 #define KDESKDASH_REDIS_H
@@ -21,7 +23,7 @@
 
 #include <hiredis/hiredis.h>
 
-#include "gol.h"
+#include "golz.h"
 
 /* Generic synchronous Redis connection handle: owns a hiredis context plus the
  * endpoint/auth and a per-handle reconnect backoff deadline. Independent
@@ -83,6 +85,21 @@ bool redis_get_active_mode(char *buf, size_t buflen);
  * the caller's randomized defaults survive. Returns true if any field was
  * applied. No-op/false when Redis is down or the key is absent. */
 bool redis_apply_gol_settings(gol_settings_t *cfg);
+
+/* Atomically increment and return the persistent GoLZ win counter
+ * (INCR kdeskdash:golz:wins). Returns the post-increment count, or -1 when
+ * Redis is unreachable or the reply is unusable (caller treats <0 as unknown). */
+long redis_golz_incr_wins(void);
+
+/* Read the persistent GoLZ win counter (GET kdeskdash:golz:wins), returning
+ * `default_val` when missing, unparseable, or negative. No-op-safe when down. */
+long redis_golz_get_wins(long default_val);
+
+/* Read and CLEAR kdeskdash:golz:settings (HGETALL then DEL), overwriting only
+ * the fields present in the hash on `cfg`. Absent fields are left untouched so
+ * the caller's randomized defaults survive. Returns true if any field was
+ * applied. No-op/false when Redis is down or the key is absent. */
+bool redis_apply_golz_settings(golz_settings_t *cfg);
 
 /* Which dev-mode chart side a host assignment belongs to. */
 typedef enum {
