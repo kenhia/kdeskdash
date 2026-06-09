@@ -108,11 +108,11 @@ Examples (run on the Pi or any host pointed at its Redis):
 ```bash
 redis-cli set kdeskdash:active_mode clock         # switch to the Clock mode
 redis-cli hset kdeskdash:gol:settings \
-  cell_size 6 padding 1 density 0.4 trail 1 trail_turns 8 speed_ms 120
+  cell_size 6 padding 1 density 0.4 trail 1 trail_turns 8 speed_ms 120 rgb 1
 redis-cli set kdeskdash:active_mode game_of_life  # applies the injected settings
 ```
 
-GoL fields (all optional; absent fields randomize): `cell_size` (1–64), `padding` (0–16),
+GoL fields (all optional; absent fields randomize): `cell_size` (2–64), `padding` (0–16),
 `density` (0–1.0), `trail` (0/1), `trail_turns` (1–64), `speed_ms` (10–5000), `rgb` (0/1).
 With `rgb` on, three independent boards run with the same settings and are
 composited into the red/green/blue channels.

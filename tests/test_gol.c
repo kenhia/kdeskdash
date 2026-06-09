@@ -180,6 +180,7 @@ static void test_compose_pixel(void) {
     check(gol_compose_pixel(128, 0, 0, 1) == (0xFF000000u | (128u << 8)),
           "single trail -> faded green");
     check(gol_compose_pixel(0, 0, 0, 1) == 0xFF000000u, "single dark -> black");
+    check(gol_compose_pixel(0, 0, 0, 3) == 0xFF000000u, "rgb all dark -> black");
     check(gol_compose_pixel(255, 0, 0, 3) == 0xFFFF0000u, "rgb board0 -> red");
     check(gol_compose_pixel(0, 255, 0, 3) == 0xFF00FF00u, "rgb board1 -> green");
     check(gol_compose_pixel(0, 0, 255, 3) == 0xFF0000FFu, "rgb board2 -> blue");

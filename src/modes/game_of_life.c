@@ -5,9 +5,9 @@
  * settings, the generation timer, and pixel rendering.
  *
  * Rendering writes the owned XRGB8888 buffer directly (one uint32_t per pixel)
- * and invalidates the canvas once per generation. Live cells are drawn green;
- * when trails are enabled, recently-dead cells fade by scaling the green
- * channel by their remaining trail intensity.
+ * and invalidates the canvas once per generation. Single-board runs draw live
+ * cells green with a fading green trail; in rgb mode three independent boards
+ * are composited into the red/green/blue channels (see gol_compose_pixel).
  */
 #include "modes/game_of_life.h"
 
@@ -213,7 +213,8 @@ static void close_menu(gol_mode_state_t *st) {
 /* The simulation never stops; the buttons just re-seed and dismiss the menu. */
 static void reset_cb(lv_event_t *e) {
     gol_mode_state_t *st = lv_event_get_user_data(e);
-    if (lv_indev_get_gesture_dir(lv_indev_active()) != LV_DIR_NONE)
+    lv_indev_t *indev = lv_indev_active();
+    if (indev && lv_indev_get_gesture_dir(indev) != LV_DIR_NONE)
         return;
     reseed_same(st);
     close_menu(st);
@@ -221,7 +222,8 @@ static void reset_cb(lv_event_t *e) {
 
 static void restart_cb(lv_event_t *e) {
     gol_mode_state_t *st = lv_event_get_user_data(e);
-    if (lv_indev_get_gesture_dir(lv_indev_active()) != LV_DIR_NONE)
+    lv_indev_t *indev = lv_indev_active();
+    if (indev && lv_indev_get_gesture_dir(indev) != LV_DIR_NONE)
         return;
     roll_and_reseed(st);
     close_menu(st);
@@ -229,7 +231,8 @@ static void restart_cb(lv_event_t *e) {
 
 static void cancel_cb(lv_event_t *e) {
     gol_mode_state_t *st = lv_event_get_user_data(e);
-    if (lv_indev_get_gesture_dir(lv_indev_active()) != LV_DIR_NONE)
+    lv_indev_t *indev = lv_indev_active();
+    if (indev && lv_indev_get_gesture_dir(indev) != LV_DIR_NONE)
         return;
     close_menu(st);
 }
@@ -379,8 +382,12 @@ static void tick(kd_mode_t *self) {
         if (st->cycle_armed) {
             if (st->menu_open)
                 st->cycle_since = lv_tick_get(); /* pause+reset while menu open (R-C9) */
-            else if (lv_tick_elaps(st->cycle_since) >= GOL_CYCLE_GRACE_MS)
+            else if (lv_tick_elaps(st->cycle_since) >= GOL_CYCLE_GRACE_MS) {
+                fprintf(stderr,
+                        "game_of_life: cycle detected, auto-restart (gen %u)\n",
+                        st->generation);
                 roll_and_reseed(st); /* auto-Restart with fresh settings (R-C8) */
+            }
         }
     }
 }
