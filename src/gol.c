@@ -16,6 +16,23 @@ uint32_t gol_rand_u32(uint32_t *state) {
     return x;
 }
 
+uint8_t gol_channel_intensity(bool alive, uint8_t trail_t, int trail_turns) {
+    if (alive)
+        return 255;
+    if (trail_t == 0)
+        return 0;
+    if (trail_turns < 1)
+        trail_turns = 1;
+    return (uint8_t)(255 * trail_t / trail_turns);
+}
+
+uint32_t gol_compose_pixel(uint8_t c0, uint8_t c1, uint8_t c2, int board_count) {
+    if (board_count == 1)
+        return 0xFF000000u | ((uint32_t)c0 << 8); /* green only, as before */
+    return 0xFF000000u | ((uint32_t)c0 << 16) | ((uint32_t)c1 << 8) |
+           (uint32_t)c2;
+}
+
 static int idx(const gol_t *g, int x, int y) {
     return y * g->cols + x;
 }

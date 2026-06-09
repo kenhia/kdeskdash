@@ -151,6 +151,98 @@ static void test_trail(void) {
     gol_free(&gt);
 }
 
+/* The legacy single-board pixel formula, reproduced here so the new compose
+ * path can be proven byte-identical to the pre-rgb renderer. */
+static uint32_t legacy_pixel(const gol_t *g, int x, int y) {
+    int tt = g->cfg.trail_turns > 0 ? g->cfg.trail_turns : 1;
+    if (gol_get(g, x, y))
+        return 0xFF00FF00u; /* live: full green */
+    uint8_t t = gol_trail(g, x, y);
+    if (t == 0)
+        return 0xFF000000u; /* dark */
+    uint32_t green = (uint32_t)(255 * t / tt);
+    return 0xFF000000u | (green << 8);
+}
+
+/* Channel intensity: full when alive, faded for a trail, dark otherwise. */
+static void test_channel_intensity(void) {
+    check_eq(gol_channel_intensity(true, 0, 8), 255, "alive -> 255");
+    check_eq(gol_channel_intensity(false, 0, 8), 0, "dead, no trail -> 0");
+    check_eq(gol_channel_intensity(false, 8, 8), 255, "full trail -> 255");
+    check_eq(gol_channel_intensity(false, 4, 8), 127, "half trail -> 127");
+    check_eq(gol_channel_intensity(false, 1, 0), 255, "trail_turns<1 clamps to 1");
+}
+
+/* Compose: single board is green-only; rgb maps channels and combines colors. */
+static void test_compose_pixel(void) {
+    check(gol_compose_pixel(255, 0, 0, 1) == 0xFF00FF00u,
+          "single live -> green");
+    check(gol_compose_pixel(128, 0, 0, 1) == (0xFF000000u | (128u << 8)),
+          "single trail -> faded green");
+    check(gol_compose_pixel(0, 0, 0, 1) == 0xFF000000u, "single dark -> black");
+    check(gol_compose_pixel(255, 0, 0, 3) == 0xFFFF0000u, "rgb board0 -> red");
+    check(gol_compose_pixel(0, 255, 0, 3) == 0xFF00FF00u, "rgb board1 -> green");
+    check(gol_compose_pixel(0, 0, 255, 3) == 0xFF0000FFu, "rgb board2 -> blue");
+    check(gol_compose_pixel(255, 255, 0, 3) == 0xFFFFFF00u, "rgb r+g -> yellow");
+    check(gol_compose_pixel(255, 255, 255, 3) == 0xFFFFFFFFu,
+          "rgb all alive -> white");
+}
+
+/* The rgb-off compose path must reproduce the legacy pixel for every cell
+ * across several generations (regression guard for the render refactor). */
+static void test_rgb_off_parity(void) {
+    gol_settings_t cfg = {.density = 0.35, .trail = true, .trail_turns = 6};
+    gol_t g;
+    gol_init(&g, 40, 12, &cfg);
+    uint32_t rng = 0x5EED;
+    gol_seed(&g, &rng);
+    int tt = cfg.trail_turns;
+    bool mismatch = false;
+    for (int gen = 0; gen < 8 && !mismatch; gen++) {
+        for (int y = 0; y < g.rows && !mismatch; y++) {
+            for (int x = 0; x < g.cols; x++) {
+                uint32_t legacy = legacy_pixel(&g, x, y);
+                uint8_t c0 = gol_channel_intensity(gol_get(&g, x, y),
+                                                   gol_trail(&g, x, y), tt);
+                if (gol_compose_pixel(c0, 0, 0, 1) != legacy) {
+                    mismatch = true;
+                    break;
+                }
+            }
+        }
+        gol_step(&g);
+    }
+    check(!mismatch, "rgb-off compose is pixel-identical to legacy");
+    gol_free(&g);
+}
+
+/* Two boards seeded from the same advancing rng get distinct populations and
+ * step independently (one board's step does not touch the other's cells). */
+static void test_rgb_board_independence(void) {
+    gol_settings_t cfg = {.density = 0.4, .trail = false, .trail_turns = 1};
+    gol_t a, b;
+    gol_init(&a, 30, 10, &cfg);
+    gol_init(&b, 30, 10, &cfg);
+    uint32_t rng = 0xABCDEF;
+    gol_seed(&a, &rng);
+    gol_seed(&b, &rng); /* drawn from the advanced stream -> different cells */
+
+    bool differ = false;
+    for (int y = 0; y < a.rows && !differ; y++)
+        for (int x = 0; x < a.cols; x++)
+            if (gol_get(&a, x, y) != gol_get(&b, x, y)) {
+                differ = true;
+                break;
+            }
+    check(differ, "independent seeds yield different populations");
+
+    int b_live = gol_live_count(&b);
+    gol_step(&a);
+    check_eq(gol_live_count(&b), b_live, "stepping board a leaves board b intact");
+    gol_free(&a);
+    gol_free(&b);
+}
+
 int main(void) {
     test_blinker();
     test_block();
@@ -159,6 +251,10 @@ int main(void) {
     test_seed_density_bounds();
     test_seed_density_third();
     test_trail();
+    test_channel_intensity();
+    test_compose_pixel();
+    test_rgb_off_parity();
+    test_rgb_board_independence();
 
     if (failures) {
         fprintf(stderr, "%d test(s) failed\n", failures);

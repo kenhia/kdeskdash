@@ -24,8 +24,8 @@ typedef struct {
     int       disp_w;
     int       disp_h;
 
-    gol_t     gol;
-    bool      has_grid;
+    gol_t     boards[3];  /* board 0 (or R/G/B when rgb); see board_count */
+    int       board_count; /* 1 (single green) or 3 (rgb tri-board) */
     uint32_t  rng;        /* PRNG state for settings + seeding */
     uint32_t  last_step;  /* lv_tick at last generation advance */
     uint32_t  generation; /* generations since the last (re)seed */
@@ -50,6 +50,8 @@ static gol_settings_t random_settings(uint32_t *rng) {
     cfg.trail = (gol_rand_u32(rng) % 2) != 0;                 /* 50-50 trail on/off */
     cfg.trail_turns = 3 + (int)(gol_rand_u32(rng) % 8);       /* 3..10 gens */
     cfg.speed_ms = 80 + (int)(gol_rand_u32(rng) % 620);       /* 80..700 ms */
+    /* Drawn last so adding rgb does not shift the existing settings' stream. */
+    cfg.rgb = (gol_rand_u32(rng) % 5) == 0;                   /* ~20% chance */
     return cfg;
 }
 
@@ -61,34 +63,37 @@ static void render(gol_mode_state_t *st) {
     for (int i = 0; i < st->disp_w * st->disp_h; i++)
         st->cbuf[i] = 0xFF000000u;
 
-    const gol_t *g = &st->gol;
-    int block = g->cfg.cell_size + g->cfg.padding;
-    int trail_turns = g->cfg.trail_turns > 0 ? g->cfg.trail_turns : 1;
+    if (st->board_count >= 1) {
+        const gol_t *g0 = &st->boards[0];
+        int block = g0->cfg.cell_size + g0->cfg.padding;
+        int trail_turns = g0->cfg.trail_turns > 0 ? g0->cfg.trail_turns : 1;
+        int n = st->board_count;
 
-    for (int cy = 0; cy < g->rows; cy++) {
-        for (int cx = 0; cx < g->cols; cx++) {
-            uint32_t color;
-            if (gol_get(g, cx, cy)) {
-                color = 0xFF00FF00u; /* live: full green */
-            } else {
-                uint8_t t = gol_trail(g, cx, cy);
-                if (t == 0)
+        for (int cy = 0; cy < g0->rows; cy++) {
+            for (int cx = 0; cx < g0->cols; cx++) {
+                uint8_t c[3] = {0, 0, 0};
+                for (int b = 0; b < n; b++) {
+                    const gol_t *g = &st->boards[b];
+                    c[b] = gol_channel_intensity(gol_get(g, cx, cy),
+                                                 gol_trail(g, cx, cy),
+                                                 trail_turns);
+                }
+                uint32_t color = gol_compose_pixel(c[0], c[1], c[2], n);
+                if (color == 0xFF000000u)
                     continue; /* dark cell: leave background */
-                uint32_t green = (uint32_t)(255 * t / trail_turns);
-                color = 0xFF000000u | (green << 8);
-            }
 
-            int px0 = cx * block;
-            int py0 = cy * block;
-            for (int dy = 0; dy < g->cfg.cell_size; dy++) {
-                int py = py0 + dy;
-                if (py >= st->disp_h)
-                    break;
-                uint32_t *row = st->cbuf + (size_t)py * stride + px0;
-                for (int dx = 0; dx < g->cfg.cell_size; dx++) {
-                    if (px0 + dx >= st->disp_w)
+                int px0 = cx * block;
+                int py0 = cy * block;
+                for (int dy = 0; dy < g0->cfg.cell_size; dy++) {
+                    int py = py0 + dy;
+                    if (py >= st->disp_h)
                         break;
-                    row[dx] = color;
+                    uint32_t *row = st->cbuf + (size_t)py * stride + px0;
+                    for (int dx = 0; dx < g0->cfg.cell_size; dx++) {
+                        if (px0 + dx >= st->disp_w)
+                            break;
+                        row[dx] = color;
+                    }
                 }
             }
         }
@@ -97,7 +102,8 @@ static void render(gol_mode_state_t *st) {
     lv_obj_invalidate(st->canvas);
 }
 
-/* Re-seed the board with the given settings, sized to the current display. */
+/* Re-seed the board(s) with the given settings, sized to the current display.
+ * Allocates 1 board normally, or 3 independent boards when rgb is set. */
 static void reseed(gol_mode_state_t *st, const gol_settings_t *cfg) {
     int block = cfg->cell_size + cfg->padding;
     int cols = st->disp_w / block;
@@ -107,11 +113,31 @@ static void reseed(gol_mode_state_t *st, const gol_settings_t *cfg) {
     if (rows < 1)
         rows = 1;
 
-    if (st->has_grid)
-        gol_free(&st->gol);
-    gol_init(&st->gol, cols, rows, cfg);
-    st->has_grid = true;
-    gol_seed(&st->gol, &st->rng);
+    /* Free every slot before re-allocating: the board count changes when rgb is
+     * toggled, and gol_free is safe on a zeroed/already-freed board. */
+    for (int b = 0; b < 3; b++)
+        gol_free(&st->boards[b]);
+
+    int n = cfg->rgb ? 3 : 1;
+    bool ok = true;
+    for (int b = 0; b < n; b++) {
+        if (!gol_init(&st->boards[b], cols, rows, cfg)) {
+            ok = false;
+            break;
+        }
+        gol_seed(&st->boards[b], &st->rng); /* independent population per board */
+    }
+    if (ok) {
+        st->board_count = n;
+    } else {
+        /* Degrade to a blank screen (matches the cbuf-failure path); never
+         * silently fall back to a single board, which would drop rgb. */
+        for (int b = 0; b < 3; b++)
+            gol_free(&st->boards[b]);
+        st->board_count = 0;
+        fprintf(stderr, "game_of_life: board alloc failed (%dx%d x%d)\n", cols,
+                rows, n);
+    }
     st->generation = 0;
     render(st);
     st->last_step = lv_tick_get();
@@ -135,29 +161,30 @@ static void roll_and_reseed(gol_mode_state_t *st) {
 
 /* Reset: a new population with the current settings unchanged (R-A8). */
 static void reseed_same(gol_mode_state_t *st) {
-    if (!st->has_grid) {
+    if (st->board_count < 1) {
         roll_and_reseed(st);
         return;
     }
-    /* Copy the settings before reseed() frees/re-inits the board. */
-    gol_settings_t cfg = st->gol.cfg;
+    /* Copy the settings before reseed() frees/re-inits the boards. */
+    gol_settings_t cfg = st->boards[0].cfg;
     reseed(st, &cfg);
 }
 
 /* Refresh the overlay's settings + generation readout. */
 static void update_info_label(gol_mode_state_t *st) {
-    if (!st->info_label || !st->has_grid)
+    if (!st->info_label || st->board_count < 1)
         return;
-    const gol_settings_t *c = &st->gol.cfg;
+    const gol_settings_t *c = &st->boards[0].cfg;
     char buf[256];
     snprintf(buf, sizeof(buf),
              "cell %d  pad %d\n"
              "density %.2f\n"
              "trail %s  turns %d\n"
              "speed %d ms\n"
+             "rgb %s\n"
              "gen %u",
              c->cell_size, c->padding, c->density, c->trail ? "on" : "off",
-             c->trail_turns, c->speed_ms, st->generation);
+             c->trail_turns, c->speed_ms, c->rgb ? "on" : "off", st->generation);
     lv_label_set_text(st->info_label, buf);
 }
 
@@ -316,12 +343,13 @@ static void activate(kd_mode_t *self) {
 
 static void tick(kd_mode_t *self) {
     gol_mode_state_t *st = self->state;
-    if (!st->has_grid)
+    if (st->board_count < 1)
         return;
-    uint32_t speed = st->gol.cfg.speed_ms;
+    uint32_t speed = st->boards[0].cfg.speed_ms;
     if (lv_tick_elaps(st->last_step) < speed)
         return;
-    gol_step(&st->gol);
+    for (int b = 0; b < st->board_count; b++)
+        gol_step(&st->boards[b]);
     st->generation++;
     render(st);
     st->last_step = lv_tick_get();

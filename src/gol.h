@@ -19,6 +19,7 @@ typedef struct {
     bool   trail;       /* dead cells fade out over trail_turns instead of off */
     int    trail_turns; /* generations a trail takes to fade to dark (>= 1) */
     int    speed_ms;    /* delay between generations */
+    bool   rgb;         /* run three independent boards composited as R/G/B */
 } gol_settings_t;
 
 typedef struct {
@@ -60,5 +61,14 @@ void gol_step(gol_t *g);
 /* Small deterministic PRNG (xorshift32) used for seeding; exposed so callers
  * and tests share the same stream. Never returns 0 state. */
 uint32_t gol_rand_u32(uint32_t *state);
+
+/* Color intensity (0..255) for one board's cell: full when alive, a faded value
+ * when only a trail remains, 0 when dark. trail_turns is clamped to >= 1. */
+uint8_t gol_channel_intensity(bool alive, uint8_t trail_t, int trail_turns);
+
+/* Compose one XRGB8888 pixel from up to three boards' channel intensities.
+ * board_count == 1 -> single green board (byte-identical to the legacy render);
+ * board_count == 3 -> c0/c1/c2 map to the red/green/blue channels. */
+uint32_t gol_compose_pixel(uint8_t c0, uint8_t c1, uint8_t c2, int board_count);
 
 #endif /* KDESKDASH_GOL_H */

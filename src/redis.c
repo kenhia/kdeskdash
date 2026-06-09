@@ -217,6 +217,8 @@ static void apply_field(gol_settings_t *cfg, const char *field, const char *val)
         int v = atoi(val);
         if (v >= 10 && v <= 5000)
             cfg->speed_ms = v;
+    } else if (strcmp(field, "rgb") == 0) {
+        cfg->rgb = atoi(val) != 0;
     }
 }
 

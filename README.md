@@ -113,7 +113,9 @@ redis-cli set kdeskdash:active_mode game_of_life  # applies the injected setting
 ```
 
 GoL fields (all optional; absent fields randomize): `cell_size` (1–64), `padding` (0–16),
-`density` (0–1.0), `trail` (0/1), `trail_turns` (1–64), `speed_ms` (10–5000).
+`density` (0–1.0), `trail` (0/1), `trail_turns` (1–64), `speed_ms` (10–5000), `rgb` (0/1).
+With `rgb` on, three independent boards run with the same settings and are
+composited into the red/green/blue channels.
 
 ## Service (boot-to-dashboard)
 
