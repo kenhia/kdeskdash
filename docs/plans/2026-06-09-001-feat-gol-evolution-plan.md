@@ -203,7 +203,7 @@ flowchart TB
     B --> C[Unit C: cycle detection + auto-Restart]
 ```
 
-- [ ] **Unit A: Tap menu + controls**
+- [x] **Unit A: Tap menu + controls**
 
 **Goal:** Add a right-quarter tap that opens an opaque overlay (info +
 Reset/Restart/Cancel) while the sim runs underneath; refactor `activate()` so
@@ -264,7 +264,7 @@ counter and `menu_open` flag.
 
 ---
 
-- [ ] **Unit B: `rgb` tri-board + render refactor**
+- [x] **Unit B: `rgb` tri-board + render refactor**
 
 **Goal:** Add the `rgb` setting, run three independent boards when on, and
 composite them per channel — with the rgb-off path byte-identical to today.
@@ -336,7 +336,7 @@ but planned after A).
 
 ---
 
-- [ ] **Unit C: Cycle detection + auto-Restart**
+- [x] **Unit C: Cycle detection + auto-Restart**
 
 **Goal:** When `cycle_detect` (= `!rgb`) is on, hash each generation, detect a
 loop of period ≤ 16, and Restart after a ~30s grace window that pauses+resets
