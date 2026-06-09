@@ -11,6 +11,11 @@ cross-compile approach and adding touch input.
 > settings injection, and a systemd service for boot-to-dashboard. See
 > [docs/plans](docs/plans/) and [docs/brainstorms](docs/brainstorms/).
 
+> **Note:** Like many of my projects, I've produced this for my own environment. If you
+> want to make use of this code, have your AI agent help change the hardcoded
+> `KDESKDASH_TELEMETRY_REDIS_HOST` to your own Redis, and take a look at
+> [`kenhia/kpidash`](https://github.com/kenhia/kpidash) for the client telemetry utilities.
+
 ## Modes
 
 - **Menu** — swipe-down launcher with a tile per content mode; tap to open. Startup default.
