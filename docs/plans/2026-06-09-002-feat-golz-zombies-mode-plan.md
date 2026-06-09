@@ -1,7 +1,7 @@
 ---
 title: "feat: GoLZ — Game of Life with Zombies mode"
 type: feat
-status: active
+status: completed
 date: 2026-06-09
 origin: docs/brainstorms/2026-06-09-golz-zombies-requirements.md
 deepened: 2026-06-09
