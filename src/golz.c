@@ -44,12 +44,13 @@ bool golz_init(golz_t *g, int cols, int rows, const gol_settings_t *living_cfg,
     size_t n = (size_t)cols * (size_t)rows;
     g->zombies = calloc(n, 1);
     g->z_new = calloc(n, 1);
+    g->z_trail = calloc(n, 1);
     g->prev_living = calloc(n, 1);
     g->snapshot = calloc(n, 1);
     g->died_mask = calloc(n, 1);
     g->empties = calloc(n, sizeof(int));
-    if (!g->zombies || !g->z_new || !g->prev_living || !g->snapshot ||
-        !g->died_mask || !g->empties) {
+    if (!g->zombies || !g->z_new || !g->z_trail || !g->prev_living ||
+        !g->snapshot || !g->died_mask || !g->empties) {
         golz_free(g);
         return false;
     }
@@ -70,6 +71,7 @@ void golz_free(golz_t *g) {
     gol_free(&g->living);
     free(g->zombies);
     free(g->z_new);
+    free(g->z_trail);
     free(g->prev_living);
     free(g->snapshot);
     free(g->died_mask);
@@ -86,6 +88,7 @@ void golz_clear(golz_t *g) {
     gol_clear(&g->living);
     memset(g->zombies, 0, n);
     memset(g->z_new, 0, n);
+    memset(g->z_trail, 0, n);
     memset(g->prev_living, 0, n);
     memset(g->snapshot, 0, n);
     memset(g->died_mask, 0, n);
@@ -130,6 +133,7 @@ void golz_seed(golz_t *g) {
     gol_clear(&g->living);
     memset(g->zombies, 0, n);
     memset(g->z_new, 0, n);
+    memset(g->z_trail, 0, n);
     memset(g->prev_living, 0, n);
     memset(g->snapshot, 0, n);
     memset(g->died_mask, 0, n);
@@ -204,16 +208,141 @@ static void gz_move(golz_t *g) {
     }
 }
 
+golz_eat_action_t golz_eat_action(int living_neighbors) {
+    switch (living_neighbors) {
+    case 1:
+    case 2:
+        return GOLZ_EAT_ONE;
+    case 4:
+    case 5:
+        return GOLZ_EAT_KILLED;
+    default: /* 0, 3, 6, 7, 8 */
+        return GOLZ_EAT_NONE;
+    }
+}
+
+int golz_spawn_count(int pct, int deaths) {
+    if (deaths <= 0)
+        return 0;
+    int n = (pct * deaths + 99) / 100; /* ceil(pct/100 * deaths) */
+    return n < 1 ? 1 : n;
+}
+
+/* Eat/kill pass: counts read a frozen post-movement snapshot of the living
+ * grid; mutations apply to the live grids. Reinfected cells go to z_new (act
+ * next gen); other eaten cells are recorded as deaths. */
+static void gz_eat_kill(golz_t *g) {
+    size_t n = (size_t)g->cols * (size_t)g->rows;
+    memcpy(g->snapshot, g->living.cur, n); /* R6 frozen snapshot */
+
+    int m = 0;
+    for (size_t i = 0; i < n; i++)
+        if (g->zombies[i])
+            g->empties[m++] = (int)i;
+    for (int i = m - 1; i > 0; i--) { /* reshuffle the zombie turn order */
+        int j = (int)(gol_rand_u32(g->rng) % (uint32_t)(i + 1));
+        int t = g->empties[i];
+        g->empties[i] = g->empties[j];
+        g->empties[j] = t;
+    }
+
+    for (int s = 0; s < m; s++) {
+        int idx = g->empties[s];
+        int x = idx % g->cols;
+        int y = idx / g->cols;
+        int nbr[8];
+        int cnt = 0;
+        for (int d = 0; d < 8; d++) {
+            int nx = gz_wrap(x + GZ_DX[d], g->cols);
+            int ny = gz_wrap(y + GZ_DY[d], g->rows);
+            int ti = ny * g->cols + nx;
+            if (g->snapshot[ti])
+                nbr[cnt++] = ti;
+        }
+        golz_eat_action_t act = golz_eat_action(cnt);
+        if (act == GOLZ_EAT_ONE) {
+            int pick = nbr[(int)(gol_rand_u32(g->rng) % (uint32_t)cnt)];
+            if (g->living.cur[pick]) { /* double-eat guard: skip if already gone */
+                g->living.cur[pick] = 0;
+                if ((int)(gol_rand_u32(g->rng) % 100u) < g->cfg.zombie_reinfect)
+                    g->z_new[pick] = 1;     /* R9 reinfect -> acts next gen */
+                else
+                    g->died_mask[pick] = 1; /* R9 death */
+            }
+        } else if (act == GOLZ_EAT_KILLED) {
+            g->zombies[idx] = 0; /* R8 zombie killed */
+        }
+    }
+}
+
+/* Spawn-from-the-dead: deaths = this gen's recorded deaths (Conway + eaten,
+ * reinfected excluded); on a successful roll, place ceil(pct/100 * deaths)
+ * (>=1) new zombies on empty cells via the shared sampler, into z_new. */
+static void gz_spawn(golz_t *g) {
+    size_t n = (size_t)g->cols * (size_t)g->rows;
+    int deaths = 0;
+    for (size_t i = 0; i < n; i++)
+        deaths += g->died_mask[i];
+    if (deaths <= 0)
+        return;
+    if ((int)(gol_rand_u32(g->rng) % 100u) >= g->cfg.zombie_spawn_chance)
+        return; /* R10 spawn roll missed */
+    int pct = 1 + (int)(gol_rand_u32(g->rng) % 30u); /* 1..30 % */
+    int want = golz_spawn_count(pct, deaths);
+    int k = golz_sample_empty(g, want); /* R11 bounded placement */
+    for (int i = 0; i < k; i++)
+        g->z_new[g->empties[i]] = 1;
+}
+
+/* Maintain the zombie (red) fade trail, mirroring gol.c's trail handling: full
+ * under an active zombie, fading otherwise (or instantly dark when trails off).
+ * z_new (pending) zombies are not yet visible, so they get no trail. */
+static void gz_update_ztrail(golz_t *g) {
+    size_t n = (size_t)g->cols * (size_t)g->rows;
+    int tt = g->living.cfg.trail_turns;
+    if (tt < 1)
+        tt = 1;
+    bool trail = g->living.cfg.trail;
+    for (size_t i = 0; i < n; i++) {
+        if (g->zombies[i])
+            g->z_trail[i] = (uint8_t)tt;
+        else if (trail && g->z_trail[i] > 0)
+            g->z_trail[i]--;
+        else
+            g->z_trail[i] = 0;
+    }
+}
+
+uint32_t golz_compose_pixel(const golz_t *g, int x, int y) {
+    int i = y * g->cols + x;
+    int tt = g->living.cfg.trail_turns;
+    uint8_t r, gr;
+    if (g->zombies[i]) {
+        r = 255;
+        gr = 0; /* live occupant overrides any trail */
+    } else if (g->living.cur[i]) {
+        r = 0;
+        gr = 255;
+    } else {
+        gr = gol_channel_intensity(false, g->living.trail[i], tt);
+        r = gol_channel_intensity(false, g->z_trail[i], tt);
+    }
+    return 0xFF000000u | ((uint32_t)r << 16) | ((uint32_t)gr << 8);
+}
+
 void golz_step(golz_t *g) {
     if (!g || !g->zombies)
         return;
     size_t n = (size_t)g->cols * (size_t)g->rows;
 
-    gz_promote(g);                              /* R12 deferred activation */
-    memcpy(g->prev_living, g->living.cur, n);   /* death diff baseline */
-    memset(g->died_mask, 0, n);                 /* only this gen's deaths */
-    gz_living_turn(g);                          /* R5 Conway on living only */
-    gz_move(g);                                 /* R6/R7 movement pass */
+    gz_promote(g);                            /* R12 deferred activation */
+    memcpy(g->prev_living, g->living.cur, n); /* death diff baseline */
+    memset(g->died_mask, 0, n);               /* only this gen's deaths */
+    gz_living_turn(g);                        /* R5 Conway on living only */
+    gz_move(g);                               /* R6/R7 movement pass */
+    gz_eat_kill(g);                           /* R6/R8/R9 eat, reinfect */
+    gz_spawn(g);                              /* R10/R11 spawn from the dead */
+    gz_update_ztrail(g);                      /* R19 zombie fade trail */
 
     g->generation++;
 }

@@ -406,6 +406,191 @@ static void test_step_deterministic(void) {
     golz_free(&b);
 }
 
+/* The eat/kill action table (R8). */
+static void test_eat_action_table(void) {
+    check(golz_eat_action(0) == GOLZ_EAT_NONE, "0 neighbours -> nothing");
+    check(golz_eat_action(1) == GOLZ_EAT_ONE, "1 neighbour -> eat one");
+    check(golz_eat_action(2) == GOLZ_EAT_ONE, "2 neighbours -> eat one");
+    check(golz_eat_action(3) == GOLZ_EAT_NONE, "3 neighbours -> standoff");
+    check(golz_eat_action(4) == GOLZ_EAT_KILLED, "4 neighbours -> killed");
+    check(golz_eat_action(5) == GOLZ_EAT_KILLED, "5 neighbours -> killed");
+    check(golz_eat_action(6) == GOLZ_EAT_NONE, "6 neighbours -> survives");
+    check(golz_eat_action(7) == GOLZ_EAT_NONE, "7 neighbours -> survives");
+    check(golz_eat_action(8) == GOLZ_EAT_NONE, "8 neighbours -> survives");
+}
+
+/* Spawn-count math: ceil(pct/100 * deaths), floored at 1 when deaths > 0 (R10). */
+static void test_spawn_count_math(void) {
+    check_eq(golz_spawn_count(30, 0), 0, "no deaths -> 0 spawn");
+    check_eq(golz_spawn_count(1, 1), 1, "deaths 1, 1pct -> floor at 1");
+    check_eq(golz_spawn_count(30, 1), 1, "deaths 1, 30pct -> 1");
+    check_eq(golz_spawn_count(1, 10), 1, "deaths 10, 1pct -> ceil(0.1)=1");
+    check_eq(golz_spawn_count(15, 10), 2, "deaths 10, 15pct -> ceil(1.5)=2");
+    check_eq(golz_spawn_count(30, 10), 3, "deaths 10, 30pct -> 3");
+    check_eq(golz_spawn_count(10, 100), 10, "deaths 100, 10pct -> 10");
+    bool ok = true;
+    for (int p = 1; p <= 30; p++) {
+        int v = golz_spawn_count(p, 10);
+        if (v < 1 || v > 3)
+            ok = false;
+    }
+    check(ok, "deaths 10 across 1..30pct stays in 1..3");
+}
+
+/* Spawn presence/absence: a forced roll with deaths>0 spawns; spawn_chance 0
+ * never spawns; zero deaths spawns nothing even at 100pct (R10/R11). */
+static void test_spawn_presence(void) {
+    gol_settings_t living = {.trail_turns = 1};
+
+    /* one lone living cell -> exactly one Conway death, no zombies */
+    golz_settings_t hit = mk_cfg(0, 0, 100);
+    uint32_t r1 = 1;
+    golz_t g;
+    golz_init(&g, 20, 5, &living, &hit, &r1);
+    gol_set(&g.living, 10, 2, true);
+    golz_step(&g);
+    int zn = 0;
+    for (int i = 0; i < 100; i++)
+        zn += g.z_new[i];
+    check_eq(zn, 1, "deaths=1 with spawn_chance 100 spawns exactly one");
+    golz_free(&g);
+
+    golz_settings_t miss = mk_cfg(0, 0, 0);
+    uint32_t r2 = 1;
+    golz_t g2;
+    golz_init(&g2, 20, 5, &living, &miss, &r2);
+    gol_set(&g2.living, 10, 2, true);
+    golz_step(&g2);
+    zn = 0;
+    for (int i = 0; i < 100; i++)
+        zn += g2.z_new[i];
+    check_eq(zn, 0, "spawn_chance 0 never spawns");
+    golz_free(&g2);
+
+    /* a 2x2 block is a still life -> zero deaths -> no spawn even at 100pct */
+    golz_settings_t hit2 = mk_cfg(0, 0, 100);
+    uint32_t r3 = 1;
+    golz_t g3;
+    golz_init(&g3, 8, 8, &living, &hit2, &r3);
+    gol_set(&g3.living, 2, 2, true);
+    gol_set(&g3.living, 3, 2, true);
+    gol_set(&g3.living, 2, 3, true);
+    gol_set(&g3.living, 3, 3, true);
+    golz_step(&g3);
+    zn = 0;
+    for (int i = 0; i < 64; i++)
+        zn += g3.z_new[i];
+    check_eq(zn, 0, "zero deaths spawns nothing even at 100pct");
+    golz_free(&g3);
+}
+
+/* With deaths=10 and a forced roll, the spawn count lands in 1..3 (R10). */
+static void test_spawn_count_range(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t hit = mk_cfg(0, 0, 100);
+    uint32_t rng = 12321;
+    golz_t g;
+    golz_init(&g, 30, 5, &living, &hit, &rng);
+    for (int k = 0; k < 10; k++) /* 10 lone cells, spaced 3 apart */
+        gol_set(&g.living, k * 3, 2, true);
+    golz_step(&g);
+    int zn = 0;
+    for (int i = 0; i < 150; i++)
+        zn += g.z_new[i];
+    check(zn >= 1 && zn <= 3, "deaths=10 spawns 1..3");
+    golz_free(&g);
+}
+
+/* Reinfect bookkeeping: with identical seeds and PRNG, a reinfect=100 run and a
+ * reinfect=0 run differ only in where eaten cells are recorded -- B's deaths are
+ * exactly A's deaths plus A's reinfected (disjoint), with identical living
+ * outcomes (R9/R10). */
+static void test_reinfect_bookkeeping(void) {
+    gol_settings_t living = {.density = 0.45, .trail_turns = 3};
+    golz_settings_t za = mk_cfg(0, 100, 0); /* reinfect 100, spawn 0 */
+    golz_settings_t zb = mk_cfg(0, 0, 0);   /* reinfect 0,   spawn 0 */
+    uint32_t ra = 555, rb = 555;
+    golz_t a, b;
+    golz_init(&a, 24, 10, &living, &za, &ra);
+    golz_init(&b, 24, 10, &living, &zb, &rb);
+    golz_seed(&a);
+    golz_seed(&b);
+    size_t n = 240;
+    check(memcmp(a.living.cur, b.living.cur, n) == 0, "identical living seed");
+
+    int placed = 0;
+    for (int i = 0; i < (int)n && placed < 40; i++) {
+        if (!a.living.cur[i]) {
+            a.zombies[i] = 1;
+            b.zombies[i] = 1;
+            placed++;
+        }
+    }
+
+    golz_step(&a);
+    golz_step(&b);
+
+    bool ok = true;
+    int eaten = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (a.died_mask[i] && a.z_new[i])
+            ok = false; /* reinfected and death are disjoint */
+        if (b.died_mask[i] != (a.died_mask[i] || a.z_new[i]))
+            ok = false;
+        if (a.living.cur[i] != b.living.cur[i])
+            ok = false; /* same eats -> same living outcome */
+        if (a.z_new[i])
+            eaten++;
+    }
+    check(ok, "reinfect bookkeeping: B deaths == A deaths + A reinfected");
+    check(eaten > 0, "scenario actually exercised eating/reinfection");
+    golz_free(&a);
+    golz_free(&b);
+}
+
+/* Render compose: living green, zombie red, occupant overrides trail, empty
+ * cells fade own-colour trails (R19). */
+static void test_compose_pixel(void) {
+    gol_settings_t living = {.trail = true, .trail_turns = 8};
+    golz_settings_t zcfg = mk_cfg(0, 0, 0);
+    uint32_t rng = 1;
+    golz_t g;
+    golz_init(&g, 4, 4, &living, &zcfg, &rng);
+
+    g.living.cur[0] = 1; /* (0,0) living */
+    check(golz_compose_pixel(&g, 0, 0) == 0xFF00FF00u, "living -> full green");
+
+    g.zombies[1] = 1; /* (1,0) zombie */
+    check(golz_compose_pixel(&g, 1, 0) == 0xFFFF0000u, "zombie -> full red");
+
+    g.zombies[2] = 1;
+    g.living.trail[2] = 8; /* zombie over a green trail */
+    check(golz_compose_pixel(&g, 2, 0) == 0xFFFF0000u,
+          "zombie overrides existing green trail");
+
+    g.living.cur[3] = 1;
+    g.z_trail[3] = 8; /* living over a red trail */
+    check(golz_compose_pixel(&g, 3, 0) == 0xFF00FF00u,
+          "living overrides existing red trail");
+
+    g.living.trail[4] = 4; /* (0,1) empty, half green trail -> 127 */
+    check(golz_compose_pixel(&g, 0, 1) == (0xFF000000u | (127u << 8)),
+          "empty green trail fades");
+
+    g.z_trail[5] = 4; /* (1,1) empty, half red trail -> 127 */
+    check(golz_compose_pixel(&g, 1, 1) == (0xFF000000u | (127u << 16)),
+          "empty red trail fades");
+
+    g.living.trail[6] = 8; /* (2,1) empty, full green + half red */
+    g.z_trail[6] = 4;
+    check(golz_compose_pixel(&g, 2, 1) ==
+              (0xFF000000u | (127u << 16) | (255u << 8)),
+          "empty cell composes both trails");
+
+    check(golz_compose_pixel(&g, 3, 3) == 0xFF000000u, "fully empty -> black");
+    golz_free(&g);
+}
+
 int main(void) {
     test_init_free();
     test_settings_clamp();
@@ -422,6 +607,12 @@ int main(void) {
     test_died_mask_and_reset();
     test_znew_promotion();
     test_step_deterministic();
+    test_eat_action_table();
+    test_spawn_count_math();
+    test_spawn_presence();
+    test_spawn_count_range();
+    test_reinfect_bookkeeping();
+    test_compose_pixel();
 
     if (failures) {
         fprintf(stderr, "%d test(s) failed\n", failures);

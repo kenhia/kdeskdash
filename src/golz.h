@@ -28,6 +28,7 @@ typedef struct {
     gol_t living;         /* reused verbatim; living.cur is the living layer */
     uint8_t *zombies;     /* active zombies, 0/1, row-major (cols*rows) */
     uint8_t *z_new;       /* zombies born this gen (reinfect/spawn); promoted next step */
+    uint8_t *z_trail;     /* zombie (red) fade trail 0..trail_turns; mirrors gol_t.trail */
     uint8_t *prev_living; /* copy of living.cur taken BEFORE gol_step (death diff) */
     uint8_t *snapshot;    /* copy of living.cur taken AFTER movement (eat/kill reads) */
     uint8_t *died_mask;   /* living cells that died this gen; reset each step */
@@ -69,10 +70,29 @@ int golz_sample_empty(golz_t *g, int want);
 /* Number of currently-active zombies (excludes z_new). */
 int golz_zombie_count(const golz_t *g);
 
+/* The action a zombie takes given its count of (frozen-snapshot) living
+ * neighbours: eat one for 1-2, get killed for 4-5, otherwise nothing. */
+typedef enum {
+    GOLZ_EAT_NONE = 0,
+    GOLZ_EAT_ONE,
+    GOLZ_EAT_KILLED,
+} golz_eat_action_t;
+
+golz_eat_action_t golz_eat_action(int living_neighbors);
+
+/* Number of zombies to spawn from `deaths` deaths at a drawn percentage
+ * `pct` (1..30): ceil(pct/100 * deaths), floored at 1 when deaths > 0, else 0. */
+int golz_spawn_count(int pct, int deaths);
+
+/* Compose one XRGB8888 pixel for cell (x,y): living -> green, zombie -> red
+ * (live occupant overrides any trail); an empty cell fades its own-colour
+ * trails (green for living, red for zombie) via gol_channel_intensity. */
+uint32_t golz_compose_pixel(const golz_t *g, int x, int y);
+
 /* Advance one full GoLZ generation: promote z_new, run the Conway living turn
- * (with zombie-aware birth suppression and death recording), then the zombie
- * movement pass. (The eat/kill, reinfect, and spawn passes are appended by the
- * eat/kill unit.) Advances the generation counter. */
+ * (birth suppression + death recording), the zombie movement pass, the
+ * snapshot-based eat/kill + reinfect pass, the spawn-from-the-dead pass, and
+ * the zombie trail update. Advances the generation counter. */
 void golz_step(golz_t *g);
 
 #endif /* KDESKDASH_GOLZ_H */

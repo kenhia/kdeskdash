@@ -138,6 +138,7 @@ golz_t
 ├── gol_t living            // reused verbatim; living->cur is the living layer
 ├── uint8_t *zombies        // 0 = no zombie, 1 = active zombie
 ├── uint8_t *z_new          // zombies born this gen (reinfect/spawn); promoted next step
+├── uint8_t *z_trail        // zombie (red) fade trail, mirrors gol_t.trail (R19; added during impl)
 ├── uint8_t *prev_living    // golz-owned copy of living->cur taken BEFORE gol_step (death diff)
 ├── uint8_t *snapshot       // golz-owned copy of living->cur taken AFTER movement (eat/kill reads)
 ├── uint8_t *died_mask      // living cells that died this gen (Conway deaths + zombie-eaten); reset each step
@@ -273,7 +274,7 @@ flowchart TB
 
 **Verification:** Living-only behavior is bit-identical to `gol_step`; movement blocking and birth-suppression hold under seeded tests.
 
-- [ ] **Unit 3: Eat/kill snapshot pass, reinfection, and spawning**
+- [x] **Unit 3: Eat/kill snapshot pass, reinfection, and spawning**
 
 **Goal:** Complete `golz_step` — the snapshot-based eat/kill resolution, reinfection, and spawn-from-the-dead, with correct next-generation activation timing.
 
