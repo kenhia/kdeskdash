@@ -11,8 +11,13 @@
  * Schema:
  *   kdeskdash:active_mode    (string) currently active mode id
  *   kdeskdash:gol:settings   (hash)   one-shot Game of Life settings injection
- *   kdeskdash:golz:wins      (string) persistent GoLZ zombie-win counter
- *   kdeskdash:golz:settings  (hash)   one-shot GoLZ settings injection
+ *   kdeskdash:golz:wins         (string) historical zombie-win counter (legacy,
+ *                                        pre-machetes; displayed read-only)
+ *   kdeskdash:golz:human_wins   (string) post-machete Human win counter
+ *   kdeskdash:golz:zombie_wins  (string) post-machete Zombie win counter
+ *   kdeskdash:golz:ties         (string) post-machete Tie counter
+ *   kdeskdash:golz:gens_to_win  (string) adaptive Human-win generation threshold
+ *   kdeskdash:golz:settings     (hash)   one-shot GoLZ settings injection
  */
 #ifndef KDESKDASH_REDIS_H
 #define KDESKDASH_REDIS_H
@@ -91,9 +96,32 @@ bool redis_apply_gol_settings(gol_settings_t *cfg);
  * Redis is unreachable or the reply is unusable (caller treats <0 as unknown). */
 long redis_golz_incr_wins(void);
 
-/* Read the persistent GoLZ win counter (GET kdeskdash:golz:wins), returning
- * `default_val` when missing, unparseable, or negative. No-op-safe when down. */
+/* Read the historical (legacy, pre-machetes) GoLZ zombie-win counter
+ * (GET kdeskdash:golz:wins), returning `default_val` when missing, unparseable,
+ * or negative. Displayed read-only; the post-machete era uses the counters below.
+ * No-op-safe when down. */
 long redis_golz_get_wins(long default_val);
+
+/* Atomically increment and return a post-machete outcome counter
+ * (Human / Zombie / Tie). Returns the post-increment count, or -1 when Redis is
+ * unreachable or the reply is unusable (caller treats <0 as unknown). */
+long redis_golz_incr_human_wins(void);
+long redis_golz_incr_zombie_wins(void);
+long redis_golz_incr_ties(void);
+
+/* Read a post-machete outcome counter, returning `default_val` when missing,
+ * unparseable, or negative. No-op-safe when down. */
+long redis_golz_get_human_wins(long default_val);
+long redis_golz_get_zombie_wins(long default_val);
+long redis_golz_get_ties(long default_val);
+
+/* Get/set the adaptive Human-win generation threshold
+ * (kdeskdash:golz:gens_to_win). get returns `default_val` when missing; both
+ * enforce the game-rule floor of 100. set returns the value actually stored
+ * (still returns the floored value when Redis is down so the caller can mirror
+ * it in memory). */
+long redis_golz_get_gens_to_win(long default_val);
+long redis_golz_set_gens_to_win(long value);
 
 /* Read and CLEAR kdeskdash:golz:settings (HGETALL then DEL), overwriting only
  * the fields present in the hash on `cfg`. Absent fields are left untouched so

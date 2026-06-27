@@ -25,6 +25,14 @@ static int gz_wrap(int v, int n) {
     return v;
 }
 
+/* Full toroidal wrap for offsets larger than one (the machete reach is +/-2). */
+static int gz_wrapn(int v, int n) {
+    v %= n;
+    if (v < 0)
+        v += n;
+    return v;
+}
+
 void golz_settings_clamp(golz_settings_t *cfg) {
     if (!cfg)
         return;
@@ -33,6 +41,10 @@ void golz_settings_clamp(golz_settings_t *cfg) {
     cfg->zombie_spawn_chance = gz_clampi(cfg->zombie_spawn_chance, 0, 100);
     if (cfg->max_generations < 1)
         cfg->max_generations = 1;
+    cfg->machete_percentage = gz_clampi(cfg->machete_percentage, 0, 100);
+    cfg->human_kill_zombie = gz_clampi(cfg->human_kill_zombie, 0, 100);
+    if (cfg->generations_to_win < 0)
+        cfg->generations_to_win = 0; /* 0 disables the human-win threshold */
 }
 
 bool golz_init(golz_t *g, int cols, int rows, const gol_settings_t *living_cfg,
@@ -43,6 +55,7 @@ bool golz_init(golz_t *g, int cols, int rows, const gol_settings_t *living_cfg,
     if (!gol_init(&g->living, cols, rows, living_cfg))
         return false;
     size_t n = (size_t)cols * (size_t)rows;
+    g->machetes = calloc(n, 1);
     g->zombies = calloc(n, 1);
     g->z_new = calloc(n, 1);
     g->z_trail = calloc(n, 1);
@@ -50,8 +63,8 @@ bool golz_init(golz_t *g, int cols, int rows, const gol_settings_t *living_cfg,
     g->snapshot = calloc(n, 1);
     g->died_mask = calloc(n, 1);
     g->empties = calloc(n, sizeof(int));
-    if (!g->zombies || !g->z_new || !g->z_trail || !g->prev_living ||
-        !g->snapshot || !g->died_mask || !g->empties) {
+    if (!g->machetes || !g->zombies || !g->z_new || !g->z_trail ||
+        !g->prev_living || !g->snapshot || !g->died_mask || !g->empties) {
         golz_free(g);
         return false;
     }
@@ -70,6 +83,7 @@ void golz_free(golz_t *g) {
     if (!g)
         return;
     gol_free(&g->living);
+    free(g->machetes);
     free(g->zombies);
     free(g->z_new);
     free(g->z_trail);
@@ -77,6 +91,7 @@ void golz_free(golz_t *g) {
     free(g->snapshot);
     free(g->died_mask);
     free(g->empties);
+    g->machetes = NULL;
     g->zombies = g->z_new = g->prev_living = g->snapshot = g->died_mask = NULL;
     g->z_trail = NULL;
     g->empties = NULL;
@@ -88,6 +103,7 @@ void golz_clear(golz_t *g) {
         return;
     size_t n = (size_t)g->cols * (size_t)g->rows;
     gol_clear(&g->living);
+    memset(g->machetes, 0, n);
     memset(g->zombies, 0, n);
     memset(g->z_new, 0, n);
     memset(g->z_trail, 0, n);
@@ -133,6 +149,7 @@ void golz_seed(golz_t *g) {
         return;
     size_t n = (size_t)g->cols * (size_t)g->rows;
     gol_clear(&g->living);
+    memset(g->machetes, 0, n);
     memset(g->zombies, 0, n);
     memset(g->z_new, 0, n);
     memset(g->z_trail, 0, n);
@@ -146,6 +163,16 @@ void golz_seed(golz_t *g) {
     int k = golz_sample_empty(g, g->cfg.initial_count);
     for (int i = 0; i < k; i++)
         g->zombies[g->empties[i]] = 1;
+
+    /* Static machete layer: each cell rolls independently. Drawn LAST and skipped
+     * entirely at 0% so existing PRNG streams (and their tests) are unperturbed.
+     * Lean into chaos: the realised count varies widely around the nominal rate. */
+    if (g->cfg.machete_percentage > 0) {
+        for (size_t i = 0; i < n; i++) {
+            if ((int)(gol_rand_u32(g->rng) % 100u) < g->cfg.machete_percentage)
+                g->machetes[i] = 1;
+        }
+    }
 }
 
 /* Promote zombies born last generation (reinfect/spawn) into the active layer
@@ -176,6 +203,57 @@ static void gz_living_turn(golz_t *g) {
     for (size_t i = 0; i < n; i++) {
         if (g->prev_living[i] && !g->living.cur[i])
             g->died_mask[i] = 1;
+    }
+}
+
+/* Machete turn (M3/M4): armed living cells strike before the zombies act. Each
+ * living cell that also holds a machete, in reshuffled order, gathers the live
+ * zombies within Chebyshev distance 2 (the 5x5 toroidal block minus its centre);
+ * if any are present it rolls human_kill_zombie and, on success, kills one at
+ * random. Kills read/write the live zombie grid, so a zombie killed earlier this
+ * turn is no longer a candidate (one machete, one kill, no double-kill). Never
+ * touches living cells or death bookkeeping; killed zombies fade via the red
+ * trail like any other death. */
+static void gz_machete(golz_t *g) {
+    if (g->cfg.human_kill_zombie <= 0 || g->cfg.machete_percentage <= 0)
+        return; /* no machetes seeded or no kill chance -> nothing to do */
+    size_t n = (size_t)g->cols * (size_t)g->rows;
+    int m = 0;
+    for (size_t i = 0; i < n; i++)
+        if (g->living.cur[i] && g->machetes[i])
+            g->empties[m++] = (int)i;
+    if (m == 0)
+        return;
+    /* Fisher-Yates the strike order so overlapping reach windows are fair. */
+    for (int i = m - 1; i > 0; i--) {
+        int j = (int)(gol_rand_u32(g->rng) % (uint32_t)(i + 1));
+        int t = g->empties[i];
+        g->empties[i] = g->empties[j];
+        g->empties[j] = t;
+    }
+    for (int s = 0; s < m; s++) {
+        int idx = g->empties[s];
+        int x = idx % g->cols;
+        int y = idx / g->cols;
+        int targets[24]; /* 5x5 block minus the centre */
+        int cnt = 0;
+        for (int dy = -2; dy <= 2; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                if (dx == 0 && dy == 0)
+                    continue;
+                int nx = gz_wrapn(x + dx, g->cols);
+                int ny = gz_wrapn(y + dy, g->rows);
+                int ti = ny * g->cols + nx;
+                if (g->zombies[ti])
+                    targets[cnt++] = ti;
+            }
+        }
+        if (cnt == 0)
+            continue; /* no zombie in range -> no roll */
+        if ((int)(gol_rand_u32(g->rng) % 100u) >= g->cfg.human_kill_zombie)
+            continue; /* the kill roll missed */
+        int victim = targets[(int)(gol_rand_u32(g->rng) % (uint32_t)cnt)];
+        g->zombies[victim] = 0; /* machete kill */
     }
 }
 
@@ -320,18 +398,25 @@ static void gz_update_ztrail(golz_t *g) {
 uint32_t golz_compose_pixel(const golz_t *g, int x, int y) {
     int i = y * g->cols + x;
     int tt = g->living.cfg.trail_turns;
-    uint8_t r, gr;
+    /* A machete recolours the living faction's green channel to blue. Machetes are
+     * static, so a fading living trail is blue iff this cell holds a machete. */
+    bool machete = g->machetes[i];
+    uint8_t r, gr, b;
     if (g->zombies[i]) {
         r = 255;
         gr = 0; /* live occupant overrides any trail */
+        b = 0;
     } else if (g->living.cur[i]) {
         r = 0;
-        gr = 255;
+        gr = machete ? 0 : 255;
+        b = machete ? 255 : 0;
     } else {
-        gr = gol_channel_intensity(false, g->living.trail[i], tt);
+        uint8_t live = gol_channel_intensity(false, g->living.trail[i], tt);
+        gr = machete ? 0 : live;
+        b = machete ? live : 0;
         r = gol_channel_intensity(false, g->z_trail[i], tt);
     }
-    return 0xFF000000u | ((uint32_t)r << 16) | ((uint32_t)gr << 8);
+    return 0xFF000000u | ((uint32_t)r << 16) | ((uint32_t)gr << 8) | (uint32_t)b;
 }
 
 void golz_step(golz_t *g) {
@@ -343,6 +428,7 @@ void golz_step(golz_t *g) {
     memcpy(g->prev_living, g->living.cur, n); /* death diff baseline */
     memset(g->died_mask, 0, n);               /* only this gen's deaths */
     gz_living_turn(g);                        /* R5 Conway on living only */
+    gz_machete(g);                            /* M3/M4 armed humans strike first */
     gz_move(g);                               /* R6/R7 movement pass */
     gz_eat_kill(g);                           /* R6/R8/R9 eat, reinfect */
     gz_spawn(g);                              /* R10/R11 spawn from the dead */
@@ -354,13 +440,21 @@ void golz_step(golz_t *g) {
 golz_terminal_t golz_terminal(golz_t *g) {
     if (!g)
         return GOLZ_CONTINUE;
-    if (gol_live_count(&g->living) == 0 && golz_zombie_count(g) > 0)
-        return GOLZ_ZOMBIE_WIN; /* R13 win, checked before any restart */
+    int living = gol_live_count(&g->living);
+    /* Record the living-only hash every generation so the cycle ring stays valid
+     * regardless of which branch returns below. */
+    bool cycled = gol_cycle_record(&g->cycle, &g->living);
+
+    if (living == 0 && golz_zombie_count(g) > 0)
+        return GOLZ_ZOMBIE_WIN; /* R13 win, checked before any other outcome */
+    if (g->cfg.generations_to_win > 0 && living > 0 &&
+        g->generation >= (uint32_t)g->cfg.generations_to_win)
+        return GOLZ_HUMAN_WIN; /* M7 humans outlasted the zombies */
+    if (cycled)
+        return GOLZ_TIE; /* M8 living-only cycle/extinction -> scored tie */
     if (g->generation >= (uint32_t)g->cfg.max_generations)
-        return GOLZ_QUIET_RESTART; /* R23 unconditional backstop */
-    if (gol_cycle_record(&g->cycle, &g->living))
-        return GOLZ_QUIET_RESTART; /* R16 living-only cycle/extinction */
-    return GOLZ_CONTINUE;          /* R15 keep running */
+        return GOLZ_TIE; /* R23 unconditional backstop -> tie */
+    return GOLZ_CONTINUE; /* R15 keep running */
 }
 
 long golz_parse_wins(const char *s, long fallback) {

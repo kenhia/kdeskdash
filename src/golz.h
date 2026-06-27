@@ -22,10 +22,16 @@ typedef struct {
     int zombie_reinfect;     /* % chance an eaten cell becomes a zombie (0..100) */
     int zombie_spawn_chance; /* % chance to spawn from the dead each gen (0..100) */
     int max_generations;     /* unconditional restart backstop (>= 1) */
+    int machete_percentage;  /* % chance each cell is seeded with a machete (0..100) */
+    int human_kill_zombie;   /* % chance a machete-armed human kills an in-range
+                              * zombie when one is present (0..100) */
+    int generations_to_win;  /* humans win by lasting this many generations;
+                              * <= 0 disables the human-win threshold */
 } golz_settings_t;
 
 typedef struct {
     gol_t living;         /* reused verbatim; living.cur is the living layer */
+    uint8_t *machetes;    /* static machete layer, 0/1; seeded once, never changes */
     uint8_t *zombies;     /* active zombies, 0/1, row-major (cols*rows) */
     uint8_t *z_new;       /* zombies born this gen (reinfect/spawn); promoted next step */
     uint8_t *z_trail;     /* zombie (red) fade trail 0..trail_turns; mirrors gol_t.trail */
@@ -42,7 +48,9 @@ typedef struct {
 } golz_t;
 
 /* Clamp settings into valid bounds: initial_count [0,5], reinfect/spawn [0,100],
- * max_generations >= 1. Blank/unset fields are left as-is by the caller. */
+ * max_generations >= 1, machete_percentage/human_kill_zombie [0,100],
+ * generations_to_win >= 0 (0 disables the human-win threshold). Blank/unset
+ * fields are left as-is by the caller. */
 void golz_settings_clamp(golz_settings_t *cfg);
 
 /* Allocate the living layer plus all parallel zombie grids and the sampler
@@ -57,8 +65,11 @@ void golz_free(golz_t *g);
 /* Reset every layer to empty and clear the cycle ring + generation counter. */
 void golz_clear(golz_t *g);
 
-/* Seed a new round: density-seed the living layer, then place cfg.initial_count
- * zombies on empty cells. Reproducible for a given starting PRNG state. */
+/* Seed a new round: density-seed the living layer, place cfg.initial_count
+ * zombies on empty cells, then roll the static machete layer (each cell
+ * independently at cfg.machete_percentage). The machete roll is drawn LAST and is
+ * skipped entirely when machete_percentage == 0, so existing PRNG streams are
+ * unperturbed. Reproducible for a given starting PRNG state. */
 void golz_seed(golz_t *g);
 
 /* Collect every empty cell (living==0 && zombies==0 && z_new==0) into the
@@ -84,26 +95,31 @@ golz_eat_action_t golz_eat_action(int living_neighbors);
  * `pct` (1..30): ceil(pct/100 * deaths), floored at 1 when deaths > 0, else 0. */
 int golz_spawn_count(int pct, int deaths);
 
-/* Compose one XRGB8888 pixel for cell (x,y): living -> green, zombie -> red
- * (live occupant overrides any trail); an empty cell fades its own-colour
- * trails (green for living, red for zombie) via gol_channel_intensity. */
+/* Compose one XRGB8888 pixel for cell (x,y): living -> green (or BLUE when the
+ * cell also holds a machete), zombie -> red (live occupant overrides any trail);
+ * an empty cell fades its own-colour trails (green/blue for living, red for
+ * zombie) via gol_channel_intensity. Because machetes are static, a fading living
+ * trail is blue iff that cell holds a machete. */
 uint32_t golz_compose_pixel(const golz_t *g, int x, int y);
 
 /* Advance one full GoLZ generation: promote z_new, run the Conway living turn
- * (birth suppression + death recording), the zombie movement pass, the
- * snapshot-based eat/kill + reinfect pass, the spawn-from-the-dead pass, and
- * the zombie trail update. Advances the generation counter. */
+ * (birth suppression + death recording), the MACHETE turn (armed humans kill an
+ * in-range zombie), the zombie movement pass, the snapshot-based eat/kill +
+ * reinfect pass, the spawn-from-the-dead pass, and the zombie trail update.
+ * Advances the generation counter. */
 void golz_step(golz_t *g);
 
 /* Per-generation terminal decision, evaluated by the mode after golz_step.
- * Precedence: (1) zombie win = no living and >=1 zombie; (2) backstop =
- * generation counter reached cfg.max_generations; (3) living-cells-only
- * cycle/extinction via the reused hash ring. Otherwise the round continues.
- * Advances the cycle ring, so call exactly once per generation. */
+ * Precedence: (1) zombie win = no living and >=1 zombie; (2) human win =
+ * cfg.generations_to_win > 0 and living remain and the generation counter reached
+ * it; (3) tie = living-cells-only cycle/extinction via the reused hash ring, or
+ * the cfg.max_generations backstop. Otherwise the round continues. Advances the
+ * cycle ring, so call exactly once per generation. */
 typedef enum {
     GOLZ_CONTINUE = 0,
     GOLZ_ZOMBIE_WIN,
-    GOLZ_QUIET_RESTART,
+    GOLZ_HUMAN_WIN,
+    GOLZ_TIE,
 } golz_terminal_t;
 
 golz_terminal_t golz_terminal(golz_t *g);

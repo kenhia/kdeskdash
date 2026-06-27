@@ -13,18 +13,34 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "golz.h"
 #include "lvgl.h"
 #include "redis.h"
 
-/* Grace period after a cycle/extinction is first detected before auto-restart,
- * mirroring the Game of Life mode. */
-#define GOLZ_CYCLE_GRACE_MS 30000
-
-/* How long the "The Zombies Won" banner holds before auto re-roll (a tap
+/* How long the end-of-game banner holds before auto re-roll (a tap
  * short-circuits it). */
-#define GOLZ_BANNER_HOLD_MS 5000
+#define GOLZ_BANNER_HOLD_MS 12000
+
+/* Per-round machete knob ranges, chosen by the monte-carlo balance sweep
+ * (tools/golz_mc.c; see docs/plans/2026-06-27-001-feat-golz-machetes-plan.md).
+ * Inclusive [min,max], drawn uniformly each round. Paired with the symmetric
+ * +3/-3 steps below, these land the self-balanced equilibrium threshold near the
+ * 250 default (so it barely drifts) while keeping the tie rate down (~59%); the
+ * symmetric steps hold the decisive split at ~50/50. */
+#define GOLZ_MACHETE_PCT_MIN 8
+#define GOLZ_MACHETE_PCT_MAX 18
+#define GOLZ_HUMAN_KILL_MIN 18
+#define GOLZ_HUMAN_KILL_MAX 32
+
+/* Adaptive human-win threshold: starting value and self-balancing steps. The
+ * floor (100) is enforced by redis_golz_set_gens_to_win. Symmetric steps give a
+ * fixed point where P(Human win) == P(Zombie win), i.e. a true 50/50 decisive
+ * match (the loop self-tunes the threshold to hold it). */
+#define GOLZ_GENS_TO_WIN_DEFAULT 250
+#define GOLZ_GENS_WIN_STEP 3  /* threshold rises after a Human win */
+#define GOLZ_GENS_LOSS_STEP 3 /* threshold falls after a Zombie win */
 
 /* Mode phases: the normal simulation, the zombie-win victory lap (zombies march
  * off the bottom and trails drain), and the win banner hold. */
@@ -46,12 +62,14 @@ typedef struct {
     uint32_t last_step;  /* lv_tick at the last generation/lap advance */
     golz_phase_t phase;  /* run / victory lap / banner */
 
-    long      wins;         /* in-memory mirror of the persistent win counter */
-    bool      win_recorded; /* per-round latch: counter incremented once (R17) */
-    lv_obj_t *wins_label;   /* corner "Zombie wins: N" readout; shown only on a win */
-
-    bool     cycle_armed; /* a quiet-restart was seen; grace countdown running */
-    uint32_t cycle_since; /* lv_tick the countdown (re)started at */
+    /* In-memory mirrors of the persistent post-machete counters. */
+    long human_wins;
+    long zombie_wins;
+    long ties;
+    long gens_to_win;             /* adaptive human-win threshold (floor 100) */
+    long historical_zombie_wins;  /* legacy pre-machete zombie wins (display only) */
+    bool outcome_recorded;        /* per-round latch: counted once */
+    golz_terminal_t outcome;      /* which terminal ended the round (for the banner) */
 
     lv_point_t press_pt;   /* canvas press point, captured on PRESSED */
     lv_obj_t  *menu;       /* control overlay root; NULL when closed */
@@ -74,11 +92,19 @@ static void roll_settings(uint32_t *rng, gol_settings_t *living,
     living->trail_turns = 3 + (int)(gol_rand_u32(rng) % 8); /* 3..10 gens */
     living->speed_ms = 80 + (int)(gol_rand_u32(rng) % 620); /* 80..700 ms */
     living->rgb = false; /* GoLZ is always two-color */
-    /* GoLZ-specific, drawn last. */
+    /* GoLZ-specific, drawn last so additions never shift earlier streams. */
     z->initial_count = (int)(gol_rand_u32(rng) % 3);             /* 0..2 */
     z->zombie_reinfect = (int)(gol_rand_u32(rng) % 101);         /* 0..100 % */
     z->zombie_spawn_chance = (int)(gol_rand_u32(rng) % 41);      /* 0..40 % */
     z->max_generations = 2000 + (int)(gol_rand_u32(rng) % 2000); /* 2000..3999 */
+    /* Machetes, drawn last of all. generations_to_win is NOT rolled here — it is
+     * the adaptive Redis-backed threshold, set by the caller after this returns. */
+    z->machete_percentage =
+        GOLZ_MACHETE_PCT_MIN +
+        (int)(gol_rand_u32(rng) % (GOLZ_MACHETE_PCT_MAX - GOLZ_MACHETE_PCT_MIN + 1));
+    z->human_kill_zombie =
+        GOLZ_HUMAN_KILL_MIN +
+        (int)(gol_rand_u32(rng) % (GOLZ_HUMAN_KILL_MAX - GOLZ_HUMAN_KILL_MIN + 1));
 }
 
 static void render(golz_mode_state_t *st) {
@@ -119,13 +145,19 @@ static void render(golz_mode_state_t *st) {
     lv_obj_invalidate(st->canvas);
 }
 
-/* Refresh the corner win-counter readout (also the GoLZ identity marker). */
-static void update_wins_label(golz_mode_state_t *st) {
-    if (!st->wins_label)
-        return;
-    char buf[48];
-    snprintf(buf, sizeof(buf), "Zombie wins: %ld", st->wins);
-    lv_label_set_text(st->wins_label, buf);
+/* Format a non-negative count with thousands separators into buf (e.g. 13883 ->
+ * "13,883"). buf must hold at least 32 bytes. */
+static void format_commas(long v, char *buf, size_t buflen) {
+    char raw[24];
+    snprintf(raw, sizeof(raw), "%ld", v < 0 ? 0 : v);
+    int len = (int)strlen(raw);
+    int out = 0;
+    for (int i = 0; i < len && out < (int)buflen - 1; i++) {
+        if (i > 0 && (len - i) % 3 == 0 && out < (int)buflen - 1)
+            buf[out++] = ',';
+        buf[out++] = raw[i];
+    }
+    buf[out] = '\0';
 }
 
 static void close_menu(golz_mode_state_t *st) {
@@ -163,14 +195,9 @@ static void start_round(golz_mode_state_t *st, const gol_settings_t *living,
         fprintf(stderr, "golz: board alloc failed (%dx%d)\n", cols, rows);
     }
     st->phase = GOLZ_PHASE_RUN;
-    st->win_recorded = false;
-    st->cycle_armed = false;
+    st->outcome_recorded = false;
+    st->outcome = GOLZ_CONTINUE;
     st->last_step = lv_tick_get();
-    update_wins_label(st);
-    /* The corner readout is a win-only payoff: hidden during the live run, shown
-     * once the zombies win (kept through the victory lap and banner). */
-    if (st->wins_label)
-        lv_obj_add_flag(st->wins_label, LV_OBJ_FLAG_HIDDEN);
     render(st);
 }
 
@@ -183,6 +210,8 @@ static void reseed(golz_mode_state_t *st) {
     gol_settings_t living;
     golz_settings_t z;
     roll_settings(&st->rng, &living, &z);
+    /* The human-win threshold is the adaptive, persisted value (not rolled). */
+    z.generations_to_win = (int)st->gens_to_win;
     /* Overlay one-shot injected settings; absent fields keep the randomized
      * values and the injection key is cleared. */
     redis_apply_gol_settings(&living);
@@ -216,42 +245,57 @@ static void reseed_same(golz_mode_state_t *st) {
     start_round(st, &living, &z, st->game.cols, st->game.rows);
 }
 
-/* Record one zombie win: increment the persistent counter exactly once per
- * round (latched), preferring the authoritative Redis count and falling back to
- * the in-memory mirror when Redis is unavailable (R17). */
-static void record_win(golz_mode_state_t *st) {
-    if (st->win_recorded)
+static void show_banner(golz_mode_state_t *st); /* defined below */
+
+/* Record one decisive round outcome exactly once (latched): bump the matching
+ * persistent counter (preferring the authoritative Redis value, falling back to
+ * the in-memory mirror), and for a Human/Zombie win nudge the adaptive
+ * generations_to_win (the loser gets an easier next game) and persist it. */
+static void record_outcome(golz_mode_state_t *st, golz_terminal_t outcome) {
+    if (st->outcome_recorded)
         return;
-    long n = redis_golz_incr_wins();
-    if (n >= 0)
-        st->wins = n;
-    else
-        st->wins++;
-    st->win_recorded = true;
-    update_wins_label(st);
-    if (st->wins_label)
-        lv_obj_clear_flag(st->wins_label, LV_OBJ_FLAG_HIDDEN);
+    st->outcome = outcome;
+    switch (outcome) {
+    case GOLZ_HUMAN_WIN: {
+        long n = redis_golz_incr_human_wins();
+        st->human_wins = (n >= 0) ? n : st->human_wins + 1;
+        st->gens_to_win += GOLZ_GENS_WIN_STEP; /* humans won -> harder next time */
+        st->gens_to_win = redis_golz_set_gens_to_win(st->gens_to_win);
+        break;
+    }
+    case GOLZ_ZOMBIE_WIN: {
+        long n = redis_golz_incr_zombie_wins();
+        st->zombie_wins = (n >= 0) ? n : st->zombie_wins + 1;
+        st->gens_to_win -= GOLZ_GENS_LOSS_STEP; /* humans lost -> easier next time */
+        st->gens_to_win = redis_golz_set_gens_to_win(st->gens_to_win);
+        break;
+    }
+    case GOLZ_TIE: {
+        long n = redis_golz_incr_ties();
+        st->ties = (n >= 0) ? n : st->ties + 1;
+        break; /* a tie leaves the threshold unchanged */
+    }
+    default:
+        return; /* CONTINUE is not a decisive outcome */
+    }
+    st->outcome_recorded = true;
 }
 
 /* Route the per-generation terminal decision while running. */
 static void handle_terminal(golz_mode_state_t *st, golz_terminal_t t) {
-    if (t == GOLZ_ZOMBIE_WIN) {
-        record_win(st);              /* R17: increment exactly once (latched) */
-        st->phase = GOLZ_PHASE_LAP;  /* enter the victory lap (R20) */
+    switch (t) {
+    case GOLZ_ZOMBIE_WIN:
+        record_outcome(st, t);
+        st->phase = GOLZ_PHASE_LAP; /* victory lap, then the banner (R20) */
         st->last_step = lv_tick_get();
-        return;
-    }
-    if (t == GOLZ_QUIET_RESTART) {
-        /* Arm a grace window on first detection, then auto-restart, mirroring
-         * the Game of Life cycle behavior. The menu pauses the countdown. */
-        if (!st->cycle_armed) {
-            st->cycle_armed = true;
-            st->cycle_since = lv_tick_get();
-        } else if (st->menu_open) {
-            st->cycle_since = lv_tick_get();
-        } else if (lv_tick_elaps(st->cycle_since) >= GOLZ_CYCLE_GRACE_MS) {
-            reseed(st);
-        }
+        break;
+    case GOLZ_HUMAN_WIN:
+    case GOLZ_TIE:
+        record_outcome(st, t);
+        show_banner(st); /* no lap: straight to the end-of-game banner */
+        break;
+    default:
+        break; /* GOLZ_CONTINUE: keep running */
     }
 }
 
@@ -306,7 +350,9 @@ static void banner_clicked_cb(lv_event_t *e) {
     reseed(st);
 }
 
-/* Show the full-screen "The Zombies Won" banner over the frozen board. */
+/* Show the full-screen end-of-game banner over the frozen board: who won, the
+ * running Humans/Zombies/Ties tally, the next round's survival threshold, and
+ * (smaller) the historical pre-machete zombie wins. */
 static void show_banner(golz_mode_state_t *st) {
     st->phase = GOLZ_PHASE_BANNER;
     st->banner_since = lv_tick_get();
@@ -329,15 +375,49 @@ static void show_banner(golz_mode_state_t *st) {
     lv_obj_add_flag(scrim, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(scrim, banner_clicked_cb, LV_EVENT_CLICKED, st);
 
-    char buf[64];
-    snprintf(buf, sizeof(buf), "The Zombies Won\n%ld total", st->wins);
+    /* Outcome-specific title + accent colour (humans blue, zombies red, tie grey). */
+    const char *title;
+    uint32_t accent;
+    switch (st->outcome) {
+    case GOLZ_HUMAN_WIN:
+        title = "The Humans Won!";
+        accent = 0x4d9dff; /* blue, matching the machete cells */
+        break;
+    case GOLZ_ZOMBIE_WIN:
+        title = "The Zombies Won";
+        accent = 0xff4d4d; /* red */
+        break;
+    default:
+        title = "Stalemate - Tie";
+        accent = 0xb8c0cc; /* grey */
+        break;
+    }
+
+    /* Main block: title + the three running totals + next-round threshold. */
+    char buf[160];
+    snprintf(buf, sizeof(buf),
+             "%s\nHumans %ld   Zombies %ld   Ties %ld\nNext: Humans must last %ld "
+             "generations",
+             title, st->human_wins, st->zombie_wins, st->ties, st->gens_to_win);
     lv_obj_t *lbl = lv_label_create(scrim);
     lv_label_set_text(lbl, buf);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_36, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(0xff4d4d), LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(accent), LV_PART_MAIN);
     lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_center(lbl);
+    lv_obj_align(lbl, LV_ALIGN_CENTER, 0, -14);
     lv_obj_add_flag(lbl, LV_OBJ_FLAG_GESTURE_BUBBLE);
+
+    /* Smaller historical footnote: pre-machete zombie wins. */
+    char hist[64], num[32];
+    format_commas(st->historical_zombie_wins, num, sizeof(num));
+    snprintf(hist, sizeof(hist), "Historical zombie wins: %s", num);
+    lv_obj_t *foot = lv_label_create(scrim);
+    lv_label_set_text(foot, hist);
+    lv_obj_set_style_text_font(foot, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(foot, lv_color_hex(0x8a929e), LV_PART_MAIN);
+    lv_obj_set_style_text_align(foot, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_align(foot, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_add_flag(foot, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
     st->banner = scrim;
 }
@@ -469,19 +549,6 @@ static void build_screen(kd_mode_t *self) {
     lv_obj_add_event_cb(canvas, canvas_clicked_cb, LV_EVENT_CLICKED, st);
     st->canvas = canvas;
 
-    /* Corner win-counter readout (GoLZ identity marker; visible every round). */
-    lv_obj_t *wins = lv_label_create(scr);
-    lv_obj_set_style_text_font(wins, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(wins, lv_color_hex(0xff4d4d), LV_PART_MAIN);
-    lv_obj_set_style_bg_color(wins, lv_color_hex(0x000000), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(wins, LV_OPA_50, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(wins, 6, LV_PART_MAIN);
-    lv_obj_align(wins, LV_ALIGN_TOP_LEFT, 8, 8);
-    lv_obj_add_flag(wins, LV_OBJ_FLAG_GESTURE_BUBBLE);
-    /* Hidden until a win; revealed in record_win, re-hidden on reseed. */
-    lv_obj_add_flag(wins, LV_OBJ_FLAG_HIDDEN);
-    st->wins_label = wins;
-
     self->screen = scr;
 }
 
@@ -491,9 +558,15 @@ static void activate(kd_mode_t *self) {
         build_screen(self);
     /* A re-activation starts a fresh randomized round with no overlay open. */
     close_overlays(st);
-    /* Restore the persisted win count into the in-memory mirror (0 when Redis
-     * is absent), then start a fresh randomized round. */
-    st->wins = redis_golz_get_wins(0);
+    /* Restore the persisted counters and adaptive threshold into the in-memory
+     * mirrors (defaults when Redis is absent), then start a fresh round. The
+     * historical zombie-win figure is the legacy pre-machete counter; default to
+     * the documented baseline (13,883) when the key is absent. */
+    st->human_wins = redis_golz_get_human_wins(0);
+    st->zombie_wins = redis_golz_get_zombie_wins(0);
+    st->ties = redis_golz_get_ties(0);
+    st->gens_to_win = redis_golz_get_gens_to_win(GOLZ_GENS_TO_WIN_DEFAULT);
+    st->historical_zombie_wins = redis_golz_get_wins(13883);
     reseed(st);
 }
 
