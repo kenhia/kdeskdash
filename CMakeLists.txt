@@ -115,6 +115,12 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_compile_options(test_golz PRIVATE -Wall -Wextra)
     add_test(NAME test_golz COMMAND test_golz)
 
+    # GoLZ machete balance sweep (headless, pure core). Not a ctest — built on
+    # demand: cmake --build build --target golz_mc, then ./build/golz_mc --help.
+    add_executable(golz_mc EXCLUDE_FROM_ALL tools/golz_mc.c src/golz.c src/gol.c)
+    target_include_directories(golz_mc PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(golz_mc PRIVATE -Wall -Wextra -O2)
+
     add_executable(test_stopwatch tests/test_stopwatch.c src/stopwatch.c)
     target_include_directories(test_stopwatch PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_stopwatch PRIVATE -Wall -Wextra)

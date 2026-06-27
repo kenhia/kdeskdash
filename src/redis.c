@@ -21,8 +21,15 @@
 
 #define KEY_ACTIVE_MODE  "kdeskdash:active_mode"
 #define KEY_GOL_SETTINGS "kdeskdash:gol:settings"
-#define KEY_GOLZ_WINS     "kdeskdash:golz:wins"
+#define KEY_GOLZ_WINS     "kdeskdash:golz:wins" /* legacy: historical zombie wins */
+#define KEY_GOLZ_HUMAN_WINS  "kdeskdash:golz:human_wins"
+#define KEY_GOLZ_ZOMBIE_WINS "kdeskdash:golz:zombie_wins"
+#define KEY_GOLZ_TIES        "kdeskdash:golz:ties"
+#define KEY_GOLZ_GENS_TO_WIN "kdeskdash:golz:gens_to_win"
 #define KEY_GOLZ_SETTINGS "kdeskdash:golz:settings"
+
+/* Floor for the adaptive human-win threshold, mirroring the game rule. */
+#define GOLZ_GENS_FLOOR 100
 #define KEY_DEV_LEFT     "kdeskdash:dev:left"
 #define KEY_DEV_RIGHT    "kdeskdash:dev:right"
 
@@ -252,10 +259,11 @@ bool redis_apply_gol_settings(gol_settings_t *cfg) {
     return applied;
 }
 
-long redis_golz_incr_wins(void) {
+/* Atomic INCR of a counter key, returning the post-increment value or -1. */
+static long redis_incr_key(const char *key) {
     if (!redis_client_ensure(&g_control))
         return -1;
-    redisReply *r = redisCommand(g_control.ctx, "INCR %s", KEY_GOLZ_WINS);
+    redisReply *r = redisCommand(g_control.ctx, "INCR %s", key);
     long count = -1;
     if (r && r->type == REDIS_REPLY_INTEGER)
         count = (long)r->integer;
@@ -264,11 +272,63 @@ long redis_golz_incr_wins(void) {
     return count;
 }
 
-long redis_golz_get_wins(long default_val) {
+/* Read a counter key as a non-negative long, returning default_val otherwise. */
+static long redis_get_count(const char *key, long default_val) {
     char buf[32];
-    if (!redis_get_string(KEY_GOLZ_WINS, buf, sizeof(buf)))
+    if (!redis_get_string(key, buf, sizeof(buf)))
         return default_val;
     return golz_parse_wins(buf, default_val);
+}
+
+long redis_golz_incr_wins(void) {
+    return redis_incr_key(KEY_GOLZ_WINS);
+}
+
+long redis_golz_get_wins(long default_val) {
+    return redis_get_count(KEY_GOLZ_WINS, default_val);
+}
+
+long redis_golz_incr_human_wins(void) {
+    return redis_incr_key(KEY_GOLZ_HUMAN_WINS);
+}
+
+long redis_golz_incr_zombie_wins(void) {
+    return redis_incr_key(KEY_GOLZ_ZOMBIE_WINS);
+}
+
+long redis_golz_incr_ties(void) {
+    return redis_incr_key(KEY_GOLZ_TIES);
+}
+
+long redis_golz_get_human_wins(long default_val) {
+    return redis_get_count(KEY_GOLZ_HUMAN_WINS, default_val);
+}
+
+long redis_golz_get_zombie_wins(long default_val) {
+    return redis_get_count(KEY_GOLZ_ZOMBIE_WINS, default_val);
+}
+
+long redis_golz_get_ties(long default_val) {
+    return redis_get_count(KEY_GOLZ_TIES, default_val);
+}
+
+long redis_golz_get_gens_to_win(long default_val) {
+    long v = redis_get_count(KEY_GOLZ_GENS_TO_WIN, -1);
+    if (v < 0)
+        return default_val; /* missing/unparseable -> caller's default */
+    return v < GOLZ_GENS_FLOOR ? GOLZ_GENS_FLOOR : v;
+}
+
+long redis_golz_set_gens_to_win(long value) {
+    if (value < GOLZ_GENS_FLOOR)
+        value = GOLZ_GENS_FLOOR; /* enforce the game-rule floor */
+    if (!redis_client_ensure(&g_control))
+        return value; /* Redis down: caller still uses the in-memory value */
+    redisReply *r =
+        redisCommand(g_control.ctx, "SET %s %ld", KEY_GOLZ_GENS_TO_WIN, value);
+    if (r)
+        freeReplyObject(r);
+    return value;
 }
 
 /* Apply one "field value" pair from the GoLZ settings hash onto cfg, with hard
@@ -292,6 +352,18 @@ static void apply_golz_field(golz_settings_t *cfg, const char *field,
         int v = atoi(val);
         if (v >= 1 && v <= 1000000)
             cfg->max_generations = v;
+    } else if (strcmp(field, "machete_percentage") == 0) {
+        int v = atoi(val);
+        if (v >= 0 && v <= 100)
+            cfg->machete_percentage = v;
+    } else if (strcmp(field, "human_kill_zombie") == 0) {
+        int v = atoi(val);
+        if (v >= 0 && v <= 100)
+            cfg->human_kill_zombie = v;
+    } else if (strcmp(field, "generations_to_win") == 0) {
+        int v = atoi(val);
+        if (v >= 1 && v <= 1000000)
+            cfg->generations_to_win = v;
     }
 }
 

@@ -622,7 +622,7 @@ static void test_terminal_win_precedence(void) {
 }
 
 /* Backstop: living still present and active, but the generation cap is hit ->
- * QUIET_RESTART, not a win (R23). */
+ * TIE, not a win (R23). */
 static void test_terminal_backstop(void) {
     gol_settings_t living = {.trail_turns = 1};
     golz_settings_t cfg = mk_cfg(0, 0, 0);
@@ -633,8 +633,8 @@ static void test_terminal_backstop(void) {
     gol_set(&g.living, 8, 8, true);
     gol_set(&g.living, 9, 8, true);
     g.generation = 5; /* exactly at the cap */
-    check(golz_terminal(&g) == GOLZ_QUIET_RESTART,
-          "generation at cap -> backstop restart");
+    check(golz_terminal(&g) == GOLZ_TIE,
+          "generation at cap -> backstop tie");
     golz_free(&g);
 }
 
@@ -655,7 +655,7 @@ static void test_terminal_continue(void) {
 }
 
 /* A still-life living region with a far-off wandering zombie still trips the
- * living-only cycle detector (the moving zombie is not hashed) -> QUIET_RESTART
+ * living-only cycle detector (the moving zombie is not hashed) -> TIE
  * before the zombie can reach the block (R16). */
 static void test_terminal_cycle_ignores_zombie(void) {
     gol_settings_t living = {.trail_turns = 1};
@@ -677,12 +677,12 @@ static void test_terminal_cycle_ignores_zombie(void) {
         if (t != GOLZ_CONTINUE)
             break;
     }
-    check(t == GOLZ_QUIET_RESTART, "still-life living trips cycle restart");
+    check(t == GOLZ_TIE, "still-life living trips cycle tie");
     check(gol_live_count(&g.living) == 4, "block survived (zombie never reached)");
     golz_free(&g);
 }
 
-/* Both factions extinct (empty board) -> QUIET_RESTART (never a win). */
+/* Both factions extinct (empty board) -> TIE (never a win). */
 static void test_terminal_both_extinct(void) {
     gol_settings_t living = {.trail_turns = 1};
     golz_settings_t cfg = mk_cfg(0, 0, 0);
@@ -697,9 +697,202 @@ static void test_terminal_both_extinct(void) {
         if (t != GOLZ_CONTINUE)
             break;
     }
-    check(t == GOLZ_QUIET_RESTART, "double extinction -> quiet restart");
+    check(t == GOLZ_TIE, "double extinction -> tie");
     check(t != GOLZ_ZOMBIE_WIN, "double extinction is not a win");
     golz_free(&g);
+}
+
+/* Machete clamp: percentages bound to [0,100]; generations_to_win floors at 0
+ * (0 disables the human-win threshold), negatives clamp up. */
+static void test_machete_settings_clamp(void) {
+    golz_settings_t c = {.machete_percentage = 250,
+                         .human_kill_zombie = -7,
+                         .generations_to_win = -1};
+    golz_settings_clamp(&c);
+    check_eq(c.machete_percentage, 100, "machete_percentage clamps to 100");
+    check_eq(c.human_kill_zombie, 0, "human_kill_zombie clamps to 0");
+    check_eq(c.generations_to_win, 0, "negative generations_to_win -> 0");
+}
+
+/* Machete seeding: 0% places none and draws no RNG (stream parity); 100% places
+ * machetes on every cell; placement is deterministic for a fixed PRNG state. */
+static void test_machete_seed(void) {
+    gol_settings_t living = {.density = 0.3, .trail_turns = 1};
+    size_t n = 24 * 12;
+
+    /* 0% -> no machetes, and the post-seed living/zombie state and PRNG must be
+     * byte-identical to the same seed with the field absent (no stream shift). */
+    golz_settings_t z0 = mk_cfg(2, 0, 0); /* machete_percentage stays 0 */
+    uint32_t ra = 0xABCDEF, rb = 0xABCDEF;
+    golz_t a, b;
+    golz_init(&a, 24, 12, &living, &z0, &ra);
+    golz_init(&b, 24, 12, &living, &z0, &rb);
+    golz_seed(&a);
+    golz_seed(&b);
+    int mc = 0;
+    for (size_t i = 0; i < n; i++)
+        mc += a.machetes[i];
+    check_eq(mc, 0, "0% machete_percentage places no machetes");
+    check_eq((int)ra, (int)rb, "0% machete seeding draws no extra RNG");
+    check(memcmp(a.living.cur, b.living.cur, n) == 0, "living seed unaffected");
+
+    /* 100% -> every cell armed. */
+    golz_settings_t z100 = mk_cfg(2, 0, 0);
+    z100.machete_percentage = 100;
+    uint32_t rc = 5;
+    golz_t c;
+    golz_init(&c, 24, 12, &living, &z100, &rc);
+    golz_seed(&c);
+    mc = 0;
+    for (size_t i = 0; i < n; i++)
+        mc += c.machetes[i];
+    check_eq(mc, (int)n, "100% machete_percentage arms every cell");
+
+    /* Determinism: same starting PRNG -> same machete layout. */
+    uint8_t first[24 * 12];
+    memcpy(first, c.machetes, n);
+    rc = 5;
+    golz_seed(&c);
+    check(memcmp(first, c.machetes, n) == 0, "machete placement is deterministic");
+    golz_free(&a);
+    golz_free(&b);
+    golz_free(&c);
+}
+
+/* A 2x2 still-life block, all four cells armed, with one zombie in Chebyshev
+ * range and human_kill_zombie==100: the machete turn kills the zombie BEFORE it
+ * can move/eat, and the block survives. With human_kill_zombie==0 the zombie
+ * lives. */
+static void test_machete_kill(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    /* machete_percentage>0 enables the pass; machetes are placed manually. */
+    golz_settings_t z = mk_cfg(0, 0, 0);
+    z.machete_percentage = 100;
+    z.human_kill_zombie = 100;
+    uint32_t rng = 13;
+    golz_t g;
+    golz_init(&g, 12, 12, &living, &z, &rng);
+    int blk[4][2] = {{3, 3}, {4, 3}, {3, 4}, {4, 4}};
+    for (int i = 0; i < 4; i++) {
+        gol_set(&g.living, blk[i][0], blk[i][1], true);
+        g.machetes[blk[i][1] * 12 + blk[i][0]] = 1;
+    }
+    g.zombies[4 * 12 + 6] = 1; /* (6,4): Chebyshev dist 2 from (4,4) */
+
+    golz_step(&g);
+    check_eq(golz_zombie_count(&g), 0, "armed humans kill the in-range zombie");
+    check_eq(gol_live_count(&g.living), 4, "the block survives (struck first)");
+    golz_free(&g);
+
+    /* human_kill_zombie==0 -> no kill; the zombie persists. */
+    golz_settings_t z2 = mk_cfg(0, 0, 0);
+    z2.machete_percentage = 100;
+    z2.human_kill_zombie = 0;
+    uint32_t rng2 = 13;
+    golz_t g2;
+    golz_init(&g2, 12, 12, &living, &z2, &rng2);
+    for (int i = 0; i < 4; i++) {
+        gol_set(&g2.living, blk[i][0], blk[i][1], true);
+        g2.machetes[blk[i][1] * 12 + blk[i][0]] = 1;
+    }
+    g2.zombies[4 * 12 + 6] = 1;
+    golz_step(&g2);
+    check_eq(golz_zombie_count(&g2), 1, "0% kill chance leaves the zombie alive");
+    golz_free(&g2);
+}
+
+/* Machete reach is Chebyshev distance 2: a zombie at distance 2 is killable, a
+ * zombie at distance 3 is not. */
+static void test_machete_reach_boundary(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t z = mk_cfg(0, 0, 0);
+    z.machete_percentage = 100;
+    z.human_kill_zombie = 100;
+    int blk[4][2] = {{3, 3}, {4, 3}, {3, 4}, {4, 4}};
+
+    /* distance 2 -> killed */
+    uint32_t r1 = 1;
+    golz_t in;
+    golz_init(&in, 12, 12, &living, &z, &r1);
+    for (int i = 0; i < 4; i++) {
+        gol_set(&in.living, blk[i][0], blk[i][1], true);
+        in.machetes[blk[i][1] * 12 + blk[i][0]] = 1;
+    }
+    in.zombies[4 * 12 + 6] = 1; /* (6,4): dist 2 from (4,4) */
+    golz_step(&in);
+    check_eq(golz_zombie_count(&in), 0, "zombie at distance 2 is in reach");
+    golz_free(&in);
+
+    /* distance 3 -> out of reach (no toroidal shortcut on a 12-wide grid) */
+    uint32_t r2 = 1;
+    golz_t out;
+    golz_init(&out, 12, 12, &living, &z, &r2);
+    for (int i = 0; i < 4; i++) {
+        gol_set(&out.living, blk[i][0], blk[i][1], true);
+        out.machetes[blk[i][1] * 12 + blk[i][0]] = 1;
+    }
+    out.zombies[4 * 12 + 7] = 1; /* (7,4): dist 3 from every block cell */
+    golz_step(&out);
+    check_eq(golz_zombie_count(&out), 1, "zombie at distance 3 is out of reach");
+    golz_free(&out);
+}
+
+/* Render: a living cell on a machete is blue, not green; its fade trail is blue;
+ * red and blue compose on an empty cell. */
+static void test_compose_machete(void) {
+    gol_settings_t living = {.trail = true, .trail_turns = 8};
+    golz_settings_t z = mk_cfg(0, 0, 0);
+    uint32_t rng = 1;
+    golz_t g;
+    golz_init(&g, 4, 4, &living, &z, &rng);
+
+    g.living.cur[0] = 1;
+    g.machetes[0] = 1; /* living + machete -> blue */
+    check(golz_compose_pixel(&g, 0, 0) == 0xFF0000FFu, "living+machete -> blue");
+
+    g.machetes[1] = 1;
+    g.living.trail[1] = 8; /* empty machete cell, full living trail -> blue fade */
+    check(golz_compose_pixel(&g, 1, 0) == (0xFF000000u | 255u),
+          "machete living trail fades on the blue channel");
+
+    g.machetes[2] = 1;
+    g.living.trail[2] = 8; /* full blue */
+    g.z_trail[2] = 4;      /* half red */
+    check(golz_compose_pixel(&g, 2, 0) == (0xFF000000u | (127u << 16) | 255u),
+          "empty machete cell composes red + blue");
+    golz_free(&g);
+}
+
+/* Human win: living present and the generation counter reaches a positive
+ * generations_to_win. A zero threshold disables the human win. */
+static void test_terminal_human_win(void) {
+    gol_settings_t living = {.trail_turns = 1};
+    golz_settings_t cfg = mk_cfg(0, 0, 0);
+    cfg.generations_to_win = 100;
+    uint32_t rng = 1;
+    golz_t g;
+    golz_init(&g, 16, 16, &living, &cfg, &rng);
+    gol_set(&g.living, 1, 1, true); /* 2x2 still-life block, living remains */
+    gol_set(&g.living, 2, 1, true);
+    gol_set(&g.living, 1, 2, true);
+    gol_set(&g.living, 2, 2, true);
+    g.generation = 100; /* reached the threshold */
+    check(golz_terminal(&g) == GOLZ_HUMAN_WIN,
+          "living past generations_to_win -> human win");
+    golz_free(&g);
+
+    /* gens_to_win 0 disables the threshold: same board, no human win. */
+    golz_settings_t cfg0 = mk_cfg(0, 0, 0); /* generations_to_win stays 0 */
+    uint32_t rng2 = 1;
+    golz_t g2;
+    golz_init(&g2, 16, 16, &living, &cfg0, &rng2);
+    gol_set(&g2.living, 5, 5, true); /* blinker: never cycles within one check */
+    gol_set(&g2.living, 6, 5, true);
+    gol_set(&g2.living, 7, 5, true);
+    g2.generation = 100000;
+    check(golz_terminal(&g2) != GOLZ_HUMAN_WIN,
+          "generations_to_win 0 disables the human-win threshold");
+    golz_free(&g2);
 }
 
 /* Pure win-counter parse-and-clamp (R17 read path). */
@@ -744,6 +937,12 @@ int main(void) {
     test_terminal_continue();
     test_terminal_cycle_ignores_zombie();
     test_terminal_both_extinct();
+    test_machete_settings_clamp();
+    test_machete_seed();
+    test_machete_kill();
+    test_machete_reach_boundary();
+    test_compose_machete();
+    test_terminal_human_win();
     test_parse_wins();
 
     if (failures) {
