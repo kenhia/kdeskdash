@@ -6,10 +6,10 @@ panel and is designed to host multiple interactive *modes* (dev stats, Game of L
 main-menu launcher, …). Sibling project to `kpidash`, reusing its LVGL + DRM + Pi-sysroot
 cross-compile approach and adding touch input.
 
-> Status: **MVP** — a multi-mode shell with swipe navigation (Game of Life, Clock, and a
-> Menu launcher), optional Redis remote control / last-mode persistence / Game of Life
-> settings injection, and a systemd service for boot-to-dashboard. See
-> [docs/plans](docs/plans/) and [docs/brainstorms](docs/brainstorms/).
+> Status: **active** — a multi-mode shell with swipe navigation (Game of Life, GoLZ,
+> Clock, Dev graphs, Claude agent activity, and a Menu launcher), optional Redis remote
+> control / last-mode persistence / settings injection, and a systemd service for
+> boot-to-dashboard. See [docs/plans](docs/plans/) and [docs/brainstorms](docs/brainstorms/).
 
 > **Note:** Like many of my projects, I've produced this for my own environment. If you
 > want to make use of this code, have your AI agent help change the hardcoded
@@ -21,7 +21,16 @@ cross-compile approach and adding touch input.
 - **Menu** — swipe-down launcher with a tile per content mode; tap to open. Startup default.
 - **Game of Life** — full-screen Conway's Game of Life; settings randomize per entry (or are
   injected via Redis).
+- **GoLZ** — Game of Life with Zombies: Humans vs. Zombies vs. the ordinary Living, with
+  machetes, adaptive win thresholds, and persistent outcome counters.
 - **Clock** — local (America/Los_Angeles) + UTC time and a wall-clock stopwatch.
+- **Dev** — live CPU/RAM + GPU/VRAM charts for two selectable fleet hosts (kpidash
+  telemetry from the `rpi53` Redis).
+- **Claude** — fleet Claude Code agent activity: attention-first session rows
+  (awaiting-input on top), recent completions, and 5-hour / 7-day subscription usage
+  gauges. Fed by [publisher/claude-pub.sh](publisher/README.md) hooks + statusline on
+  each dev machine via a dedicated Redis instance
+  ([deploy/redis-claude.conf](deploy/redis-claude.conf), port 6380).
 
 Navigation: swipe **left/right** to cycle content modes, swipe **down** for the Menu.
 
@@ -84,6 +93,9 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_TELEMETRY_REDIS_HOST` | `rpi53`    | Telemetry source Redis host (kpidash host metrics; read-only, separate from the control Redis). Used by `dev` mode. |
 | `KDESKDASH_TELEMETRY_REDIS_PORT` | `6379`     | Telemetry source Redis port |
 | `KDESKDASH_TELEMETRY_REDISCLI_AUTH` | _(unset)_ | Telemetry source Redis password, if any (AUTH) |
+| `KDESKDASH_CLAUDE_REDIS_HOST` | `127.0.0.1`   | Claude-feed Redis host (agent activity + usage limits; a second, LAN-reachable instance on the Pi itself). Used by `claude` mode. |
+| `KDESKDASH_CLAUDE_REDIS_PORT` | `6380`        | Claude-feed Redis port |
+| `KDESKDASH_CLAUDE_REDISCLI_AUTH` | _(unset)_  | Claude-feed Redis password, if any (AUTH) |
 
 ## Redis (optional)
 
@@ -140,7 +152,13 @@ kdeskdash/
 ├── cmake/aarch64-toolchain.cmake   # Pi 5 cross-compile toolchain
 ├── deploy/
 │   ├── kdeskdash.service           # systemd unit (boot-to-dashboard)
-│   └── kdeskdash.env.example       # env template -> /etc/kdeskdash/kdeskdash.env
+│   ├── kdeskdash.env.example       # env template -> /etc/kdeskdash/kdeskdash.env
+│   ├── redis-claude.conf           # claude-feed Redis instance (port 6380, ephemeral)
+│   └── redis-claude.service        # systemd unit for the claude-feed instance
+├── publisher/
+│   ├── claude-pub.sh               # zero-dep hook/statusline publisher (RESP over /dev/tcp)
+│   ├── settings-fragment.json      # ~/.claude/settings.json hook + statusline config
+│   └── README.md                   # per-machine install + smoke test
 ├── scripts/
 │   ├── sync-sysroot.sh             # rsync Pi sysroot for cross-compilation
 │   └── deploy.sh                   # remote deploy / systemd install

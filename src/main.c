@@ -10,8 +10,10 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include "claude_redis.h"
 #include "config.h"
 #include "lvgl.h"
+#include "modes/claude.h"
 #include "modes/clock.h"
 #include "modes/dev.h"
 #include "modes/game_of_life.h"
@@ -76,6 +78,8 @@ int main(void) {
         clock_mode_create("clock", "Clock"));
     shell_register_content_mode(
         dev_mode_create("dev", "Dev"));
+    shell_register_content_mode(
+        claude_mode_create("claude", "Claude"));
     shell_register_menu(menu_mode_create("menu", "Menu"));
 
     /* Optional Redis: remote control + last-mode persistence. Safe when absent.
@@ -92,6 +96,11 @@ int main(void) {
      * a down/slow endpoint never stalls boot or the control path. */
     telemetry_init(cfg.telemetry_redis_host, cfg.telemetry_redis_port,
                    cfg.telemetry_redis_auth);
+
+    /* Claude feed (agent activity + usage limits): third independent handle,
+     * localhost instance on this Pi by default. */
+    claude_redis_init(cfg.claude_redis_host, cfg.claude_redis_port,
+                      cfg.claude_redis_auth);
 
     /* Capacitive touch via evdev (ILITEK, default /dev/input/event1).
      * Touch is optional: if it cannot be opened, the display still runs. */
@@ -122,6 +131,7 @@ int main(void) {
     printf("\nkdeskdash: shutting down\n");
     redis_shutdown();
     telemetry_shutdown();
+    claude_redis_shutdown();
     lv_deinit();
     return 0;
 }
