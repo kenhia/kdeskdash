@@ -16,7 +16,7 @@
       { "hooks": [ { "type": "command", "command": "/home/ken/.claude/kdeskdash-pub/claude-pub.sh hook", "async": true, "timeout": 5 } ] }
     ],
     "SessionEnd": [
-      { "hooks": [ { "type": "command", "command": "/home/ken/.claude/kdeskdash-pub/claude-pub.sh hook", "async": true, "timeout": 5 } ] }
+      { "hooks": [ { "type": "command", "command": "/home/ken/.claude/kdeskdash-pub/claude-pub.sh hook", "async": false, "timeout": 5 } ] }
     ]
   }
 }
