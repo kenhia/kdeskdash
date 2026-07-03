@@ -46,6 +46,8 @@ add_executable(kdeskdash
     src/telemetry_host.c
     src/claude_feed.c
     src/claude_redis.c
+    src/bmp_write.c
+    src/screenshot.c
     lib/cjson/cJSON.c
     src/modes/game_of_life.c
     src/modes/golz.c
@@ -143,6 +145,12 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_compile_options(test_dev_telemetry PRIVATE -Wall -Wextra)
     target_link_libraries(test_dev_telemetry m)
     add_test(NAME test_dev_telemetry COMMAND test_dev_telemetry)
+
+    # Pure BMP encoder (device self-screenshot output; LVGL glue not tested).
+    add_executable(test_bmp_write tests/test_bmp_write.c src/bmp_write.c)
+    target_include_directories(test_bmp_write PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_bmp_write PRIVATE -Wall -Wextra)
+    add_test(NAME test_bmp_write COMMAND test_bmp_write)
 
     # Pure claude-feed core: key contract, hash parsing, status ladder, sort,
     # limits, recent records, formatting (cJSON + libm like dev_telemetry).

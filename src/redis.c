@@ -17,9 +17,11 @@
 #include <string.h>
 #include <time.h>
 
+#include "screenshot.h"
 #include "shell.h"
 
 #define KEY_ACTIVE_MODE  "kdeskdash:active_mode"
+#define KEY_SCREENSHOT   "kdeskdash:screenshot"
 #define KEY_GOL_SETTINGS "kdeskdash:gol:settings"
 #define KEY_GOLZ_WINS     "kdeskdash:golz:wins" /* legacy: historical zombie wins */
 #define KEY_GOLZ_HUMAN_WINS  "kdeskdash:golz:human_wins"
@@ -145,6 +147,16 @@ void redis_poll(void) {
         if (m && m != shell_active())
             shell_set_active(m); /* unknown ids are simply ignored */
     }
+    freeReplyObject(r);
+
+    /* One-shot device self-screenshot: consume kdeskdash:screenshot (GETDEL)
+     * and snapshot the active screen to BMP. A value starting with '/' names
+     * the output path; anything else uses the default. */
+    r = redisCommand(g_control.ctx, "GETDEL " KEY_SCREENSHOT);
+    if (!r)
+        return;
+    if (r->type == REDIS_REPLY_STRING && r->len > 0)
+        screenshot_save(r->str[0] == '/' ? r->str : NULL);
     freeReplyObject(r);
 }
 

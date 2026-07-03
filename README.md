@@ -1,5 +1,7 @@
 # kdeskdash
 
+![Claude mode: fleet agent activity + usage limits on the 1920x440 panel](docs/images/kdeskdash-claude-mode.png)
+
 A multi-mode, touch-enabled desk dashboard for the Raspberry Pi 5, built with
 [LVGL](https://lvgl.io/). It runs fullscreen on an 11.26" 1920x440 capacitive touch
 panel and is designed to host multiple interactive *modes* (dev stats, Game of Life, a
@@ -114,6 +116,7 @@ Keys:
 | `kdeskdash:gol:settings` | hash   | One-shot Game of Life settings, consumed (deleted) on the next GoL entry. |
 | `kdeskdash:dev:left`     | string | Dev mode: hostname assigned to the left charts; written on assign, restored on dev entry. |
 | `kdeskdash:dev:right`    | string | Dev mode: hostname assigned to the right charts; written on assign, restored on dev entry. |
+| `kdeskdash:screenshot`   | string | One-shot device self-screenshot (consumed with GETDEL): `SET` any value to write the active screen to `/tmp/kdeskdash-shot.bmp`; a value starting with `/` names the output path. How the README hero image above was taken — no glossy-panel photography. |
 
 Examples (run on the Pi or any host pointed at its Redis):
 
