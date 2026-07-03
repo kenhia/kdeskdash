@@ -44,6 +44,8 @@ add_executable(kdeskdash
     src/dev_telemetry.c
     src/telemetry.c
     src/telemetry_host.c
+    src/claude_feed.c
+    src/claude_redis.c
     lib/cjson/cJSON.c
     src/modes/game_of_life.c
     src/modes/golz.c
@@ -52,6 +54,7 @@ add_executable(kdeskdash
     src/modes/dev_graph.c
     src/modes/dev_hostlist.c
     src/modes/dev_view.c
+    src/modes/claude.c
     src/modes/menu.c
 )
 
@@ -140,6 +143,22 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_compile_options(test_dev_telemetry PRIVATE -Wall -Wextra)
     target_link_libraries(test_dev_telemetry m)
     add_test(NAME test_dev_telemetry COMMAND test_dev_telemetry)
+
+    # Pure claude-feed core: key contract, hash parsing, status ladder, sort,
+    # limits, recent records, formatting (cJSON + libm like dev_telemetry).
+    add_executable(test_claude_feed
+        tests/test_claude_feed.c
+        src/claude_feed.c
+        src/telemetry_host.c
+        lib/cjson/cJSON.c
+    )
+    target_include_directories(test_claude_feed PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/lib/cjson
+    )
+    target_compile_options(test_claude_feed PRIVATE -Wall -Wextra)
+    target_link_libraries(test_claude_feed m)
+    add_test(NAME test_claude_feed COMMAND test_claude_feed)
 
     # Pure host-token contract for telemetry discovery keys (no Redis/LVGL).
     add_executable(test_telemetry_host

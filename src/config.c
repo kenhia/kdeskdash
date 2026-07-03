@@ -45,4 +45,13 @@ void config_load(kdeskdash_config_t *cfg) {
     cfg->telemetry_redis_port = (tport > 0 && tport <= 65535) ? tport : 6379;
     const char *tauth = getenv("KDESKDASH_TELEMETRY_REDISCLI_AUTH");
     cfg->telemetry_redis_auth = (tauth && tauth[0] != '\0') ? tauth : NULL;
+
+    /* Claude feed: agent activity + usage limits, published by the fleet to a
+     * second Redis instance on this same Pi — a localhost read by default,
+     * deliberately independent of the (remote, flakier) telemetry endpoint. */
+    cfg->claude_redis_host = env_or("KDESKDASH_CLAUDE_REDIS_HOST", "127.0.0.1");
+    int cport = atoi(env_or("KDESKDASH_CLAUDE_REDIS_PORT", "6380"));
+    cfg->claude_redis_port = (cport > 0 && cport <= 65535) ? cport : 6380;
+    const char *cauth = getenv("KDESKDASH_CLAUDE_REDISCLI_AUTH");
+    cfg->claude_redis_auth = (cauth && cauth[0] != '\0') ? cauth : NULL;
 }
