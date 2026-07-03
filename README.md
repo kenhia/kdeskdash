@@ -117,7 +117,7 @@ Keys:
 | `kdeskdash:gol:settings` | hash   | One-shot Game of Life settings, consumed (deleted) on the next GoL entry. |
 | `kdeskdash:dev:left`     | string | Dev mode: hostname assigned to the left charts; written on assign, restored on dev entry. |
 | `kdeskdash:dev:right`    | string | Dev mode: hostname assigned to the right charts; written on assign, restored on dev entry. |
-| `kdeskdash:screenshot`   | string | One-shot device self-screenshot (consumed with GETDEL): `SET` any value to write the active screen to `/tmp/kdeskdash-shot.bmp`; a value starting with `/` names the output path. How the README hero image above was taken — no glossy-panel photography. |
+| `kdeskdash:screenshot`   | string | One-shot device self-screenshot (consumed with GETDEL): `SET` any value to write the active screen to `/tmp/kdeskdash-shot.bmp`; a value starting with `/` names the output path. How the README hero image above was taken — no glossy-panel photography. [scripts/kddss](scripts/kddss) wraps the whole flow: `kddss [basename]` triggers the shot and lands a PNG in the current directory. |
 
 Examples (run on the Pi or any host pointed at its Redis):
 
