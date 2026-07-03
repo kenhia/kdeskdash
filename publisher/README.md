@@ -38,10 +38,19 @@ printf '%s' '{"hook_event_name":"SessionEnd","reason":"other","session_id":"smok
   | ~/.claude/kdeskdash-pub/claude-pub.sh hook   # cleans up + pushes a recent record
 ```
 
-## Fleet notes (2026-07-02)
+## Fleet notes (2026-07-03)
 
-- `kai`: installed.
+- `kai`: installed (Claude Code 2.1.198).
 - `cleo`: installed (Git Bash at `C:\Program Files\Git\bin\bash.exe`; script path
   written with forward slashes). Local state lands in `%USERPROFILE%\.claude\kdeskdash-pub\state`.
-- `kubs0`: Claude Code not installed yet — when it is, follow the install steps
-  above verbatim.
+- `kubs0`: installed (Claude Code 2.1.199 at `~/.local/bin/claude`). Interactive
+  sessions run the full lifecycle; headless `claude -p` on 2.1.199 does not
+  reliably await SessionEnd hooks at exit, so a `-p` run can leave a session
+  hash behind — the dashboard's idle→stale ladder + 2h TTL absorbs it.
+
+## SessionEnd is synchronous by design
+
+Every event publishes fire-and-forget (backgrounded send) except `SessionEnd`,
+which sends synchronously and is registered `"async": false`: the CLI process
+is exiting, and a backgrounded DEL loses the race with process-group teardown
+(ghost session row until the TTL). The hook-level 5s timeout bounds the cost.

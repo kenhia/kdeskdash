@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# kddss — kdeskdash screenshot: trigger the device self-screenshot
+# (kdeskdash:screenshot control key) and copy the result here as PNG.
+#
+# Usage: kddss [basename]
+#   kddss                        -> ./kdeskdash-YYYYmmdd-HHMMSS.png
+#   kddss golz-zombie-invasion   -> ./golz-zombie-invasion.png
+#
+# Requires: ssh access to the dashboard Pi; python3+PIL or ffmpeg locally for
+# PNG conversion (falls back to keeping the raw BMP otherwise).
+set -euo pipefail
+
+KDD_HOST="${KDD_HOST:-ken@rpidash2}"
+
+base="${1:-kdeskdash-$(date +%Y%m%d-%H%M%S)}"
+base="${base%.png}"
+tmp_bmp="$(mktemp --suffix=.bmp)"
+trap 'rm -f "$tmp_bmp"' EXIT
+
+# One round-trip: trigger the shot and stream it back once it is FRESH. The
+# service runs as root and overwrites its own default output file in place, so
+# freshness is judged by mtime (a stale file from a previous run must not
+# satisfy the wait). Wrapped in bash -s so the remote login shell's dialect
+# doesn't matter.
+ssh "$KDD_HOST" 'bash -s' > "$tmp_bmp" <<'EOF'
+f=/tmp/kdeskdash-shot.bmp
+t0=$(date +%s)
+redis-cli set kdeskdash:screenshot 1 > /dev/null
+for i in $(seq 1 14); do
+    m=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+    [ "$m" -ge "$t0" ] && break
+    sleep 0.5
+done
+m=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+[ "$m" -ge "$t0" ] && cat "$f"
+exit 0
+EOF
+
+if [ ! -s "$tmp_bmp" ]; then
+    echo "kddss: no screenshot produced — is kdeskdash running on ${KDD_HOST#*@}?" >&2
+    exit 1
+fi
+
+if python3 -c 'import PIL' 2>/dev/null; then
+    python3 -c "from PIL import Image; Image.open('$tmp_bmp').save('${base}.png')"
+elif command -v ffmpeg > /dev/null; then
+    ffmpeg -loglevel error -y -i "$tmp_bmp" "${base}.png"
+else
+    cp "$tmp_bmp" "${base}.bmp"
+    echo "kddss: no PNG converter (PIL/ffmpeg); kept ${base}.bmp"
+    exit 0
+fi
+echo "kddss: saved ${base}.png"

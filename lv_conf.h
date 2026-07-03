@@ -48,5 +48,10 @@
 #define LV_USE_LINUX_DRM 1
 #define LV_USE_EVDEV     1
 
+/* Others — snapshot renders the active screen to a memory buffer, used by the
+ * kdeskdash:screenshot control-Redis trigger (device self-screenshot, e.g. for
+ * README shots without photographing the glossy panel). */
+#define LV_USE_SNAPSHOT 1
+
 #endif /* LV_CONF_H */
 #endif /* Enable */

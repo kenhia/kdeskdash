@@ -18,6 +18,9 @@
  *   kdeskdash:golz:ties         (string) post-machete Tie counter
  *   kdeskdash:golz:gens_to_win  (string) adaptive Human-win generation threshold
  *   kdeskdash:golz:settings     (hash)   one-shot GoLZ settings injection
+ *   kdeskdash:screenshot        (string) one-shot device self-screenshot trigger,
+ *                                        consumed with GETDEL; a value starting
+ *                                        with '/' names the BMP output path
  */
 #ifndef KDESKDASH_REDIS_H
 #define KDESKDASH_REDIS_H

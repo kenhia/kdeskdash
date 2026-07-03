@@ -55,15 +55,24 @@ resp() {
   done
 }
 
-# Send the accumulated pipeline in a disowned subshell so the caller never waits.
-send() {
+# Send the accumulated pipeline. Synchronous variant for events where the
+# process is about to die (SessionEnd): a backgrounded sender loses the race
+# with CLI exit / ssh teardown and the DEL never arrives (ghost session until
+# TTL). The hook-level timeout bounds the worst case.
+send_sync() {
   [ -n "$PAYLOAD" ] || return 0
   (
     exec 3<>"/dev/tcp/${KDD_REDIS_HOST}/${KDD_REDIS_PORT}" || exit 0
     printf '%s' "$PAYLOAD" >&3
     read -r -t 1 _ <&3   # give the server a beat to consume before close
     exec 3>&- 3<&-
-  ) >/dev/null 2>&1 &
+  ) >/dev/null 2>&1
+}
+
+# Disowned fire-and-forget variant so live-session events never wait.
+send() {
+  [ -n "$PAYLOAD" ] || return 0
+  send_sync &
   disown 2>/dev/null
 }
 
@@ -127,6 +136,8 @@ hook_mode() {
       fi
       rm -f "${STATE_DIR}/${sid}.start" "${STATE_DIR}/${sid}.title" 2>/dev/null
       find "$STATE_DIR" -type f -mtime +2 -delete 2>/dev/null
+      send_sync   # the CLI is exiting; a backgrounded DEL would race and lose
+      exit 0
       ;;
     *) exit 0 ;;
   esac
