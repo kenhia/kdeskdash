@@ -54,4 +54,12 @@ void config_load(kdeskdash_config_t *cfg) {
     cfg->claude_redis_port = (cport > 0 && cport <= 65535) ? cport : 6380;
     const char *cauth = getenv("KDESKDASH_CLAUDE_REDISCLI_AUTH");
     cfg->claude_redis_auth = (cauth && cauth[0] != '\0') ? cauth : NULL;
+
+    /* Icons mode: the runtime Symbols Nerd Font (deployed as a file) and the
+     * favourites list it curates. Both default to system paths the deploy sets
+     * up; overridable for dev runs pointing at the in-repo TTF. */
+    cfg->icons_ttf_path = env_or("KDESKDASH_ICONS_TTF",
+                                 "/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf");
+    cfg->icons_favorites_path =
+        env_or("KDESKDASH_ICONS_FAVORITES", "/var/lib/kdeskdash/icon-favorites.txt");
 }

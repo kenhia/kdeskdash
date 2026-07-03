@@ -34,6 +34,11 @@ cross-compile approach and adding touch input.
   gauges. Fed by [publisher/claude-pub.sh](publisher/README.md) hooks + statusline on
   each dev machine via a dedicated Redis instance
   ([deploy/redis-claude.conf](deploy/redis-claude.conf), port 6380).
+- **Icons** — a Nerd Font browser: page a glyph set (Font Logos, Devicons, Codicons,
+  Font Awesome, Material Design, …) in a touch grid, preview the selected glyph at several
+  sizes, and mark favourites saved to a bake-ready file. Renders any of ~9,300 glyphs at
+  runtime via LVGL's TinyTTF over the vendored `SymbolsNerdFont-Regular.ttf` — no static
+  font bake. See [docs/brainstorms](docs/brainstorms/2026-07-03-icons-nerdfont-browser-requirements.md).
 
 Navigation: swipe **left/right** to cycle content modes, swipe **down** for the Menu.
 
@@ -99,6 +104,8 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_CLAUDE_REDIS_HOST` | `127.0.0.1`   | Claude-feed Redis host (agent activity + usage limits; a second, LAN-reachable instance on the Pi itself). Used by `claude` mode. |
 | `KDESKDASH_CLAUDE_REDIS_PORT` | `6380`        | Claude-feed Redis port |
 | `KDESKDASH_CLAUDE_REDISCLI_AUTH` | _(unset)_  | Claude-feed Redis password, if any (AUTH) |
+| `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
+| `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
 
 ## Redis (optional)
 
@@ -171,9 +178,10 @@ kdeskdash/
 │   ├── config.{c,h}                # env-var configuration
 │   ├── shell.{c,h}                 # mode shell: registration, gestures, lifecycle
 │   ├── redis.{c,h}                 # optional Redis client (control/persistence/injection)
-│   ├── gol.{c,h} / stopwatch.{c,h} # pure, host-tested mode cores
-│   └── modes/                      # game_of_life, clock, menu
-├── tests/                          # host unit tests (registry, gol, stopwatch)
+│   ├── gol.{c,h} / stopwatch.{c,h} / iconset.{c,h} # pure, host-tested mode cores
+│   └── modes/                      # game_of_life, clock, menu, dev, claude, icons
+├── fonts/ttf/                      # vendored SymbolsNerdFont-Regular.ttf (icons mode, runtime TinyTTF)
+├── tests/                          # host unit tests (registry, gol, stopwatch, iconset, …)
 ├── lib/lvgl/                       # LVGL v9.2.2 (submodule)
 └── docs/                           # brainstorms, plans, solutions
 ```

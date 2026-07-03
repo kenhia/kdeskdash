@@ -20,6 +20,8 @@ typedef struct {
     const char *claude_redis_host; /* KDESKDASH_CLAUDE_REDIS_HOST — claude-feed instance, default 127.0.0.1 (local on rpidash2) */
     int         claude_redis_port; /* KDESKDASH_CLAUDE_REDIS_PORT — default 6380 */
     const char *claude_redis_auth; /* KDESKDASH_CLAUDE_REDISCLI_AUTH — NULL when unset (no AUTH) */
+    const char *icons_ttf_path;    /* KDESKDASH_ICONS_TTF — Symbols Nerd Font read at runtime by the icons mode */
+    const char *icons_favorites_path; /* KDESKDASH_ICONS_FAVORITES — icons-mode favourites file (load/save) */
 } kdeskdash_config_t;
 
 /* Populate cfg from the environment, falling back to defaults. */

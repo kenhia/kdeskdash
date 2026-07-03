@@ -18,6 +18,7 @@
 #include "modes/dev.h"
 #include "modes/game_of_life.h"
 #include "modes/golz.h"
+#include "modes/icons.h"
 #include "modes/menu.h"
 #include "redis.h"
 #include "shell.h"
@@ -80,6 +81,9 @@ int main(void) {
         dev_mode_create("dev", "Dev"));
     shell_register_content_mode(
         claude_mode_create("claude", "Claude"));
+    shell_register_content_mode(
+        icons_mode_create("icons", "Icons", cfg.icons_ttf_path,
+                          cfg.icons_favorites_path));
     shell_register_menu(menu_mode_create("menu", "Menu"));
 
     /* Optional Redis: remote control + last-mode persistence. Safe when absent.
