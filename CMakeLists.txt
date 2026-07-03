@@ -39,6 +39,7 @@ add_executable(kdeskdash
     src/shell.c
     src/gol.c
     src/golz.c
+    src/iconset.c
     src/stopwatch.c
     src/redis.c
     src/dev_telemetry.c
@@ -57,6 +58,7 @@ add_executable(kdeskdash
     src/modes/dev_hostlist.c
     src/modes/dev_view.c
     src/modes/claude.c
+    src/modes/icons.c
     src/modes/menu.c
 )
 
@@ -72,6 +74,7 @@ target_link_libraries(kdeskdash
     ${DRM_LIBRARIES}
     hiredis::hiredis
     pthread
+    m           # libm: TinyTTF's stb_truetype needs sqrt/floor/pow/... (icons mode)
 )
 
 target_compile_options(kdeskdash PRIVATE -Wall -Wextra -Wno-unused-parameter)
@@ -87,7 +90,7 @@ endif()
 # Stops the service (or a manually-run instance), copies the binary, restarts it.
 set(KDESKDASH_TARGET "ken@rpidash2" CACHE STRING "ssh target for deploy")
 add_custom_target(deploy
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/deploy.sh deploy ${KDESKDASH_TARGET} ${CMAKE_BINARY_DIR}/kdeskdash
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/deploy.sh deploy ${KDESKDASH_TARGET} ${CMAKE_BINARY_DIR}/kdeskdash ${CMAKE_SOURCE_DIR}/fonts/ttf/SymbolsNerdFont-Regular.ttf
     DEPENDS kdeskdash
     COMMENT "Deploying kdeskdash to ${KDESKDASH_TARGET}"
 )
@@ -130,6 +133,13 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_stopwatch PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_stopwatch PRIVATE -Wall -Wextra)
     add_test(NAME test_stopwatch COMMAND test_stopwatch)
+
+    # Pure icons-mode model: set table + splits, paging math, favourites set and
+    # the bake-ready favourites file round-trip (no LVGL/TinyTTF).
+    add_executable(test_iconset tests/test_iconset.c src/iconset.c)
+    target_include_directories(test_iconset PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_iconset PRIVATE -Wall -Wextra)
+    add_test(NAME test_iconset COMMAND test_iconset)
 
     # dev_telemetry parser pulls in vendored cJSON (needs lib/cjson on the
     # include path and libm for cJSON's number handling).

@@ -53,5 +53,16 @@
  * README shots without photographing the glossy panel). */
 #define LV_USE_SNAPSHOT 1
 
+/* Runtime TTF rasterizer (stb_truetype) — the `icons` mode loads the vendored
+ * Symbols Nerd Font at runtime and renders any of its ~10k glyphs at any size,
+ * with no static font bake. The mode reads the deployed .ttf into memory itself
+ * (plain POSIX) and uses lv_tiny_ttf_create_data, so LVGL's lv_fs file layer
+ * (drive letters) is not needed — FILE_SUPPORT stays off. */
+#define LV_USE_TINY_TTF 1
+#if LV_USE_TINY_TTF
+    #define LV_TINY_TTF_FILE_SUPPORT 0
+    #define LV_TINY_TTF_CACHE_GLYPH_CNT 256
+#endif
+
 #endif /* LV_CONF_H */
 #endif /* Enable */

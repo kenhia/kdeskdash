@@ -16,13 +16,26 @@ case "$cmd" in
   deploy)
     target=${2:?missing ssh target}
     binary=${3:?missing binary path}
+    ttf=${4:-}   # optional: Symbols Nerd Font for the icons mode
     # Stop the service if installed; fall back to killing a manually-run instance.
     # scp fails with "text file busy" if the binary is still running.
     ssh "$target" 'sudo systemctl stop kdeskdash 2>/dev/null || true; sudo pkill -INT kdeskdash 2>/dev/null || true; sleep 1'
     # Stage in $HOME (scp has no sudo), then install to a root-owned path so the
     # root service does not execute a binary from a user-writable directory.
     scp "$binary" "$target:~/kdeskdash.new"
-    ssh "$target" 'sudo install -m755 ~/kdeskdash.new /usr/local/bin/kdeskdash && rm -f ~/kdeskdash.new && sudo systemctl start kdeskdash 2>/dev/null || true'
+    ssh "$target" 'sudo install -m755 ~/kdeskdash.new /usr/local/bin/kdeskdash && rm -f ~/kdeskdash.new'
+    # Icons-mode assets: the runtime font (install once — it is 2.4MB and rarely
+    # changes) and the writable state dir for the favourites file. Both are
+    # optional to the app (the mode shows an unavailable state without the font).
+    if [ -n "$ttf" ]; then
+      ssh "$target" 'sudo install -d -m755 /usr/local/share/kdeskdash /var/lib/kdeskdash'
+      if ssh "$target" 'test ! -f /usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf'; then
+        scp "$ttf" "$target:~/kdeskdash-nf.ttf"
+        ssh "$target" 'sudo install -D -m644 ~/kdeskdash-nf.ttf /usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf && rm -f ~/kdeskdash-nf.ttf'
+        echo "installed Nerd Font to $target:/usr/local/share/kdeskdash/"
+      fi
+    fi
+    ssh "$target" 'sudo systemctl start kdeskdash 2>/dev/null || true'
     echo "deployed kdeskdash to $target:/usr/local/bin/kdeskdash"
     ;;
 
