@@ -13,11 +13,15 @@
 #include <stdint.h>
 
 /* One side renders exactly one of these states; higher entries win when several
- * conditions co-occur (UNAVAIL supersedes everything, then EMPTY, ...). */
+ * conditions co-occur (UNAVAIL supersedes everything, then EMPTY, ...). The
+ * order also tracks a host's normal lifecycle: unassigned -> assigned but not
+ * discovered -> discovered but no data yet -> live -> gone stale. */
 typedef enum {
     DEV_SIDE_UNAVAIL = 0, /* telemetry endpoint unreachable (global, R4)      */
     DEV_SIDE_EMPTY,       /* no host assigned to this side (R17)              */
     DEV_SIDE_OFFLINE,     /* assigned host absent from discovery (R18)        */
+    DEV_SIDE_WAITING,     /* assigned + discovered + reachable, but no valid   */
+                          /*   sample yet (never ever_live) — not a 0% LIVE    */
     DEV_SIDE_STALE,       /* was live, samples stopped >= stale_ms (R16)      */
     DEV_SIDE_LIVE,        /* streaming fresh samples                          */
 } dev_side_view_t;

@@ -13,6 +13,12 @@ Description=kdeskdash touch dashboard
 # are available immediately, but do not fail if it is absent.
 After=redis-server.service
 Wants=redis-server.service
+# Never permanently give up restarting the appliance. With systemd's default
+# start limit (StartLimitBurst=5 / StartLimitIntervalSec=10s) a transient
+# early-boot crash loop would wedge the unit in `failed` until someone SSHes in
+# — unacceptable for a headless boot-to-dashboard panel. 0 disables the limit.
+# (This key lives in [Unit] on systemd >= 229, which covers Trixie.)
+StartLimitIntervalSec=0
 
 [Service]
 # DRM master + evdev access require root on this panel.
@@ -23,6 +29,22 @@ ExecStart=/usr/local/bin/kdeskdash
 EnvironmentFile=-/etc/kdeskdash/kdeskdash.env
 Restart=always
 RestartSec=2
+
+# --- Sandboxing -----------------------------------------------------------
+# Shrink the blast radius of a root process while preserving the two devices the
+# panel must reach: the DRM node (/dev/dri/*) and the touch evdev
+# (/dev/input/*). We deliberately do NOT set PrivateDevices= / DevicePolicy=,
+# which would hide those nodes; the filesystem hardening below leaves /dev
+# untouched, so DRM master and touch keep working.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+# Only writable state: the icons-mode favourites file. StateDirectory creates
+# /var/lib/kdeskdash and makes just that path writable under ProtectSystem=strict
+# (matching KDESKDASH_ICONS_FAVORITES's default). Screenshots land in
+# PrivateTmp's /tmp; the env file and runtime font are read-only.
+StateDirectory=kdeskdash
 
 [Install]
 WantedBy=multi-user.target

@@ -63,13 +63,28 @@ static void test_ladder_precedence(void) {
 }
 
 static void test_assigned_not_yet_live(void) {
-    /* Just assigned, host is publishing (seen) but no sample applied yet: not
-     * stale (ever_live false), should read LIVE so charts can start filling. */
-    check(resolve(true, true, true, false, 0) == DEV_SIDE_LIVE,
-          "assigned + seen + no sample yet -> LIVE (not stale)");
-    /* ms_since_ok is meaningless when never live; staleness must not trigger. */
-    check(resolve(true, true, true, false, 999999) == DEV_SIDE_LIVE,
-          "never-live host is never STALE");
+    /* Assigned + discovered + reachable, but no valid sample has ever arrived:
+     * WAITING, not a flat-zero LIVE chart that would look like a healthy 0% host
+     * (#52). Never STALE either — ms_since_ok is meaningless before first live. */
+    check(resolve(true, true, true, false, 0) == DEV_SIDE_WAITING,
+          "assigned + seen + no sample yet -> WAITING");
+    check(resolve(true, true, true, false, 999999) == DEV_SIDE_WAITING,
+          "never-live host is WAITING, never STALE");
+
+    /* UNAVAIL/OFFLINE still supersede WAITING (endpoint/discovery come first). */
+    check(resolve(false, true, true, false, 0) == DEV_SIDE_UNAVAIL,
+          "endpoint down -> UNAVAIL wins over WAITING");
+    check(resolve(true, true, false, false, 0) == DEV_SIDE_OFFLINE,
+          "not in discovery -> OFFLINE wins over WAITING");
+}
+
+static void test_waiting_to_live_transition(void) {
+    /* The first OK sample flips ever_live true; the same side then resolves LIVE
+     * on the next poll (the render path drops a gap marker on that transition). */
+    check(resolve(true, true, true, false, 0) == DEV_SIDE_WAITING,
+          "before first sample -> WAITING");
+    check(resolve(true, true, true, true, 0) == DEV_SIDE_LIVE,
+          "after first OK sample -> LIVE");
 }
 
 static void test_gpu_gate_loss_debounce(void) {
@@ -109,6 +124,7 @@ static void test_gpu_gate_gain_path(void) {
 int main(void) {
     test_ladder_precedence();
     test_assigned_not_yet_live();
+    test_waiting_to_live_transition();
     test_gpu_gate_loss_debounce();
     test_gpu_gate_blip_does_not_flap();
     test_gpu_gate_gain_path();

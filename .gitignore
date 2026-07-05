@@ -9,3 +9,5 @@ compile_commands.json
 
 # Local MCP server config — may contain bearer tokens / secrets
 .vscode/mcp.json
+
+.korg-sprint-proposal

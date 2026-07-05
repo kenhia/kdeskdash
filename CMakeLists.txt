@@ -38,6 +38,7 @@ add_executable(kdeskdash
     src/registry.c
     src/shell.c
     src/gol.c
+    src/gol_settings.c
     src/golz.c
     src/iconset.c
     src/stopwatch.c
@@ -117,6 +118,13 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_gol PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_gol PRIVATE -Wall -Wextra)
     add_test(NAME test_gol COMMAND test_gol)
+
+    # Untrusted GoL settings-hash validation, extracted from redis.c so it can be
+    # exercised on the host with no hiredis dependency (guards the cell_size floor).
+    add_executable(test_settings tests/test_settings.c src/gol_settings.c)
+    target_include_directories(test_settings PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_settings PRIVATE -Wall -Wextra)
+    add_test(NAME test_settings COMMAND test_settings)
 
     add_executable(test_golz tests/test_golz.c src/golz.c src/gol.c)
     target_include_directories(test_golz PRIVATE ${CMAKE_SOURCE_DIR}/src)
