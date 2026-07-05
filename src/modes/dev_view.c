@@ -11,7 +11,12 @@ dev_side_view_t dev_side_resolve(const dev_side_inputs_t *in, uint32_t stale_ms)
         return DEV_SIDE_EMPTY;
     if (!in->seen_in_discovery)
         return DEV_SIDE_OFFLINE;
-    if (in->ever_live && in->ms_since_ok >= stale_ms)
+    /* Assigned, discovered, reachable — but no valid sample has ever arrived.
+     * Without this the side would render as a flat-zero LIVE chart, making a
+     * host that publishes malformed/no telemetry look healthy at 0%. */
+    if (!in->ever_live)
+        return DEV_SIDE_WAITING;
+    if (in->ms_since_ok >= stale_ms)
         return DEV_SIDE_STALE;
     return DEV_SIDE_LIVE;
 }

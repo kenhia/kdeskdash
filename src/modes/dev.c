@@ -364,6 +364,7 @@ static const char *view_msg(dev_side_view_t v) {
     case DEV_SIDE_UNAVAIL: return "telemetry unavailable";
     case DEV_SIDE_EMPTY:   return "Select a host";
     case DEV_SIDE_OFFLINE: return "offline";
+    case DEV_SIDE_WAITING: return "waiting for data";
     case DEV_SIDE_STALE:   return "no new data";
     default:               return NULL;
     }

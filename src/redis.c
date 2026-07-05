@@ -12,11 +12,15 @@
  * handle (g_control); its public redis_* API is unchanged.
  */
 #include "redis.h"
+#include "redis_internal.h" /* private redis_client layout + hiredis */
 
+#include <netdb.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <time.h>
 
+#include "gol_settings.h"
 #include "screenshot.h"
 #include "shell.h"
 
@@ -45,11 +49,39 @@
 
 /* ---- Generic connection handle (shared by control + telemetry) ---- */
 
+/* Resolve `host` to a numeric IP string in `out`. Returns true on success.
+ * getaddrinfo has no timeout knob, so this can block on a slow/dead resolver —
+ * callers resolve ONCE and cache the result (see c->addr) so the per-op
+ * reconnect path never pays this cost, keeping the single UI thread responsive.
+ * A numeric host resolves immediately (no DNS traffic). */
+static bool resolve_host(const char *host, char *out, size_t outlen) {
+    struct addrinfo hints = {0};
+    hints.ai_family = AF_UNSPEC;    /* v4 or v6 */
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo *res = NULL;
+    if (getaddrinfo(host, NULL, &hints, &res) != 0 || !res)
+        return false;
+    bool ok = getnameinfo(res->ai_addr, res->ai_addrlen, out, (socklen_t)outlen,
+                          NULL, 0, NI_NUMERICHOST) == 0;
+    freeaddrinfo(res);
+    return ok;
+}
+
+/* Fill c->addr with the resolved IP if not already cached. Best-effort: on
+ * failure c->addr stays empty and the caller falls back to connecting by name.
+ * Once cached the IP is reused for the handle's lifetime (a restart re-resolves;
+ * acceptable for this appliance's static homelab addressing). */
+static void ensure_resolved(redis_client_t *c) {
+    if (c->addr[0] == '\0')
+        (void)resolve_host(c->host, c->addr, sizeof(c->addr));
+}
+
 void redis_client_init(redis_client_t *c, const char *host, int port,
                        const char *auth) {
     c->ctx = NULL;
     strncpy(c->host, host ? host : "127.0.0.1", sizeof(c->host) - 1);
     c->host[sizeof(c->host) - 1] = '\0';
+    c->addr[0] = '\0';
     c->port = port > 0 ? port : 6379;
     c->auth[0] = '\0';
     if (auth) {
@@ -57,11 +89,19 @@ void redis_client_init(redis_client_t *c, const char *host, int port,
         c->auth[sizeof(c->auth) - 1] = '\0';
     }
     c->next_attempt = 0;
+    /* Resolve once here, at init (startup) — off the render loop — so later
+     * reconnects connect straight to the cached IP without touching DNS. */
+    ensure_resolved(c);
 }
 
 bool redis_client_connect(redis_client_t *c) {
     struct timeval tv = {0, CONNECT_TIMEOUT_MS * 1000};
-    redisContext *ctx = redisConnectWithTimeout(c->host, c->port, tv);
+    /* Prefer the cached numeric IP; only if init-time resolution failed (e.g.
+     * the resolver was down at boot) do we retry a name lookup here — and even
+     * then just once per backoff interval, not on every op. */
+    ensure_resolved(c);
+    const char *target = c->addr[0] ? c->addr : c->host;
+    redisContext *ctx = redisConnectWithTimeout(target, c->port, tv);
     if (!ctx || ctx->err) {
         if (ctx)
             redisFree(ctx);
@@ -210,39 +250,6 @@ bool redis_get_dev_assignment(redis_dev_side_t side, char *buf, size_t buflen) {
     return redis_get_string(dev_side_key(side), buf, buflen);
 }
 
-/* Apply one "field value" pair from the settings hash onto cfg. These are
- * hard safety bounds, intentionally wider than random_settings() in
- * game_of_life.c so a remote client can experiment — except the cell_size
- * floor, which must stay >= 2 to preserve the bounded worst-case grid / per-
- * frame work that random_settings() also enforces. */
-static void apply_field(gol_settings_t *cfg, const char *field, const char *val) {
-    if (strcmp(field, "cell_size") == 0) {
-        int v = atoi(val);
-        if (v >= 2 && v <= 64)
-            cfg->cell_size = v;
-    } else if (strcmp(field, "padding") == 0) {
-        int v = atoi(val);
-        if (v >= 0 && v <= 16)
-            cfg->padding = v;
-    } else if (strcmp(field, "density") == 0) {
-        double v = atof(val);
-        if (v > 0.0 && v <= 1.0)
-            cfg->density = v;
-    } else if (strcmp(field, "trail") == 0) {
-        cfg->trail = atoi(val) != 0;
-    } else if (strcmp(field, "trail_turns") == 0) {
-        int v = atoi(val);
-        if (v >= 1 && v <= 64)
-            cfg->trail_turns = v;
-    } else if (strcmp(field, "speed_ms") == 0) {
-        int v = atoi(val);
-        if (v >= 10 && v <= 5000)
-            cfg->speed_ms = v;
-    } else if (strcmp(field, "rgb") == 0) {
-        cfg->rgb = atoi(val) != 0;
-    }
-}
-
 bool redis_apply_gol_settings(gol_settings_t *cfg) {
     if (!cfg || !redis_client_ensure(&g_control))
         return false;
@@ -255,7 +262,11 @@ bool redis_apply_gol_settings(gol_settings_t *cfg) {
             redisReply *v = r->element[i + 1];
             if (k && v && k->type == REDIS_REPLY_STRING &&
                 v->type == REDIS_REPLY_STRING) {
-                apply_field(cfg, k->str, v->str);
+                /* Delegate the untrusted-value validation to the pure, host-
+                 * tested boundary. `applied` gates the DEL below and mirrors the
+                 * prior semantics: any well-typed pair present means we consume
+                 * the one-shot key, whether or not its value passed validation. */
+                gol_settings_apply_field(cfg, k->str, v->str);
                 applied = true;
             }
         }

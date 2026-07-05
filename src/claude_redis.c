@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "redis.h"
+#include "redis_internal.h" /* embeds a redis_client_t by value + touches .ctx */
 #include "telemetry_host.h" /* token contract shared with the telemetry feed */
 
 #define CLAUDE_SCAN_MATCH CF_KEY_PREFIX "*"

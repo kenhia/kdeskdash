@@ -27,37 +27,38 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <time.h>
-
-#include <hiredis/hiredis.h>
 
 #include "golz.h"
 
-/* Generic synchronous Redis connection handle: owns a hiredis context plus the
+/* Opaque synchronous Redis connection handle: owns a hiredis context plus the
  * endpoint/auth and a per-handle reconnect backoff deadline. Independent
  * endpoints (control + telemetry) each use their own handle so a stall or
- * backoff on one never affects the other. Single-threaded; no locking. */
-typedef struct {
-    redisContext *ctx;
-    char host[128];
-    int port;
-    char auth[256];
-    time_t next_attempt;
-} redis_client_t;
+ * backoff on one never affects the other. Single-threaded; no locking.
+ *
+ * The layout lives in redis_internal.h, private to the Redis/telemetry
+ * implementation units (redis.c, telemetry.c, claude_redis.c), so consumers of
+ * this header get no compile-time coupling to hiredis. Those units embed a
+ * handle by value and so include redis_internal.h for the full definition. */
+typedef struct redis_client redis_client_t;
 
 /* Store endpoint/auth on the handle (host NULL -> loopback, port <= 0 -> 6379).
  * Does not connect; the caller chooses eager (redis_client_connect) or lazy
- * (redis_client_ensure on first use). `auth` may be NULL. */
+ * (redis_client_ensure on first use). `auth` may be NULL.
+ * Resolves the host to a numeric IP once here (at init/startup) and caches it,
+ * so later reconnects never touch DNS on the UI thread. */
 void redis_client_init(redis_client_t *c, const char *host, int port,
                        const char *auth);
 
 /* Attempt a connection now, ignoring backoff: 250 ms connect timeout, 50 ms
  * read timeout, optional AUTH. Returns true and sets c->ctx on success. Used for
  * a best-effort eager connect; does not arm the backoff on failure.
- * NOTE: the 250 ms timeout bounds the TCP connect but NOT hostname resolution
- * (hiredis calls getaddrinfo() unbounded). For a remote endpoint configured by
- * name, a slow/dead resolver can still stall the UI thread — prefer an IP or an
- * /etc/hosts pin. A future async/at-init resolve is tracked as follow-up work. */
+ * Connects to the IP cached at init (see redis_client_init), so hostname
+ * resolution — which hiredis would otherwise run unbounded on every connect,
+ * stalling the single UI thread against a slow/dead resolver — is paid once at
+ * startup, not on the render path. If init-time resolution failed, this retries
+ * a name lookup at most once per backoff interval and falls back to connecting
+ * by name; pinning an IP or an /etc/hosts entry remains the fix for a resolver
+ * that is dead at boot. */
 bool redis_client_connect(redis_client_t *c);
 
 /* Ensure a live connection, honoring backoff. True if connected. Frees an
