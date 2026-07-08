@@ -53,6 +53,7 @@ typedef struct {
     lv_obj_t *stripe;
     lv_obj_t *host;
     lv_obj_t *proj;
+    lv_obj_t *model;
     lv_obj_t *status;
     lv_obj_t *age;
 } claude_row_t;
@@ -162,6 +163,10 @@ static void make_row(claude_state_t *st, lv_obj_t *parent, int i) {
     r->proj = make_label(r->row, &lv_font_montserrat_28, COLOR_INK);
     lv_obj_set_flex_grow(r->proj, 1);
     lv_label_set_long_mode(r->proj, LV_LABEL_LONG_DOT);
+
+    r->model = make_label(r->row, &lv_font_montserrat_20, COLOR_SECONDARY);
+    lv_obj_set_width(r->model, 130);
+    lv_label_set_long_mode(r->model, LV_LABEL_LONG_DOT);
 
     r->status = make_label(r->row, &lv_font_montserrat_20, COLOR_MUTED);
     lv_obj_set_width(r->status, 290);
@@ -356,6 +361,8 @@ static void render_sessions(claude_state_t *st, cf_session_t *s, int n,
         lv_label_set_text(r->host, e->host);
         lv_label_set_text(r->proj, e->project);
         lv_obj_set_style_text_color(r->proj, dim ? COLOR_SECONDARY : COLOR_INK, 0);
+        lv_label_set_text(r->model, e->model);
+        lv_obj_set_style_text_color(r->model, dim ? COLOR_MUTED : COLOR_SECONDARY, 0);
         lv_label_set_text(r->status, cf_disp_label(e->disp));
         lv_obj_set_style_text_color(r->status, disp_color(e->disp), 0);
         lv_obj_set_style_opa(r->row,
@@ -413,7 +420,7 @@ static void render_recent(claude_state_t *st, cf_recent_t *rec, int n,
 }
 
 static void render_gauge(claude_gauge_t *g, float pct, long long resets_at,
-                         long long now, bool valid) {
+                         long long now, bool valid, bool stale) {
     if (!valid) {
         lv_arc_set_value(g->arc, 0);
         lv_label_set_text(g->pct, "--");
@@ -422,14 +429,15 @@ static void render_gauge(claude_gauge_t *g, float pct, long long resets_at,
         return;
     }
     bool warn = pct >= CF_LIMITS_WARN_PCT;
-    lv_color_t c = warn ? COLOR_AWAITING : COLOR_ACCENT;
+    lv_color_t c = stale ? COLOR_MUTED : (warn ? COLOR_AWAITING : COLOR_ACCENT);
     lv_arc_set_value(g->arc, (int)(pct + 0.5f));
     lv_obj_set_style_arc_color(g->arc, c, LV_PART_INDICATOR);
 
     char buf[16];
     snprintf(buf, sizeof(buf), "%d%%", (int)(pct + 0.5f));
     lv_label_set_text(g->pct, buf);
-    lv_obj_set_style_text_color(g->pct, warn ? COLOR_AWAITING : COLOR_INK, 0);
+    lv_obj_set_style_text_color(
+        g->pct, stale ? COLOR_MUTED : (warn ? COLOR_AWAITING : COLOR_INK), 0);
 
     char reset[24], line[40];
     cf_fmt_reset(resets_at, now, reset, sizeof(reset));
@@ -439,15 +447,23 @@ static void render_gauge(claude_gauge_t *g, float pct, long long resets_at,
 
 static void render_limits(claude_state_t *st, const cf_limits_t *l,
                           long long now) {
-    render_gauge(&st->five, l->five_pct, l->five_reset, now, l->valid);
-    render_gauge(&st->seven, l->seven_pct, l->seven_reset, now, l->valid);
+    bool stale = cf_limits_stale(l, now);
+    render_gauge(&st->five, l->five_pct, l->five_reset, now, l->valid, stale);
+    render_gauge(&st->seven, l->seven_pct, l->seven_reset, now, l->valid, stale);
 
     if (!l->valid) {
         lv_label_set_text(st->asof, "no data yet");
+        lv_obj_set_style_text_color(st->asof, COLOR_MUTED, 0);
     } else {
-        char age[16], buf[32];
+        char age[16], buf[40];
         cf_fmt_age(now - l->updated_at, age, sizeof(age));
-        snprintf(buf, sizeof(buf), "as of %s ago", age);
+        if (stale) {
+            snprintf(buf, sizeof(buf), "stale - as of %s ago", age);
+            lv_obj_set_style_text_color(st->asof, COLOR_AWAITING, 0);
+        } else {
+            snprintf(buf, sizeof(buf), "as of %s ago", age);
+            lv_obj_set_style_text_color(st->asof, COLOR_MUTED, 0);
+        }
         lv_label_set_text(st->asof, buf);
     }
 }

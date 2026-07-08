@@ -223,6 +223,16 @@ static void test_limits(void) {
     const char *v4[] = {"11"};
     check(!cf_limits_from_fields(f4, v4, 1, &l), "missing seven_day rejects");
     check(!cf_limits_from_fields(NULL, NULL, 0, &l), "empty hash rejects");
+
+    /* Staleness: fresh within the window, stale past it, invalid never stale. */
+    const char *v5[] = {"11", "0", "5", "0", "1783035734", "kai"};
+    check(cf_limits_from_fields(f, v5, 6, &l), "stale-fixture parse");
+    check(!cf_limits_stale(&l, l.updated_at + CF_LIMITS_STALE_S - 1), "fresh not stale");
+    check(cf_limits_stale(&l, l.updated_at + CF_LIMITS_STALE_S), "stale at threshold");
+    check(!cf_limits_stale(&l, l.updated_at - 100), "clock skew not stale");
+    cf_limits_t inv;
+    memset(&inv, 0, sizeof(inv));
+    check(!cf_limits_stale(&inv, 1 << 30), "invalid never stale");
 }
 
 /* ---------- recent ---------- */
