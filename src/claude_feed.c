@@ -220,6 +220,12 @@ bool cf_limits_from_fields(const char *const *fields, const char *const *values,
     return true;
 }
 
+bool cf_limits_stale(const cf_limits_t *l, long long now) {
+    if (!l || !l->valid)
+        return false;
+    return now - l->updated_at >= CF_LIMITS_STALE_S;
+}
+
 /* ---------- recent records ---------- */
 
 bool cf_recent_parse(const char *json, size_t len, cf_recent_t *out) {

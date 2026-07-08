@@ -10,8 +10,9 @@
 #   statusline  stdin = statusline JSON; prints a one-line statusline to stdout
 #
 # Contract (see docs/plans/2026-07-02-001-feat-claude-mode-plan.md):
-#   claude:session:<host>:<sid>  hash, TTL 2h; hooks own status/ts,
-#                                statusline owns title/model and claude:limits.
+#   claude:session:<host>:<sid>  hash, TTL 2h; hooks own status/ts (+ model,
+#                                read from the transcript); statusline owns
+#                                title and claude:limits (TUI sessions only).
 #   claude:recent                LPUSH + LTRIM on SessionEnd (reason != clear).
 #
 # Fire-and-forget: network I/O is backgrounded, failures are silent, exit is
@@ -98,14 +99,44 @@ mkdir -p "$STATE_DIR" 2>/dev/null
 
 # ---------- modes ----------
 
+# Friendly short label from a model id: claude-opus-4-8 -> "Opus 4.8". Session
+# hooks fire everywhere (desktop app, headless, TUI); the statusline does not,
+# so model has to come from the transcript for most sessions.
+model_label() {
+  local id fam ver
+  id="${1#claude-}"
+  case "$id" in
+    *-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) id="${id%-????????}" ;;  # drop -YYYYMMDD
+  esac
+  fam="${id%%-*}"
+  ver="${id#*-}"
+  [ "$ver" = "$id" ] && ver=""      # no version tokens
+  ver="${ver//-/.}"                 # 4-8 -> 4.8
+  [ -n "$fam" ] || { printf 'claude'; return; }
+  fam="$(printf '%s' "${fam:0:1}" | tr a-z A-Z)${fam:1}"
+  if [ -n "$ver" ]; then printf '%s %s' "$fam" "$ver"; else printf '%s' "$fam"; fi
+}
+
+# Last main-model id from a session transcript (works where statusline never
+# runs). Bounded tail keeps the cost independent of transcript size.
+model_from_transcript() {
+  local tpath="$1"
+  tpath=$(printf '%s' "$tpath" | tr '\\' '/')  # Windows backslashes -> forward slashes
+  [ -n "$tpath" ] && [ -f "$tpath" ] || return 0
+  tail -n 80 "$tpath" 2>/dev/null \
+    | grep -o '"model":"claude-[A-Za-z0-9._-]*"' \
+    | tail -n1 | sed -e 's/.*:"//' -e 's/"$//'
+}
+
 hook_mode() {
-  local json event sid key cwd project reason started dur title rec
+  local json event sid key cwd project reason started dur title rec tpath mid
   json=$(cat)
   event=$(jstr "$json" hook_event_name)
   sid=$(token "$(jstr "$json" session_id)")
   [ -n "$sid" ] || exit 0
   cwd=$(jstr "$json" cwd)
   project=$(project_of "$cwd")
+  tpath=$(jstr "$json" transcript_path)
   key="claude:session:${HOST}:${sid}"
 
   case "$event" in
@@ -141,6 +172,10 @@ hook_mode() {
       ;;
     *) exit 0 ;;
   esac
+  # Enrich with the model from the transcript — the only source hooks can see
+  # (the statusline, which also writes model, never runs headless/desktop).
+  mid=$(model_from_transcript "$tpath")
+  [ -n "$mid" ] && resp HSET "$key" model "$(plain "$(model_label "$mid")")"
   send
 }
 

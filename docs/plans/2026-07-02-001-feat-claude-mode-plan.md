@@ -10,8 +10,15 @@ rows, validated dark palette; tokens listed in Unit 5).
 `rate_limits.five_hour` / `.seven_day` with `used_percentage` (number) and `resets_at`
 (unix seconds) — plus useful extras the brainstorm didn't assume: `session_name` (the
 session title), `model.display_name`, `workspace.project_dir`, `session_id`, `cwd`.
-Consequence: the statusline publisher enriches the session hash (title, model) in addition
+Consequence: the statusline publisher enriches the session hash (title) in addition
 to publishing `claude:limits`. Statusline config hot-reloads (no restart needed).
+
+Update (2026-07-07): the statusline only runs in an interactive terminal (TUI) session —
+the desktop app and headless `claude -p` fire hooks but never the statusline, so
+`claude:limits` and title/model stopped refreshing for those. The hook path now reads the
+model from the transcript (`transcript_path`), so `model` is populated for every session
+type; `claude:limits` still comes only from the statusline (the 5h/7d percentages exist
+nowhere else), and the dashboard greys + badges the gauges as stale when the snapshot ages.
 
 **S2 — hook payloads (captured live).** All events carry `session_id`, `transcript_path`,
 `cwd`, `hook_event_name`. `SessionStart` adds `source` (startup/resume/clear/compact);
@@ -41,15 +48,15 @@ Git Bash during Unit 6 (fallback: ship a `redis-cli.exe` alongside, same script 
 ```
 claude:session:<host>:<session_id>   HASH, TTL 2h refreshed on every write
   host, project, cwd, status(working|awaiting), ts(unix s of last lifecycle event),
-  started_ts, title?, model?          (title/model written by statusline enrichment)
+  started_ts, title?, model?          (model from hook/transcript; title from statusline)
 claude:limits                        HASH (account-global, last writer wins)
   five_hour_pct, five_hour_resets_at, seven_day_pct, seven_day_resets_at, updated_at, host
 claude:recent                        LIST of compact JSON, LPUSH + LTRIM 20
   {host, project, title?, ended_ts, dur_s?}
 ```
 
-Rules: hooks own `status`/`ts`; statusline owns `title`/`model`/`claude:limits` and never
-touches `status`/`ts`. `SessionEnd` DELs the session key and (reason ≠ `clear`) pushes to
+Rules: hooks own `status`/`ts`/`model` (model read from the transcript); statusline owns
+`title`/`claude:limits` and never touches `status`/`ts`. `SessionEnd` DELs the session key and (reason ≠ `clear`) pushes to
 `claude:recent`; duration from a local per-session start-stamp file (no Redis read-back —
 publisher stays fire-and-forget). Consumer ignores session hashes lacking `status` (guards
 the statusline-after-end resurrection race). Host/session tokens validated with the

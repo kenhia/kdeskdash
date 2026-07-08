@@ -8,7 +8,8 @@
  * Feed contract (written by publisher/claude-pub.sh, see
  * docs/plans/2026-07-02-001-feat-claude-mode-plan.md):
  *   claude:session:<host>:<sid>  hash — host/project/cwd/status/ts/started_ts
- *                                (+ title/model via statusline enrichment)
+ *                                (+ model from the hook/transcript; title via
+ *                                statusline, which runs in TUI sessions only)
  *   claude:limits                hash — five_hour_pct/..., seven_day_pct/...
  *   claude:recent                list of {"host","project","title","ended_ts","dur_s"}
  *
@@ -42,6 +43,11 @@
 /* Usage arc switches to the warning treatment at this utilisation. */
 #define CF_LIMITS_WARN_PCT 80.0f
 
+/* Usage snapshot is treated as stale (greyed + badged) once its last publish is
+ * this old. Limits only refresh while an interactive statusline session runs,
+ * so a quiet fleet legitimately goes stale — say so rather than imply live. */
+#define CF_LIMITS_STALE_S (60 * 60)
+
 /* Enum order is the sort rank: attention first. */
 typedef enum {
     CF_DISP_AWAITING = 0, /* published `awaiting`, still fresh — your turn   */
@@ -54,8 +60,8 @@ typedef struct {
     char host[CF_HOST_MAX];
     char sid[CF_SID_MAX];
     char project[CF_PROJECT_MAX];
-    char title[CF_TITLE_MAX]; /* "" when the statusline hasn't enriched yet */
-    char model[CF_MODEL_MAX]; /* "" likewise                                */
+    char title[CF_TITLE_MAX]; /* "" until statusline enriches (TUI only)    */
+    char model[CF_MODEL_MAX]; /* "" until a hook reads it from the transcript*/
     long long ts;             /* unix s of last lifecycle event             */
     long long started_ts;     /* unix s of SessionStart (0 if unknown)      */
     bool awaiting;            /* published status: awaiting vs working      */
@@ -113,6 +119,10 @@ void cf_sessions_refresh(cf_session_t *arr, int n, long long now);
  * returns false with *out zeroed (out->valid false). */
 bool cf_limits_from_fields(const char *const *fields, const char *const *values,
                            int nfields, cf_limits_t *out);
+
+/* True when the snapshot is valid but its last publish is at least
+ * CF_LIMITS_STALE_S old. Negative ages (clock skew) are never stale. */
+bool cf_limits_stale(const cf_limits_t *l, long long now);
 
 /* Parse one claude:recent JSON record. Requires host+project strings passing
  * the same trust rules as rows (host token contract); title optional. */
