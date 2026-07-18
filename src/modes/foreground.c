@@ -30,6 +30,7 @@
 #define RAIL_GLYPH  76
 #define CELL_H      54
 #define CELL_GAP    6
+#define HOST_STRIP  22 /* width of the rotated-host tab on a cell's right edge */
 
 /* VS Code, U+F0A1E (nf-md-microsoft_visual_studio_code), pre-encoded UTF-8. */
 #define GLYPH_VSCODE "\xF3\xB0\xA8\x9E"
@@ -109,7 +110,9 @@ static void repaint_grid(fg_state_t *st) {
         }
         const kvscf_instance_t *in = &st->items[idx];
         lv_obj_clear_flag(st->cells[s], LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(st->cell_label[s], in->label);
+        char label[KV_LABEL_MAX];
+        kvscf_display_label(in, label, sizeof(label));
+        lv_label_set_text(st->cell_label[s], label);
         lv_obj_set_style_text_color(st->cell_label[s],
                                     lv_color_hex(kvscf_app_color(in->app)), 0);
         lv_label_set_text(st->cell_host[s], kvscf_display_host(in));
@@ -317,27 +320,45 @@ static void build_cell(fg_state_t *st, lv_obj_t *colbox, int s) {
     lv_obj_set_style_border_width(cell, 1, LV_PART_MAIN);
     lv_obj_set_style_radius(cell, 8, LV_PART_MAIN);
     lv_obj_set_style_shadow_width(cell, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_left(cell, 10, LV_PART_MAIN);
-    lv_obj_set_style_pad_top(cell, 5, LV_PART_MAIN);
-    lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START,
-                          LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_left(cell, 12, LV_PART_MAIN);
+    lv_obj_set_style_pad_right(cell, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(cell, 0, LV_PART_MAIN);
+    lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(cell, LV_OBJ_FLAG_GESTURE_BUBBLE);
     st->cell_ctx[s].st = st;
     st->cell_ctx[s].slot = s;
     lv_obj_add_event_cb(cell, cell_cb, LV_EVENT_CLICKED, &st->cell_ctx[s]);
 
+    /* Big label fills the row height (host moved to the side); grows to take the
+     * width left of the host strip. */
     lv_obj_t *label = lv_label_create(cell);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+    lv_obj_set_flex_grow(label, 1);
+    /* Pin to one line so an over-long title ellipsizes instead of wrapping to a
+     * second line that overflows the cell (LONG_DOT wraps before dotting). */
+    lv_obj_set_height(label, lv_font_montserrat_28.line_height);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_28, 0);
     lv_obj_set_style_text_color(label, COLOR_INK, 0);
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(label, LV_PCT(94));
     lv_label_set_text(label, "");
 
-    lv_obj_t *host = lv_label_create(cell);
+    /* Host as a 90°-clockwise tab on the right edge: rotated about its own
+     * centre inside a fixed-width strip so the vertical text stays centred. */
+    lv_obj_t *strip = lv_obj_create(cell);
+    lv_obj_remove_style_all(strip);
+    lv_obj_set_size(strip, HOST_STRIP, LV_PCT(100));
+    lv_obj_clear_flag(strip, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(strip, LV_OBJ_FLAG_GESTURE_BUBBLE);
+
+    lv_obj_t *host = lv_label_create(strip);
     lv_obj_set_style_text_font(host, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(host, COLOR_HOST, 0);
+    lv_obj_center(host);
+    lv_obj_set_style_transform_pivot_x(host, lv_pct(50), 0);
+    lv_obj_set_style_transform_pivot_y(host, lv_pct(50), 0);
+    lv_obj_set_style_transform_rotation(host, 900, 0); /* 90° clockwise */
     lv_label_set_text(host, "");
 
     st->cells[s] = cell;
