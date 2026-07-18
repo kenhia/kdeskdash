@@ -86,6 +86,12 @@ void kvscf_sort_by_label(kvscf_instance_t *arr, int n);
 /* The host to *display* for an instance: `remote_host` if set, else `host`. */
 const char *kvscf_display_host(const kvscf_instance_t *in);
 
+/* The label to *display*, with a redundant trailing " (<display-host>)" suffix
+ * stripped (kvscf bakes e.g. "klams (kubs0)" into the label, but the host is
+ * shown separately). Only strips when the parenthesised token exactly matches
+ * the display host. Writes a NUL-terminated result into buf. */
+void kvscf_display_label(const kvscf_instance_t *in, char *buf, size_t bufsz);
+
 /* Label colour (0xRRGGBB) for an app variant — mirrors the cleo side. */
 uint32_t kvscf_app_color(kv_app_t app);
 

@@ -69,6 +69,27 @@ static void test_display_host(void) {
     check_str(kvscf_display_host(&arr[1]), "kai", "ssh displays remote_host");
 }
 
+static void test_display_label(void) {
+    kvscf_instance_t arr[KV_INSTANCES_MAX];
+    int n = kvscf_parse_append(SAMPLE, strlen(SAMPLE), arr, 0, KV_INSTANCES_MAX);
+    check(n, 3, "have three");
+    char buf[KV_LABEL_MAX];
+    /* ssh window: " (kai)" suffix matches remote_host -> stripped. */
+    kvscf_display_label(&arr[1], buf, sizeof(buf));
+    check_str(buf, "gen-ai-langchain", "strips matching (kai) suffix");
+    /* local window: no suffix -> unchanged. */
+    kvscf_display_label(&arr[0], buf, sizeof(buf));
+    check_str(buf, "ClaudeWorks", "no suffix left intact");
+
+    /* Non-matching parenthesised token is preserved. */
+    kvscf_instance_t x;
+    memset(&x, 0, sizeof(x));
+    snprintf(x.label, sizeof(x.label), "foo (bar)");
+    snprintf(x.remote_host, sizeof(x.remote_host), "kai");
+    kvscf_display_label(&x, buf, sizeof(buf));
+    check_str(buf, "foo (bar)", "non-matching suffix kept");
+}
+
 static void test_sort(void) {
     kvscf_instance_t arr[KV_INSTANCES_MAX];
     int n = kvscf_parse_append(SAMPLE, strlen(SAMPLE), arr, 0, KV_INSTANCES_MAX);
@@ -180,6 +201,7 @@ static void test_trim(void) {
 int main(void) {
     test_parse();
     test_display_host();
+    test_display_label();
     test_sort();
     test_merge_across_hosts();
     test_parse_tolerant();

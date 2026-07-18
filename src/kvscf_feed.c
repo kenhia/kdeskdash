@@ -176,6 +176,27 @@ const char *kvscf_display_host(const kvscf_instance_t *in) {
     return in->remote_host[0] ? in->remote_host : in->host;
 }
 
+void kvscf_display_label(const kvscf_instance_t *in, char *buf, size_t bufsz) {
+    if (!buf || bufsz == 0)
+        return;
+    buf[0] = '\0';
+    if (!in)
+        return;
+    copy_field(buf, bufsz, in->label);
+
+    const char *host = kvscf_display_host(in);
+    if (!host[0])
+        return;
+    /* Strip a trailing " (<host>)" only when it exactly matches. */
+    char suffix[KV_HOST_MAX + 4];
+    int sn = snprintf(suffix, sizeof(suffix), " (%s)", host);
+    if (sn <= 0)
+        return;
+    size_t ln = strlen(buf), sl = (size_t)sn;
+    if (ln >= sl && strcmp(buf + (ln - sl), suffix) == 0)
+        buf[ln - sl] = '\0';
+}
+
 int kvscf_page_count(int n, int per_page) {
     if (per_page <= 0 || n <= 0)
         return 1;
