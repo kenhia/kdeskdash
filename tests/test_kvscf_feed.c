@@ -154,6 +154,44 @@ static void test_cap(void) {
     check(n, KV_INSTANCES_MAX, "clamped to cap");
 }
 
+/* Trimmed excerpt of a real kvscf:edge:cleo value: named windows (tab_count
+ * null) and unnamed windows (integer tab_count). */
+static const char *EDGE_SAMPLE =
+    "{\"host\":\"cleo\",\"ts\":1784417437,\"windows\":["
+    "{\"id\":\"591750\",\"label\":\"Claude\",\"named\":true,\"tab_count\":null,\"z_index\":7},"
+    "{\"id\":\"67994\",\"label\":\"AI-Models\",\"named\":true,\"tab_count\":null,\"z_index\":64},"
+    "{\"id\":\"657812\",\"label\":\"Dashboard | Claude Platform\",\"named\":false,\"tab_count\":9,\"z_index\":40},"
+    "{\"id\":\"526744\",\"label\":\"ch2-chat-models\",\"named\":false,\"tab_count\":3,\"z_index\":53}]}";
+
+static void test_edge_parse(void) {
+    kvscf_edge_t arr[KV_INSTANCES_MAX];
+    int n = kvscf_parse_edge_append(EDGE_SAMPLE, strlen(EDGE_SAMPLE), arr, 0,
+                                    KV_INSTANCES_MAX);
+    check(n, 4, "parsed four edge windows");
+    check_str(arr[0].id, "591750", "edge id");
+    check_str(arr[0].label, "Claude", "edge label");
+    check_str(arr[0].host, "cleo", "edge host from root");
+    check(arr[0].named, 1, "named true");
+    check(arr[0].tab_count, -1, "named tab_count null -> -1");
+    check(arr[2].named, 0, "unnamed false");
+    check(arr[2].tab_count, 9, "unnamed tab_count parsed");
+}
+
+static void test_edge_sort(void) {
+    kvscf_edge_t arr[KV_INSTANCES_MAX];
+    int n = kvscf_parse_edge_append(EDGE_SAMPLE, strlen(EDGE_SAMPLE), arr, 0,
+                                    KV_INSTANCES_MAX);
+    kvscf_sort_edge(arr, n);
+    /* Named block first (AI-Models, Claude), then unnamed (ch2..., Dashboard). */
+    check_str(arr[0].label, "AI-Models", "named sorted[0]");
+    check(arr[0].named, 1, "sorted[0] named");
+    check_str(arr[1].label, "Claude", "named sorted[1]");
+    check(arr[1].named, 1, "sorted[1] named");
+    check_str(arr[2].label, "ch2-chat-models", "unnamed sorted[0]");
+    check(arr[2].named, 0, "sorted[2] unnamed");
+    check_str(arr[3].label, "Dashboard | Claude Platform", "unnamed sorted[1]");
+}
+
 static void test_app_color(void) {
     check((long)kvscf_app_color(KV_APP_STABLE), 0x60A5EB, "stable colour");
     check((long)kvscf_app_color(KV_APP_INSIDERS), 0x38BE84, "insiders colour");
@@ -204,6 +242,8 @@ int main(void) {
     test_display_label();
     test_sort();
     test_merge_across_hosts();
+    test_edge_parse();
+    test_edge_sort();
     test_parse_tolerant();
     test_cap();
     test_app_color();

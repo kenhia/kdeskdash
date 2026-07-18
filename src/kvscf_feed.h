@@ -83,6 +83,30 @@ int kvscf_parse_append(const char *json, size_t len, kvscf_instance_t *arr,
  * for determinism). This is the display order — our own, not `z_index`. */
 void kvscf_sort_by_label(kvscf_instance_t *arr, int n);
 
+/* ---- Edge windows (kvscf:edge:<host>) --------------------------------- */
+
+/* One Microsoft Edge window. `id` is the same kind of opaque HWND focus token as
+ * a VS Code instance — the focus command is identical. */
+typedef struct {
+    char id[KV_ID_MAX];
+    char label[KV_LABEL_MAX]; /* user window name (named) or active tab title */
+    char host[KV_HOST_MAX];   /* publisher host — the focus channel            */
+    bool named;               /* true = user-named window; false = tab-derived  */
+    int  tab_count;           /* unnamed best-effort count; -1 when null/named  */
+    int  z_index;
+} kvscf_edge_t;
+
+/* Parse one host's `{host,windows:[…]}` Edge JSON String, appending each valid
+ * window to `arr` (holding `count`, capacity `max`). Same discipline as
+ * kvscf_parse_append: host validated, id/label required, null `tab_count` -> -1,
+ * malformed skipped. Returns the new count. */
+int kvscf_parse_edge_append(const char *json, size_t len, kvscf_edge_t *arr,
+                            int count, int max);
+
+/* Sort Edge windows: named block first, then unnamed block; each block
+ * case-insensitive alphabetical by `label` (tie-break id). */
+void kvscf_sort_edge(kvscf_edge_t *arr, int n);
+
 /* The host to *display* for an instance: `remote_host` if set, else `host`. */
 const char *kvscf_display_host(const kvscf_instance_t *in);
 
