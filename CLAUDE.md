@@ -48,10 +48,10 @@ thin glue that render a core and wire touch.** Every non-trivial piece of logic 
 testable without hardware.
 
 - **Pure cores** (`src/gol.c`, `src/golz.c`, `src/stopwatch.c`, `src/registry.c`,
-  `src/iconset.c`, `src/dev_telemetry.c`, `src/claude_feed.c`, `src/telemetry_host.c`,
-  `src/bmp_write.c`, `src/modes/dev_hostlist.c`, `src/modes/dev_view.c`) — no LVGL, no
-  Redis, deterministic (RNG threaded through an explicit `uint32_t *state` seam). Each has
-  a `tests/test_*.c`.
+  `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/claude_feed.c`,
+  `src/telemetry_host.c`, `src/bmp_write.c`, `src/modes/dev_hostlist.c`,
+  `src/modes/dev_view.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
+  explicit `uint32_t *state` seam). Each has a `tests/test_*.c`.
 - **Modes** (`src/modes/*.c`) — each implements the `kd_mode_t` lifecycle from `src/mode.h`:
   `activate` / `deactivate` / `tick`, owning one LVGL screen and its private `state`. A mode
   does no ongoing work while deactivated. `*_mode_create(id, title)` builds and returns one.
@@ -65,10 +65,11 @@ testable without hardware.
 **Adding a mode is one registration call** in `main.c` (`shell_register_content_mode(...)`),
 plus the mode's `.c`/`.h` and its source line in `CMakeLists.txt`.
 
-### Three independent Redis handles — do not conflate them
+### Four independent Redis handles — do not conflate them
 
-Each has its own connection, host/port/auth env vars, and failure isolation (a down endpoint
-never stalls boot or another path):
+Each has its own `redis_client_t` connection and failure isolation (a down endpoint never
+stalls boot or another path). The generic client + backoff lives in `src/redis.c` /
+`redis_internal.h`; each feed is a thin reader on its own handle:
 
 1. **Control** (`src/redis.c`, `KDESKDASH_REDIS_*`) — remote mode control, last-mode
    persistence, GoL settings injection, screenshot trigger. Polled ~1×/sec from the main loop.
@@ -76,6 +77,12 @@ never stalls boot or another path):
    metrics for Dev mode. Defaults to host `rpi53`.
 3. **Claude feed** (`src/claude_redis.c`, `KDESKDASH_CLAUDE_REDIS_*`) — fleet Claude Code
    agent activity + usage limits, fed by `publisher/claude-pub.sh` hooks. Port 6380.
+4. **kvscf feed** (`src/kvscf_redis.c`) — the `foreground` ("Remote") mode: reads
+   `kvscf:instances:*` and **publishes** `kvscf:focus:<host>` on the *same 6380 instance* as
+   the Claude feed, but on its own handle (reuses the `KDESKDASH_CLAUDE_REDIS_*` endpoint
+   config; own connection for isolation). This is the only mode that **writes/acts on another
+   machine** (foregrounds a window), gated by the shared `KVSCF_TOKEN` (byte-exact, trimmed,
+   never logged). PUBLISH rides the ordinary command connection — kdeskdash never SUBSCRIBEs.
 
 ## Key patterns (documented in `docs/solutions/best-practices/`)
 

@@ -1,3 +1,5 @@
+.scratch/
+
 build/
 build-pi/
 build-tests/
@@ -11,3 +13,6 @@ compile_commands.json
 .vscode/mcp.json
 
 .korg-sprint-proposal
+
+.env
+

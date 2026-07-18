@@ -22,6 +22,7 @@ typedef struct {
     const char *claude_redis_auth; /* KDESKDASH_CLAUDE_REDISCLI_AUTH — NULL when unset (no AUTH) */
     const char *icons_ttf_path;    /* KDESKDASH_ICONS_TTF — Symbols Nerd Font read at runtime by the icons mode */
     const char *icons_favorites_path; /* KDESKDASH_ICONS_FAVORITES — icons-mode favourites file (load/save) */
+    const char *kvscf_token;       /* KVSCF_TOKEN — shared secret for foreground-mode focus commands ("" when unset; trimmed at use) */
 } kdeskdash_config_t;
 
 /* Populate cfg from the environment, falling back to defaults. */

@@ -62,4 +62,9 @@ void config_load(kdeskdash_config_t *cfg) {
                                  "/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf");
     cfg->icons_favorites_path =
         env_or("KDESKDASH_ICONS_FAVORITES", "/var/lib/kdeskdash/icon-favorites.txt");
+
+    /* Foreground mode: shared secret authenticating window-focus commands to
+     * kvscf on cleo. Empty when unset (focusing disabled); kvscf_redis trims any
+     * trailing CR/LF before use, since it must byte-match the cleo-side secret. */
+    cfg->kvscf_token = env_or("KVSCF_TOKEN", "");
 }
