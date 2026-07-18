@@ -36,6 +36,10 @@ bool kvscf_redis_have_token(void);
  * written (0 on empty or unreachable — distinguish via kvscf_redis_reachable). */
 int kvscf_redis_refresh(kvscf_instance_t *out, int max);
 
+/* Refresh the Edge window list: SCAN kvscf:edge:*, GET + parse each host, sort
+ * (named first, then unnamed) into `out`. Returns the count written. */
+int kvscf_redis_refresh_edge(kvscf_edge_t *out, int max);
+
 /* Publish a focus command for `host` (the window's publisher host) and window
  * `id`. Returns true if a command was sent. No-op returning false when the
  * token is unset, host/id invalid, payload build fails, or the endpoint is
