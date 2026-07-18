@@ -39,6 +39,13 @@ cross-compile approach and adding touch input.
   sizes, and mark favourites saved to a bake-ready file. Renders any of ~9,300 glyphs at
   runtime via LVGL's TinyTTF over the vendored `SymbolsNerdFont-Regular.ttf` — no static
   font bake. See [docs/brainstorms](docs/brainstorms/2026-07-03-icons-nerdfont-browser-requirements.md).
+- **Remote** — the fleet's live VS Code / Insiders windows (published by
+  [`kvscf`](https://github.com/kenhia/kvscf) on `cleo`) in a 4×7 grid, alphabetical by title.
+  **Tapping a window brings it to the foreground on its host** — the dashboard's first
+  *control-plane* mode, not just a view. Reads `kvscf:instances:*` and publishes
+  `kvscf:focus:<host>` on the same LAN Redis instance as the Claude feed (port 6380);
+  focus commands are authenticated with a shared `KVSCF_TOKEN`. See
+  [docs/brainstorms](docs/brainstorms/2026-07-18-remote-foreground-mode-requirements.md).
 
 Navigation: swipe **left/right** to cycle content modes, swipe **down** for the Menu.
 
@@ -106,6 +113,7 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_CLAUDE_REDISCLI_AUTH` | _(unset)_  | Claude-feed Redis password, if any (AUTH) |
 | `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
 | `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
+| `KVSCF_TOKEN`          | _(unset)_            | `Remote`-mode shared secret authenticating window-focus commands to `kvscf` on `cleo` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → the window list still shows but tapping cannot focus ("view only"). The kvscf feed reuses the Claude-feed endpoint (`KDESKDASH_CLAUDE_REDIS_*`, port 6380). Keep out of version control. |
 
 ## Redis (optional)
 
@@ -178,8 +186,8 @@ kdeskdash/
 │   ├── config.{c,h}                # env-var configuration
 │   ├── shell.{c,h}                 # mode shell: registration, gestures, lifecycle
 │   ├── redis.{c,h}                 # optional Redis client (control/persistence/injection)
-│   ├── gol.{c,h} / stopwatch.{c,h} / iconset.{c,h} # pure, host-tested mode cores
-│   └── modes/                      # game_of_life, clock, menu, dev, claude, icons
+│   ├── gol.{c,h} / stopwatch.{c,h} / iconset.{c,h} / kvscf_feed.{c,h} # pure, host-tested mode cores
+│   └── modes/                      # game_of_life, clock, menu, dev, claude, icons, foreground
 ├── fonts/ttf/                      # vendored SymbolsNerdFont-Regular.ttf (icons mode, runtime TinyTTF)
 ├── tests/                          # host unit tests (registry, gol, stopwatch, iconset, …)
 ├── lib/lvgl/                       # LVGL v9.2.2 (submodule)

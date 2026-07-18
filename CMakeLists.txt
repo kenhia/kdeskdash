@@ -48,6 +48,8 @@ add_executable(kdeskdash
     src/telemetry_host.c
     src/claude_feed.c
     src/claude_redis.c
+    src/kvscf_feed.c
+    src/kvscf_redis.c
     src/bmp_write.c
     src/screenshot.c
     lib/cjson/cJSON.c
@@ -60,6 +62,7 @@ add_executable(kdeskdash
     src/modes/dev_view.c
     src/modes/claude.c
     src/modes/icons.c
+    src/modes/foreground.c
     src/modes/menu.c
 )
 
@@ -148,6 +151,22 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_iconset PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_iconset PRIVATE -Wall -Wextra)
     add_test(NAME test_iconset COMMAND test_iconset)
+
+    # Pure foreground-mode (kvscf) core: JSON parse, ci-label sort, paging, app
+    # colours, focus payload, token trim (cJSON + libm like dev_telemetry).
+    add_executable(test_kvscf_feed
+        tests/test_kvscf_feed.c
+        src/kvscf_feed.c
+        src/telemetry_host.c
+        lib/cjson/cJSON.c
+    )
+    target_include_directories(test_kvscf_feed PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/lib/cjson
+    )
+    target_compile_options(test_kvscf_feed PRIVATE -Wall -Wextra)
+    target_link_libraries(test_kvscf_feed m)
+    add_test(NAME test_kvscf_feed COMMAND test_kvscf_feed)
 
     # dev_telemetry parser pulls in vendored cJSON (needs lib/cjson on the
     # include path and libm for cJSON's number handling).

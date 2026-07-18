@@ -12,10 +12,12 @@
 
 #include "claude_redis.h"
 #include "config.h"
+#include "kvscf_redis.h"
 #include "lvgl.h"
 #include "modes/claude.h"
 #include "modes/clock.h"
 #include "modes/dev.h"
+#include "modes/foreground.h"
 #include "modes/game_of_life.h"
 #include "modes/golz.h"
 #include "modes/icons.h"
@@ -84,6 +86,8 @@ int main(void) {
     shell_register_content_mode(
         icons_mode_create("icons", "Icons", cfg.icons_ttf_path,
                           cfg.icons_favorites_path));
+    shell_register_content_mode(
+        foreground_mode_create("foreground", "Remote", cfg.icons_ttf_path));
     shell_register_menu(menu_mode_create("menu", "Menu"));
 
     /* Optional Redis: remote control + last-mode persistence. Safe when absent.
@@ -105,6 +109,12 @@ int main(void) {
      * localhost instance on this Pi by default. */
     claude_redis_init(cfg.claude_redis_host, cfg.claude_redis_port,
                       cfg.claude_redis_auth);
+
+    /* kvscf window feed (foreground mode): reads/publishes on the same 6380 data
+     * instance as the claude feed, but on its own handle for failure isolation.
+     * The focus token comes from KVSCF_TOKEN (empty -> focusing disabled). */
+    kvscf_redis_init(cfg.claude_redis_host, cfg.claude_redis_port,
+                     cfg.claude_redis_auth, cfg.kvscf_token);
 
     /* Capacitive touch via evdev (ILITEK, default /dev/input/event1).
      * Touch is optional: if it cannot be opened, the display still runs. */
@@ -136,6 +146,7 @@ int main(void) {
     redis_shutdown();
     telemetry_shutdown();
     claude_redis_shutdown();
+    kvscf_redis_shutdown();
     lv_deinit();
     return 0;
 }
