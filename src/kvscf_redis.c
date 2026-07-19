@@ -15,6 +15,7 @@
 
 #define KV_SCAN_MATCH "kvscf:instances:*"
 #define KV_EDGE_MATCH "kvscf:edge:*"
+#define KV_APPS_MATCH "kvscf:apps:*"
 #define KV_SCAN_COUNT 64
 #define KV_MAX_HOSTS  8      /* distinct publisher hosts (only cleo today) */
 #define KV_KEY_MAX    96     /* "kvscf:instances:" + host */
@@ -141,22 +142,41 @@ int kvscf_redis_refresh_edge(kvscf_edge_t *out, int max) {
     return count;
 }
 
-bool kvscf_redis_focus(const char *host, const char *id, bool maximize) {
-    /* R8: never send an unauthenticated command. */
-    if (g_token[0] == '\0')
-        return false;
-    if (!host || !telemetry_host_token_ok(host, strlen(host)))
-        return false;
+int kvscf_redis_refresh_apps(kvscf_appitem_t *out, int max) {
+    if (!out || max <= 0)
+        return 0;
+    if (!redis_client_ensure(&g_kv)) {
+        g_reachable = false;
+        return 0;
+    }
+    char keys[KV_MAX_HOSTS][KV_KEY_MAX];
+    int nkeys = scan_keys(KV_APPS_MATCH, keys, KV_MAX_HOSTS);
+    if (nkeys < 0)
+        return 0;
 
-    char payload[KV_TOKEN_MAX + 128];
-    if (kvscf_focus_payload(g_token, id, maximize, payload, sizeof(payload)) == 0)
-        return false;
+    int count = 0;
+    for (int i = 0; i < nkeys && count < max; i++) {
+        redisReply *g = redisCommand(g_kv.ctx, "GET %s", keys[i]);
+        if (!g) {
+            g_reachable = false;
+            break;
+        }
+        if (g->type == REDIS_REPLY_STRING && g->len > 0 &&
+            (size_t)g->len <= KV_VALUE_MAX)
+            count = kvscf_parse_apps_append(g->str, (size_t)g->len, out, count, max);
+        freeReplyObject(g);
+    }
+    kvscf_sort_apps(out, count);
+    return count;
+}
 
+/* Publish a focus command with the given RESP-safe JSON `payload` to
+ * kvscf:focus:<host>. Shared by the id-based focus and the key-based launch. */
+static bool publish_focus(const char *host, const char *payload) {
     if (!redis_client_ensure(&g_kv)) {
         g_reachable = false;
         return false;
     }
-
     char chan[16 + KV_HOST_MAX];
     snprintf(chan, sizeof(chan), "kvscf:focus:%s", host);
     /* hiredis %s sends each arg as one binary-safe bulk string, so the JSON
@@ -169,4 +189,28 @@ bool kvscf_redis_focus(const char *host, const char *id, bool maximize) {
     g_reachable = true;
     freeReplyObject(r);
     return true;
+}
+
+bool kvscf_redis_launch(const char *host, const char *app_key) {
+    if (g_token[0] == '\0')
+        return false;
+    if (!host || !telemetry_host_token_ok(host, strlen(host)))
+        return false;
+    char payload[KV_TOKEN_MAX + 128];
+    if (kvscf_launch_payload(g_token, app_key, payload, sizeof(payload)) == 0)
+        return false;
+    return publish_focus(host, payload);
+}
+
+bool kvscf_redis_focus(const char *host, const char *id, bool maximize) {
+    /* R8: never send an unauthenticated command. */
+    if (g_token[0] == '\0')
+        return false;
+    if (!host || !telemetry_host_token_ok(host, strlen(host)))
+        return false;
+
+    char payload[KV_TOKEN_MAX + 128];
+    if (kvscf_focus_payload(g_token, id, maximize, payload, sizeof(payload)) == 0)
+        return false;
+    return publish_focus(host, payload);
 }

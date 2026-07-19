@@ -32,9 +32,10 @@
 #define CELL_GAP    6
 #define HOST_STRIP  22 /* width of the rotated tab (host / tab-count) on a cell */
 
-/* Pre-encoded UTF-8 for the two app glyphs (Material Design range). */
+/* Pre-encoded UTF-8 for the three app glyphs (Material Design range). */
 #define GLYPH_VSCODE "\xF3\xB0\xA8\x9E" /* U+F0A1E nf-md-microsoft_visual_studio_code */
 #define GLYPH_EDGE   "\xF3\xB0\x87\xA9" /* U+F01E9 nf-md-microsoft_edge               */
+#define GLYPH_ROCKET "\xF3\xB1\x93\x9E" /* U+F14DE nf-md-rocket_launch (Apps)         */
 
 #define COLOR_BG        lv_color_hex(0x05070d)
 #define COLOR_PANEL     lv_color_hex(0x0a0f1a)
@@ -47,8 +48,9 @@
 #define COLOR_HOST      lv_color_hex(0x969696) /* cleo-side host grey */
 #define COLOR_VSCODE    lv_color_hex(0x60A5EB) /* VS Code blue (rail + stable) */
 #define COLOR_EDGE      lv_color_hex(0x2ec4c4) /* Edge teal (rail + named windows) */
+#define COLOR_APPS      lv_color_hex(0xef5350) /* Apps rocket red */
 
-typedef enum { APP_CODE = 0, APP_EDGE } fg_app_t;
+typedef enum { APP_CODE = 0, APP_EDGE, APP_APPS } fg_app_t;
 
 typedef struct fg_state fg_state_t;
 
@@ -67,6 +69,7 @@ struct fg_state {
     fg_app_t         app; /* which source fills the grid */
     kvscf_instance_t items[KV_INSTANCES_MAX];
     kvscf_edge_t     edge[KV_INSTANCES_MAX];
+    kvscf_appitem_t  apps[KV_INSTANCES_MAX];
     int              count; /* count for the active view */
     int              page;
     uint32_t         last_poll;
@@ -74,6 +77,7 @@ struct fg_state {
     /* widgets */
     lv_obj_t  *code_icon; /* rail app switch */
     lv_obj_t  *edge_icon;
+    lv_obj_t  *apps_icon;
     lv_obj_t  *count_lbl;
     lv_obj_t  *page_nav;  /* container for up/down (hidden unless overflow) */
     lv_obj_t  *grid;
@@ -121,7 +125,7 @@ static void fill_cell(fg_state_t *st, int s, int idx) {
         lv_obj_set_style_text_color(st->cell_label[s],
                                     lv_color_hex(kvscf_app_color(in->app)), 0);
         lv_label_set_text(st->cell_host[s], kvscf_display_host(in));
-    } else {
+    } else if (st->app == APP_EDGE) {
         const kvscf_edge_t *e = &st->edge[idx];
         lv_label_set_text(st->cell_label[s], e->label);
         lv_obj_set_style_text_color(st->cell_label[s],
@@ -130,6 +134,12 @@ static void fill_cell(fg_state_t *st, int s, int idx) {
         if (e->tab_count >= 0) /* today unnamed only; auto-shows for named later */
             snprintf(tab, sizeof(tab), "%d", e->tab_count);
         lv_label_set_text(st->cell_host[s], tab);
+    } else {
+        const kvscf_appitem_t *a = &st->apps[idx];
+        lv_label_set_text(st->cell_label[s], a->label);
+        lv_obj_set_style_text_color(st->cell_label[s],
+                                    a->running ? COLOR_INK : COLOR_MUTED, 0);
+        lv_label_set_text(st->cell_host[s], ""); /* apps: no host/tab */
     }
 }
 
@@ -183,8 +193,10 @@ static void refresh(fg_state_t *st) {
 
     if (st->app == APP_CODE)
         st->count = kvscf_redis_refresh(st->items, KV_INSTANCES_MAX);
-    else
+    else if (st->app == APP_EDGE)
         st->count = kvscf_redis_refresh_edge(st->edge, KV_INSTANCES_MAX);
+    else
+        st->count = kvscf_redis_refresh_apps(st->apps, KV_INSTANCES_MAX);
     st->page = kvscf_clamp_page(st->page, st->count, KV_PER_PAGE);
 
     if (!kvscf_redis_reachable()) {
@@ -192,8 +204,9 @@ static void refresh(fg_state_t *st) {
         return;
     }
     if (st->count == 0) {
-        show_banner(st, st->app == APP_CODE ? "no active editors"
-                                            : "no Edge windows");
+        show_banner(st, st->app == APP_CODE   ? "no active editors"
+                        : st->app == APP_EDGE ? "no Edge windows"
+                                              : "no apps configured");
         return;
     }
     hide_banner(st);
@@ -215,23 +228,33 @@ static void cell_cb(lv_event_t *e) {
         set_toast(st, "focus disabled — no token", COLOR_ACCENT);
         return;
     }
-    /* Identical focus command for either app — id is a kind-agnostic HWND. */
-    const char *host, *id, *label;
-    if (st->app == APP_CODE) {
-        host = st->items[idx].host;
-        id = st->items[idx].id;
-        label = st->items[idx].label;
-    } else {
-        host = st->edge[idx].host;
-        id = st->edge[idx].id;
-        label = st->edge[idx].label;
-    }
     char msg[96];
-    if (kvscf_redis_focus(host, id, false)) {
+    const char *label;
+    bool ok;
+    if (st->app == APP_APPS) {
+        /* Apps: launch-or-focus, keyed by the app key (not an HWND). */
+        const kvscf_appitem_t *a = &st->apps[idx];
+        label = a->label;
+        ok = kvscf_redis_launch(a->host, a->key);
+    } else {
+        /* Code/Edge: identical focus command — id is a kind-agnostic HWND. */
+        const char *host, *id;
+        if (st->app == APP_CODE) {
+            host = st->items[idx].host;
+            id = st->items[idx].id;
+            label = st->items[idx].label;
+        } else {
+            host = st->edge[idx].host;
+            id = st->edge[idx].id;
+            label = st->edge[idx].label;
+        }
+        ok = kvscf_redis_focus(host, id, false);
+    }
+    if (ok) {
         snprintf(msg, sizeof(msg), LV_SYMBOL_UP " %s", label);
         set_toast(st, msg, COLOR_ACCENT);
     } else {
-        set_toast(st, "focus failed", COLOR_ACCENT);
+        set_toast(st, "action failed", COLOR_ACCENT);
     }
 }
 
@@ -244,12 +267,14 @@ static void page_step_cb(lv_event_t *e) {
     repaint_grid(st);
 }
 
-/* Active app icon full-opacity; the other dimmed. */
+/* Active app icon full-opacity; the others dimmed. */
 static void update_rail(fg_state_t *st) {
     lv_obj_set_style_text_opa(st->code_icon,
                               st->app == APP_CODE ? LV_OPA_COVER : LV_OPA_40, 0);
     lv_obj_set_style_text_opa(st->edge_icon,
                               st->app == APP_EDGE ? LV_OPA_COVER : LV_OPA_40, 0);
+    lv_obj_set_style_text_opa(st->apps_icon,
+                              st->app == APP_APPS ? LV_OPA_COVER : LV_OPA_40, 0);
 }
 
 static void app_switch_cb(lv_event_t *e) {
@@ -359,6 +384,8 @@ static void build_rail(fg_state_t *st, lv_obj_t *parent) {
         make_app_icon(st, rail, GLYPH_VSCODE, "Code", COLOR_VSCODE, APP_CODE);
     st->edge_icon =
         make_app_icon(st, rail, GLYPH_EDGE, "Edge", COLOR_EDGE, APP_EDGE);
+    st->apps_icon =
+        make_app_icon(st, rail, GLYPH_ROCKET, "Apps", COLOR_APPS, APP_APPS);
     update_rail(st);
 
     st->count_lbl = lv_label_create(rail);

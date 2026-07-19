@@ -272,6 +272,94 @@ void kvscf_sort_edge(kvscf_edge_t *arr, int n) {
         qsort(arr, (size_t)n, sizeof(arr[0]), cmp_edge);
 }
 
+/* ---- Configured apps -------------------------------------------------- */
+
+int kvscf_parse_apps_append(const char *json, size_t len, kvscf_appitem_t *arr,
+                            int count, int max) {
+    if (!json || len == 0 || !arr || count >= max)
+        return count;
+
+    cJSON *root = cJSON_ParseWithLength(json, len);
+    if (!root)
+        return count;
+    if (!cJSON_IsObject(root)) {
+        cJSON_Delete(root);
+        return count;
+    }
+
+    const cJSON *hostj = cJSON_GetObjectItemCaseSensitive(root, "host");
+    if (!cJSON_IsString(hostj) || !hostj->valuestring ||
+        !telemetry_host_token_ok(hostj->valuestring, strlen(hostj->valuestring))) {
+        cJSON_Delete(root);
+        return count;
+    }
+    const char *host = hostj->valuestring;
+
+    const cJSON *apps = cJSON_GetObjectItemCaseSensitive(root, "apps");
+    if (cJSON_IsArray(apps)) {
+        const cJSON *el = NULL;
+        cJSON_ArrayForEach(el, apps) {
+            if (count >= max)
+                break;
+            if (!cJSON_IsObject(el))
+                continue;
+            const cJSON *keyj = cJSON_GetObjectItemCaseSensitive(el, "key");
+            const cJSON *labelj = cJSON_GetObjectItemCaseSensitive(el, "label");
+            if (!cJSON_IsString(keyj) || !keyj->valuestring || !keyj->valuestring[0] ||
+                !cJSON_IsString(labelj) || !labelj->valuestring ||
+                !labelj->valuestring[0])
+                continue;
+
+            kvscf_appitem_t *r = &arr[count];
+            memset(r, 0, sizeof(*r));
+            copy_field(r->key, sizeof(r->key), keyj->valuestring);
+            copy_field(r->label, sizeof(r->label), labelj->valuestring);
+            copy_field(r->host, sizeof(r->host), host);
+            r->running =
+                cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(el, "running"));
+            const cJSON *oj = cJSON_GetObjectItemCaseSensitive(el, "order");
+            if (cJSON_IsNumber(oj))
+                r->order = (int)oj->valuedouble;
+
+            count++;
+        }
+    }
+
+    cJSON_Delete(root);
+    return count;
+}
+
+static int cmp_apps(const void *a, const void *b) {
+    const kvscf_appitem_t *x = a, *y = b;
+    if (x->order != y->order)
+        return x->order < y->order ? -1 : 1;
+    int c = strcasecmp(x->label, y->label);
+    if (c)
+        return c;
+    return strcmp(x->key, y->key);
+}
+
+void kvscf_sort_apps(kvscf_appitem_t *arr, int n) {
+    if (arr && n > 1)
+        qsort(arr, (size_t)n, sizeof(arr[0]), cmp_apps);
+}
+
+size_t kvscf_launch_payload(const char *token, const char *app_key, char *buf,
+                            size_t bufsz) {
+    if (!buf || bufsz == 0)
+        return 0;
+    buf[0] = '\0';
+    if (!token || !token[0] || !app_key || !app_key[0])
+        return 0;
+    int n = snprintf(buf, bufsz, "{\"token\":\"%s\",\"app\":\"%s\"}", token,
+                     app_key);
+    if (n < 0 || (size_t)n >= bufsz) {
+        buf[0] = '\0';
+        return 0;
+    }
+    return (size_t)n;
+}
+
 int kvscf_page_count(int n, int per_page) {
     if (per_page <= 0 || n <= 0)
         return 1;

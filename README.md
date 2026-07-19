@@ -39,14 +39,15 @@ cross-compile approach and adding touch input.
   sizes, and mark favourites saved to a bake-ready file. Renders any of ~9,300 glyphs at
   runtime via LVGL's TinyTTF over the vendored `SymbolsNerdFont-Regular.ttf` — no static
   font bake. See [docs/brainstorms](docs/brainstorms/2026-07-03-icons-nerdfont-browser-requirements.md).
-- **Remote** — the fleet's live editor/browser windows (published by
-  [`kvscf`](https://github.com/kenhia/kvscf) on `cleo`) in a 4×7 grid, alphabetical by title.
-  A left **app rail** switches the view between **VS Code / Insiders** (`kvscf:instances:*`)
-  and **Microsoft Edge** (`kvscf:edge:*`); Edge lists named windows first (teal), then unnamed
-  (with a tab count). **Tapping a window brings it to the foreground on its host** — the
-  dashboard's first *control-plane* mode, not just a view. Publishes `kvscf:focus:<host>` on
-  the same LAN Redis instance as the Claude feed (port 6380); focus commands are authenticated
-  with a shared `KVSCF_TOKEN`. See
+- **Remote** — the fleet's live editor/browser windows + configured apps (published by
+  [`kvscf`](https://github.com/kenhia/kvscf) on `cleo`) in a 4×7 grid. A left **app rail**
+  switches the view between **VS Code / Insiders** (`kvscf:instances:*`), **Microsoft Edge**
+  (`kvscf:edge:*`, named windows first in teal, then unnamed with a tab count), and **Apps**
+  (`kvscf:apps:*`, non-running apps greyed). **Tapping brings a window to the foreground on its
+  host — or focuses/launches an app** — the dashboard's first *control-plane* mode, not just a
+  view. Publishes to `kvscf:focus:<host>` on the same LAN Redis instance as the Claude feed
+  (port 6380); commands (`{id}` for windows, `{app}` for apps) are authenticated with a shared
+  `KVSCF_TOKEN`. See
   [docs/brainstorms](docs/brainstorms/2026-07-18-remote-foreground-mode-requirements.md).
 
 Navigation: swipe **left/right** to cycle content modes, swipe **down** for the Menu.
