@@ -192,6 +192,43 @@ static void test_edge_sort(void) {
     check_str(arr[3].label, "Dashboard | Claude Platform", "unnamed sorted[1]");
 }
 
+/* Trimmed excerpt of a real kvscf:apps:cleo value: running + not-running apps. */
+static const char *APPS_SAMPLE =
+    "{\"apps\":["
+    "{\"id\":\"9176544\",\"key\":\"claude\",\"label\":\"Claude\",\"order\":0,\"running\":true},"
+    "{\"id\":null,\"key\":\"kindle\",\"label\":\"Kindle\",\"order\":5,\"running\":false},"
+    "{\"id\":\"198890\",\"key\":\"copilot\",\"label\":\"Copilot\",\"order\":2,\"running\":true}],"
+    "\"host\":\"cleo\",\"ts\":1784423885}";
+
+static void test_apps_parse_sort(void) {
+    kvscf_appitem_t arr[KV_INSTANCES_MAX];
+    int n = kvscf_parse_apps_append(APPS_SAMPLE, strlen(APPS_SAMPLE), arr, 0,
+                                    KV_INSTANCES_MAX);
+    check(n, 3, "parsed three apps");
+    kvscf_sort_apps(arr, n);
+    /* Sorted by order: claude(0), copilot(2), kindle(5). */
+    check_str(arr[0].key, "claude", "order sort[0]");
+    check_str(arr[0].host, "cleo", "app host from root");
+    check(arr[0].running, 1, "claude running");
+    check_str(arr[1].key, "copilot", "order sort[1]");
+    check_str(arr[2].key, "kindle", "order sort[2]");
+    check(arr[2].running, 0, "kindle not running (null id ok)");
+}
+
+static void test_launch_payload(void) {
+    char buf[128];
+    size_t n = kvscf_launch_payload("kvscf-abc", "kindle", buf, sizeof(buf));
+    check(n > 0, 1, "launch payload built");
+    check_str(buf, "{\"token\":\"kvscf-abc\",\"app\":\"kindle\"}", "launch shape");
+    /* Guards: no token or no key -> empty. */
+    check(kvscf_launch_payload("", "kindle", buf, sizeof(buf)), 0, "no token -> 0");
+    check(kvscf_launch_payload("t", "", buf, sizeof(buf)), 0, "no key -> 0");
+    char small[8];
+    check(kvscf_launch_payload("kvscf-abc", "kindle", small, sizeof(small)), 0,
+          "too small -> 0");
+    check_str(small, "", "empty on overflow");
+}
+
 static void test_app_color(void) {
     check((long)kvscf_app_color(KV_APP_STABLE), 0x60A5EB, "stable colour");
     check((long)kvscf_app_color(KV_APP_INSIDERS), 0x38BE84, "insiders colour");
@@ -244,6 +281,8 @@ int main(void) {
     test_merge_across_hosts();
     test_edge_parse();
     test_edge_sort();
+    test_apps_parse_sort();
+    test_launch_payload();
     test_parse_tolerant();
     test_cap();
     test_app_color();

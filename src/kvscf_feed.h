@@ -107,6 +107,36 @@ int kvscf_parse_edge_append(const char *json, size_t len, kvscf_edge_t *arr,
  * case-insensitive alphabetical by `label` (tie-break id). */
 void kvscf_sort_edge(kvscf_edge_t *arr, int n);
 
+/* ---- Configured apps (kvscf:apps:<host>) ------------------------------ */
+
+#define KV_APPKEY_MAX 32
+
+/* One configured app — focus-if-running-else-launch. Unlike Code/Edge the focus
+ * command carries the stable `key` (not an HWND), since a non-running app has no
+ * window. */
+typedef struct {
+    char key[KV_APPKEY_MAX]; /* stable app id — echoed back in the launch command */
+    char label[KV_LABEL_MAX];
+    char host[KV_HOST_MAX];  /* publisher host — the launch channel               */
+    bool running;            /* false -> render greyed                            */
+    int  order;              /* configured sort index                             */
+} kvscf_appitem_t;
+
+/* Parse one host's `{host,apps:[…]}` JSON String, appending each valid app.
+ * key/label required; `running` bool; `id` ignored (we command by key). Returns
+ * the new count. */
+int kvscf_parse_apps_append(const char *json, size_t len, kvscf_appitem_t *arr,
+                            int count, int max);
+
+/* Sort apps by configured `order`, then case-insensitive `label`, then `key`. */
+void kvscf_sort_apps(kvscf_appitem_t *arr, int n);
+
+/* Build the launch-or-focus payload `{"token":"…","app":"…"}` into buf. Returns
+ * the length written, or 0 if token/key is empty or buf too small (buf set to
+ * ""). The Apps command is keyed by `app`, not `id`. */
+size_t kvscf_launch_payload(const char *token, const char *app_key, char *buf,
+                            size_t bufsz);
+
 /* The host to *display* for an instance: `remote_host` if set, else `host`. */
 const char *kvscf_display_host(const kvscf_instance_t *in);
 

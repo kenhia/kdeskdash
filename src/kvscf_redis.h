@@ -40,6 +40,14 @@ int kvscf_redis_refresh(kvscf_instance_t *out, int max);
  * (named first, then unnamed) into `out`. Returns the count written. */
 int kvscf_redis_refresh_edge(kvscf_edge_t *out, int max);
 
+/* Refresh the configured-apps list: SCAN kvscf:apps:*, GET + parse + sort by
+ * order into `out`. Returns the count written. */
+int kvscf_redis_refresh_apps(kvscf_appitem_t *out, int max);
+
+/* Publish a launch-or-focus command for `app_key` (focus if running, else
+ * launch). Same guards as kvscf_redis_focus; keyed by app instead of HWND. */
+bool kvscf_redis_launch(const char *host, const char *app_key);
+
 /* Publish a focus command for `host` (the window's publisher host) and window
  * `id`. Returns true if a command was sent. No-op returning false when the
  * token is unset, host/id invalid, payload build fails, or the endpoint is
