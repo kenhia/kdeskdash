@@ -153,6 +153,21 @@ hook_mode() {
                  status "$st" ts "$NOW"
       resp EXPIRE "$key" "$KDD_TTL_S"
       ;;
+    PreToolUse|PostToolUse)
+      # AskUserQuestion means the agent is hard-blocked on the user: PreToolUse
+      # fires before the dialog is shown, PostToolUse once it is answered. The
+      # settings.json matcher already scopes these to AskUserQuestion; re-check
+      # here so a broader matcher elsewhere can never mislabel a session.
+      #
+      # The payload also carries the question text and the user's answer. Read
+      # nothing but tool_name — prompt content never reaches Redis (R20).
+      [ "$(jstr "$json" tool_name)" = AskUserQuestion ] || exit 0
+      local qst=blocked
+      [ "$event" = PostToolUse ] && qst=working
+      resp HSET "$key" host "$HOST" project "$project" cwd "$cwd" \
+                 status "$qst" ts "$NOW"
+      resp EXPIRE "$key" "$KDD_TTL_S"
+      ;;
     SessionEnd)
       reason=$(jstr "$json" reason)
       resp DEL "$key"

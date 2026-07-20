@@ -30,7 +30,8 @@ cross-compile approach and adding touch input.
 - **Dev** — live CPU/RAM + GPU/VRAM charts for two selectable fleet hosts (kpidash
   telemetry from the `rpi53` Redis).
 - **Claude** — fleet Claude Code agent activity: attention-first session rows
-  (awaiting-input on top), recent completions, and 5-hour / 7-day subscription usage
+  (`BLOCKED ON YOU` — an agent sitting on a question — above awaiting-input, then
+  working), recent completions, and 5-hour / 7-day subscription usage
   gauges. Fed by [publisher/claude-pub.sh](publisher/README.md) hooks + statusline on
   each dev machine via a dedicated Redis instance
   ([deploy/redis-claude.conf](deploy/redis-claude.conf), port 6380).
