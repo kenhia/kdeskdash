@@ -24,7 +24,11 @@
 #include <stdint.h>
 
 #define KV_HOST_MAX      64
-#define KV_ID_MAX        24 /* HWND decimal string */
+/* Focus token. Usually an HWND decimal string, but a non-running Code favorite
+ * carries a *folder URI* instead (e.g.
+ * "vscode-remote://ssh-remote%2Bkai/home/ken/src/ai-agents/harness-eval"), so this
+ * must be generous — a truncated id would publish a broken relaunch command. */
+#define KV_ID_MAX        256
 #define KV_LABEL_MAX     64 /* kvscf already ellipsis-truncates long labels */
 #define KV_WORKSPACE_MAX 48
 #define KV_FILE_MAX      64
@@ -65,6 +69,8 @@ typedef struct {
     kv_app_t    app;
     kv_remote_t remote;
     int         z_index; /* parsed but unused (we sort by label) */
+    bool        running;  /* false = a favorite with no open window (relaunch) */
+    bool        favorite; /* one of Ken's favorites, open or not               */
 } kvscf_instance_t;
 
 /* Trim trailing whitespace/CR/LF in place (byte-exact token matching depends on
@@ -79,8 +85,9 @@ size_t kvscf_trim_trailing(char *s);
 int kvscf_parse_append(const char *json, size_t len, kvscf_instance_t *arr,
                        int count, int max);
 
-/* Stable case-insensitive alphabetical sort by `label` (tie-break host, then id
- * for determinism). This is the display order — our own, not `z_index`. */
+/* Display order: the `running` block first, then the non-running (favorite)
+ * block; each block case-insensitive alphabetical by `label` (tie-break host,
+ * then id). Our own order — not `z_index`. */
 void kvscf_sort_by_label(kvscf_instance_t *arr, int n);
 
 /* ---- Edge windows (kvscf:edge:<host>) --------------------------------- */

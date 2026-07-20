@@ -37,6 +37,12 @@
 #define GLYPH_EDGE   "\xF3\xB0\x87\xA9" /* U+F01E9 nf-md-microsoft_edge               */
 #define GLYPH_ROCKET "\xF3\xB1\x93\x9E" /* U+F14DE nf-md-rocket_launch (Apps)         */
 
+/* Code-favorite markers, drawn in a small marker font beside each row. */
+#define GLYPH_STAR   "\xF3\xB0\x93\x8E" /* U+F04CE nf-md-star           (open fav)   */
+#define GLYPH_CIRCLE "\xF3\xB0\x9D\xA5" /* U+F0765 nf-md-circle_outline (closed fav) */
+#define MARK_GLYPH   22 /* marker font size */
+#define MARK_STRIP   26 /* reserved width for the ★/○ marker */
+
 #define COLOR_BG        lv_color_hex(0x05070d)
 #define COLOR_PANEL     lv_color_hex(0x0a0f1a)
 #define COLOR_PANEL_HI  lv_color_hex(0x101726)
@@ -49,6 +55,7 @@
 #define COLOR_VSCODE    lv_color_hex(0x60A5EB) /* VS Code blue (rail + stable) */
 #define COLOR_EDGE      lv_color_hex(0x2ec4c4) /* Edge teal (rail + named windows) */
 #define COLOR_APPS      lv_color_hex(0xef5350) /* Apps rocket red */
+#define COLOR_STAR      lv_color_hex(0xd9a441) /* favorite gold */
 
 typedef enum { APP_CODE = 0, APP_EDGE, APP_APPS } fg_app_t;
 
@@ -65,6 +72,7 @@ struct fg_state {
     void      *ttf_data;
     size_t     ttf_size;
     lv_font_t *rail_font;
+    lv_font_t *mark_font; /* small font for the ★/○ favorite markers */
 
     fg_app_t         app; /* which source fills the grid */
     kvscf_instance_t items[KV_INSTANCES_MAX];
@@ -83,6 +91,7 @@ struct fg_state {
     lv_obj_t  *grid;
     lv_obj_t  *cells[KV_PER_PAGE];
     lv_obj_t  *cell_label[KV_PER_PAGE];
+    lv_obj_t  *cell_mark[KV_PER_PAGE];
     lv_obj_t  *cell_host[KV_PER_PAGE];
     cell_ctx_t cell_ctx[KV_PER_PAGE];
     lv_obj_t  *banner; /* centered overlay for empty/unavailable */
@@ -117,14 +126,32 @@ static void set_toast(fg_state_t *st, const char *msg, lv_color_t color) {
  * tab) or Edge (teal named / grey unnamed label + rotated tab-count tab). */
 static void fill_cell(fg_state_t *st, int s, int idx) {
     lv_obj_clear_flag(st->cells[s], LV_OBJ_FLAG_HIDDEN);
+    /* Defaults — the per-view branches override what they use. */
+    lv_label_set_text(st->cell_mark[s], "");
+    lv_obj_set_style_text_color(st->cell_host[s], COLOR_HOST, 0);
+
     if (st->app == APP_CODE) {
         const kvscf_instance_t *in = &st->items[idx];
         char label[KV_LABEL_MAX];
         kvscf_display_label(in, label, sizeof(label));
         lv_label_set_text(st->cell_label[s], label);
-        lv_obj_set_style_text_color(st->cell_label[s],
-                                    lv_color_hex(kvscf_app_color(in->app)), 0);
+        /* A non-running favorite is launchable, not focusable — dim the row. */
+        lv_obj_set_style_text_color(
+            st->cell_label[s],
+            in->running ? lv_color_hex(kvscf_app_color(in->app)) : COLOR_MUTED, 0);
         lv_label_set_text(st->cell_host[s], kvscf_display_host(in));
+        if (!in->running)
+            lv_obj_set_style_text_color(st->cell_host[s], COLOR_MUTED, 0);
+        /* ★ on open favorites, ○ on closed ones, nothing otherwise. */
+        if (st->mark_font) {
+            if (!in->running) {
+                lv_label_set_text(st->cell_mark[s], GLYPH_CIRCLE);
+                lv_obj_set_style_text_color(st->cell_mark[s], COLOR_MUTED, 0);
+            } else if (in->favorite) {
+                lv_label_set_text(st->cell_mark[s], GLYPH_STAR);
+                lv_obj_set_style_text_color(st->cell_mark[s], COLOR_STAR, 0);
+            }
+        }
     } else if (st->app == APP_EDGE) {
         const kvscf_edge_t *e = &st->edge[idx];
         lv_label_set_text(st->cell_label[s], e->label);
@@ -231,6 +258,7 @@ static void cell_cb(lv_event_t *e) {
     char msg[96];
     const char *label;
     bool ok;
+    bool relaunch = false; /* a closed Code favorite: kvscf relaunches it */
     if (st->app == APP_APPS) {
         /* Apps: launch-or-focus, keyed by the app key (not an HWND). */
         const kvscf_appitem_t *a = &st->apps[idx];
@@ -243,6 +271,7 @@ static void cell_cb(lv_event_t *e) {
             host = st->items[idx].host;
             id = st->items[idx].id;
             label = st->items[idx].label;
+            relaunch = !st->items[idx].running;
         } else {
             host = st->edge[idx].host;
             id = st->edge[idx].id;
@@ -251,7 +280,9 @@ static void cell_cb(lv_event_t *e) {
         ok = kvscf_redis_focus(host, id, false);
     }
     if (ok) {
-        snprintf(msg, sizeof(msg), LV_SYMBOL_UP " %s", label);
+        /* A relaunch takes several seconds before the window exists. */
+        snprintf(msg, sizeof(msg), relaunch ? "launching %s" : LV_SYMBOL_UP " %s",
+                 label);
         set_toast(st, msg, COLOR_ACCENT);
     } else {
         set_toast(st, "action failed", COLOR_ACCENT);
@@ -319,6 +350,7 @@ static bool load_ttf(fg_state_t *st) {
     st->ttf_data = buf;
     st->ttf_size = (size_t)sz;
     st->rail_font = lv_tiny_ttf_create_data(buf, (size_t)sz, RAIL_GLYPH);
+    st->mark_font = lv_tiny_ttf_create_data(buf, (size_t)sz, MARK_GLYPH);
     return st->rail_font != NULL;
 }
 
@@ -446,6 +478,15 @@ static void build_cell(fg_state_t *st, lv_obj_t *colbox, int s) {
     lv_obj_set_style_text_color(label, COLOR_INK, 0);
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
     lv_label_set_text(label, "");
+
+    /* Favorite marker (★ open / ○ closed), reserved space left of the host tab. */
+    lv_obj_t *mark = lv_label_create(cell);
+    lv_obj_set_width(mark, MARK_STRIP);
+    if (st->mark_font)
+        lv_obj_set_style_text_font(mark, st->mark_font, 0);
+    lv_obj_set_style_text_align(mark, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(mark, "");
+    st->cell_mark[s] = mark;
 
     /* Host as a 90°-clockwise tab on the right edge: rotated about its own
      * centre inside a fixed-width strip so the vertical text stays centred. */

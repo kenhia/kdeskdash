@@ -41,11 +41,12 @@ cross-compile approach and adding touch input.
   font bake. See [docs/brainstorms](docs/brainstorms/2026-07-03-icons-nerdfont-browser-requirements.md).
 - **Remote** — the fleet's live editor/browser windows + configured apps (published by
   [`kvscf`](https://github.com/kenhia/kvscf) on `cleo`) in a 4×7 grid. A left **app rail**
-  switches the view between **VS Code / Insiders** (`kvscf:instances:*`), **Microsoft Edge**
+  switches the view between **VS Code / Insiders** (`kvscf:instances:*`; open windows first
+  with a ★ on favorites, then closed favorites dimmed with ○), **Microsoft Edge**
   (`kvscf:edge:*`, named windows first in teal, then unnamed with a tab count), and **Apps**
   (`kvscf:apps:*`, non-running apps greyed). **Tapping brings a window to the foreground on its
-  host — or focuses/launches an app** — the dashboard's first *control-plane* mode, not just a
-  view. Publishes to `kvscf:focus:<host>` on the same LAN Redis instance as the Claude feed
+  host — or launches it** (a closed Code favorite relaunches the editor; a stopped app starts)
+  — the dashboard's first *control-plane* mode, not just a view. Publishes to `kvscf:focus:<host>` on the same LAN Redis instance as the Claude feed
   (port 6380); commands (`{id}` for windows, `{app}` for apps) are authenticated with a shared
   `KVSCF_TOKEN`. See
   [docs/brainstorms](docs/brainstorms/2026-07-18-remote-foreground-mode-requirements.md).

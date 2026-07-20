@@ -100,6 +100,56 @@ static void test_sort(void) {
     check_str(arr[2].label, "homelab-ai-plan (kai)", "sorted[2]");
 }
 
+/* Sprint 008: favorites. A non-running row carries a folder URI as its id (not an
+ * HWND) — it must survive parsing untruncated or the relaunch command breaks. */
+static const char *FAV_SAMPLE =
+    "{\"host\":\"cleo\",\"instances\":["
+    "{\"id\":\"777\",\"label\":\"zeta-open\",\"app\":\"insiders\",\"running\":true,\"favorite\":true},"
+    "{\"id\":\"888\",\"label\":\"alpha-open\",\"app\":\"stable\",\"running\":true,\"favorite\":false},"
+    "{\"id\":\"vscode-remote://ssh-remote%2Bkai/home/ken/src/ai-agents/harness-eval\","
+    "\"label\":\"harness-eval (kai)\",\"remote_host\":\"kai\",\"app\":\"insiders\","
+    "\"active_file\":null,\"z_index\":null,\"running\":false,\"favorite\":true}]}";
+
+static void test_favorites_parse(void) {
+    kvscf_instance_t arr[KV_INSTANCES_MAX];
+    int n = kvscf_parse_append(FAV_SAMPLE, strlen(FAV_SAMPLE), arr, 0,
+                               KV_INSTANCES_MAX);
+    check(n, 3, "parsed three (incl. a non-running favorite)");
+
+    check(arr[0].running, 1, "running true parsed");
+    check(arr[0].favorite, 1, "favorite true parsed");
+    check(arr[1].favorite, 0, "favorite false parsed");
+    check(arr[2].running, 0, "running false parsed");
+
+    /* The landmine: the folder-URI id must round-trip in full. */
+    const char *uri =
+        "vscode-remote://ssh-remote%2Bkai/home/ken/src/ai-agents/harness-eval";
+    check_str(arr[2].id, uri, "folder-URI id not truncated");
+    check((long)strlen(arr[2].id), (long)strlen(uri), "URI id full length");
+}
+
+static void test_favorites_sort(void) {
+    kvscf_instance_t arr[KV_INSTANCES_MAX];
+    int n = kvscf_parse_append(FAV_SAMPLE, strlen(FAV_SAMPLE), arr, 0,
+                               KV_INSTANCES_MAX);
+    kvscf_sort_by_label(arr, n);
+    /* Running block first (alpha-open, zeta-open), then the non-running one —
+     * even though "harness-eval" sorts before "zeta-open" alphabetically. */
+    check_str(arr[0].label, "alpha-open", "running sorted[0]");
+    check_str(arr[1].label, "zeta-open", "running sorted[1]");
+    check_str(arr[2].label, "harness-eval (kai)", "non-running last");
+    check(arr[2].running, 0, "last row is the favorite");
+}
+
+static void test_running_defaults_true(void) {
+    /* Older publisher with no `running` field -> treated as running. */
+    kvscf_instance_t arr[KV_INSTANCES_MAX];
+    int n = kvscf_parse_append(SAMPLE, strlen(SAMPLE), arr, 0, KV_INSTANCES_MAX);
+    check(n, 3, "legacy sample parsed");
+    check(arr[0].running, 1, "absent running -> true (back-compat)");
+    check(arr[0].favorite, 0, "absent favorite -> false");
+}
+
 static void test_merge_across_hosts(void) {
     const char *a = "{\"host\":\"cleo\",\"instances\":["
                     "{\"id\":\"1\",\"label\":\"Zeta\",\"app\":\"stable\"}]}";
@@ -278,6 +328,9 @@ int main(void) {
     test_display_host();
     test_display_label();
     test_sort();
+    test_favorites_parse();
+    test_favorites_sort();
+    test_running_defaults_true();
     test_merge_across_hosts();
     test_edge_parse();
     test_edge_sort();
