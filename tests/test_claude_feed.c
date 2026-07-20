@@ -100,14 +100,17 @@ static void test_session_fields(void) {
     cf_session_t s;
 
     check(mk_session("working", "1783000100", &s), "working record parses");
-    check(!s.awaiting, "working -> awaiting false");
+    check(s.status == CF_ST_WORKING, "working -> CF_ST_WORKING");
     check(s.ts == 1783000100, "ts parsed");
     check(s.started_ts == 1783000000, "started_ts parsed");
     check_str(s.project, "kdeskdash", "project");
     check_str(s.title, "", "title empty until enriched");
 
     check(mk_session("awaiting", "1783000100", &s), "awaiting record parses");
-    check(s.awaiting, "awaiting -> awaiting true");
+    check(s.status == CF_ST_AWAITING, "awaiting -> CF_ST_AWAITING");
+
+    check(mk_session("blocked", "1783000100", &s), "blocked record parses");
+    check(s.status == CF_ST_BLOCKED, "blocked -> CF_ST_BLOCKED");
 
     check(!mk_session("banana", "1783000100", &s), "unknown status rejects");
     check(!mk_session("working", "soon", &s), "non-numeric ts rejects");
@@ -157,42 +160,58 @@ static void test_session_fields(void) {
 /* ---------- display status + sort ---------- */
 
 static void test_display_status(void) {
-    check(cf_display_status(false, 5) == CF_DISP_WORKING, "fresh working");
-    check(cf_display_status(true, 5) == CF_DISP_AWAITING, "fresh awaiting");
-    check(cf_display_status(false, -30) == CF_DISP_WORKING, "clock skew is fresh");
-    check(cf_display_status(false, CF_IDLE_S) == CF_DISP_IDLE, "idle at threshold");
-    check(cf_display_status(true, CF_IDLE_S) == CF_DISP_AWAITING,
+    check(cf_display_status(CF_ST_WORKING, 5) == CF_DISP_WORKING, "fresh working");
+    check(cf_display_status(CF_ST_AWAITING, 5) == CF_DISP_AWAITING, "fresh awaiting");
+    check(cf_display_status(CF_ST_BLOCKED, 5) == CF_DISP_BLOCKED, "fresh blocked");
+    check(cf_display_status(CF_ST_WORKING, -30) == CF_DISP_WORKING, "clock skew is fresh");
+    check(cf_display_status(CF_ST_WORKING, CF_IDLE_S) == CF_DISP_IDLE, "idle at threshold");
+    check(cf_display_status(CF_ST_AWAITING, CF_IDLE_S) == CF_DISP_AWAITING,
           "awaiting stays prominent past idle");
-    check(cf_display_status(false, CF_STALE_S) == CF_DISP_STALE, "stale at threshold");
-    check(cf_display_status(true, CF_STALE_S) == CF_DISP_STALE, "awaiting goes stale too");
+    check(cf_display_status(CF_ST_BLOCKED, CF_IDLE_S) == CF_DISP_BLOCKED,
+          "blocked stays prominent past idle");
+    check(cf_display_status(CF_ST_WORKING, CF_STALE_S) == CF_DISP_STALE, "stale at threshold");
+    check(cf_display_status(CF_ST_AWAITING, CF_STALE_S) == CF_DISP_STALE,
+          "awaiting goes stale too");
+    check(cf_display_status(CF_ST_BLOCKED, CF_STALE_S) == CF_DISP_STALE,
+          "blocked goes stale too");
     check_str(cf_disp_label(CF_DISP_AWAITING), "AWAITING INPUT", "awaiting label");
+    check_str(cf_disp_label(CF_DISP_BLOCKED), "BLOCKED ON YOU", "blocked label");
+    /* The view clips the status label at a fixed width that AWAITING INPUT was
+     * sized against; keep the new label no wider so it cannot overflow. */
+    check(strlen(cf_disp_label(CF_DISP_BLOCKED)) <=
+          strlen(cf_disp_label(CF_DISP_AWAITING)),
+          "blocked label fits awaiting's width");
 }
 
 static void test_sort(void) {
     long long now = 1000000;
-    cf_session_t a[5];
+    cf_session_t a[6];
     memset(a, 0, sizeof(a));
-    /* stale working (old), fresh working, awaiting, idle, fresher working */
-    const struct { const char *sid; bool aw; long long ts; } in[5] = {
-        {"stale",  false, now - CF_STALE_S - 5},
-        {"work1",  false, now - 100},
-        {"await",  true,  now - 300},
-        {"idle",   false, now - CF_IDLE_S - 5},
-        {"work2",  false, now - 10},
+    /* stale working (old), fresh working, awaiting, idle, fresher working,
+     * blocked. `block` is deliberately older than `await` so this pins rank
+     * beating recency, not just the tie-break. */
+    const struct { const char *sid; cf_status_t st; long long ts; } in[6] = {
+        {"stale",  CF_ST_WORKING,  now - CF_STALE_S - 5},
+        {"work1",  CF_ST_WORKING,  now - 100},
+        {"await",  CF_ST_AWAITING, now - 300},
+        {"idle",   CF_ST_WORKING,  now - CF_IDLE_S - 5},
+        {"work2",  CF_ST_WORKING,  now - 10},
+        {"block",  CF_ST_BLOCKED,  now - 400},
     };
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         snprintf(a[i].host, sizeof(a[i].host), "kai");
         snprintf(a[i].sid, sizeof(a[i].sid), "%s", in[i].sid);
-        a[i].awaiting = in[i].aw;
+        a[i].status = in[i].st;
         a[i].ts = in[i].ts;
     }
-    cf_sessions_refresh(a, 5, now);
-    check_str(a[0].sid, "await", "awaiting first");
-    check_str(a[1].sid, "work2", "freshest working second");
-    check_str(a[2].sid, "work1", "older working third");
-    check_str(a[3].sid, "idle", "idle fourth");
-    check_str(a[4].sid, "stale", "stale last");
-    check(a[0].disp == CF_DISP_AWAITING && a[4].disp == CF_DISP_STALE,
+    cf_sessions_refresh(a, 6, now);
+    check_str(a[0].sid, "block", "blocked sorts above awaiting despite older ts");
+    check_str(a[1].sid, "await", "awaiting second");
+    check_str(a[2].sid, "work2", "freshest working third");
+    check_str(a[3].sid, "work1", "older working fourth");
+    check_str(a[4].sid, "idle", "idle fifth");
+    check_str(a[5].sid, "stale", "stale last");
+    check(a[0].disp == CF_DISP_BLOCKED && a[5].disp == CF_DISP_STALE,
           "disp derived during refresh");
 }
 

@@ -87,10 +87,13 @@ bool cf_session_from_fields(const char *host, const char *sid,
             continue;
         if (strcmp(f, "status") == 0) {
             if (strcmp(v, "working") == 0) {
-                s.awaiting = false;
+                s.status = CF_ST_WORKING;
                 have_status = true;
             } else if (strcmp(v, "awaiting") == 0) {
-                s.awaiting = true;
+                s.status = CF_ST_AWAITING;
+                have_status = true;
+            } else if (strcmp(v, "blocked") == 0) {
+                s.status = CF_ST_BLOCKED;
                 have_status = true;
             } else {
                 return false; /* unknown status: distrust the whole record */
@@ -125,11 +128,14 @@ bool cf_session_from_fields(const char *host, const char *sid,
 
 /* ---------- display status + ordering ---------- */
 
-cf_disp_t cf_display_status(bool awaiting, long long age_s) {
+cf_disp_t cf_display_status(cf_status_t status, long long age_s) {
     if (age_s >= CF_STALE_S)
         return CF_DISP_STALE;
-    if (awaiting)
-        return CF_DISP_AWAITING; /* your turn — stays prominent until stale */
+    /* blocked and awaiting both mean "your turn" — stay prominent until stale */
+    if (status == CF_ST_BLOCKED)
+        return CF_DISP_BLOCKED;
+    if (status == CF_ST_AWAITING)
+        return CF_DISP_AWAITING;
     if (age_s >= CF_IDLE_S)
         return CF_DISP_IDLE;
     return CF_DISP_WORKING;
@@ -137,6 +143,7 @@ cf_disp_t cf_display_status(bool awaiting, long long age_s) {
 
 const char *cf_disp_label(cf_disp_t d) {
     switch (d) {
+    case CF_DISP_BLOCKED:  return "BLOCKED ON YOU";
     case CF_DISP_AWAITING: return "AWAITING INPUT";
     case CF_DISP_WORKING:  return "WORKING";
     case CF_DISP_IDLE:     return "IDLE";
@@ -161,7 +168,7 @@ void cf_sessions_refresh(cf_session_t *arr, int n, long long now) {
     if (!arr || n <= 0)
         return;
     for (int i = 0; i < n; i++)
-        arr[i].disp = cf_display_status(arr[i].awaiting, now - arr[i].ts);
+        arr[i].disp = cf_display_status(arr[i].status, now - arr[i].ts);
     qsort(arr, (size_t)n, sizeof(arr[0]), session_cmp);
 }
 

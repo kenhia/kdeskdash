@@ -47,6 +47,8 @@
 #define COLOR_ACCENT    lv_color_hex(0xcf6b4a) /* claude coral */
 #define COLOR_WORKING   lv_color_hex(0x35a271)
 #define COLOR_AWAITING  lv_color_hex(0xb9832c) /* doubles as the warn tone */
+#define COLOR_BLOCKED   lv_color_hex(0xe0563f) /* hard-blocked: hotter than awaiting */
+#define COLOR_PANEL_ALT lv_color_hex(0x2a1109) /* row wash behind BLOCKED ON YOU */
 
 typedef struct {
     lv_obj_t *row;
@@ -319,25 +321,42 @@ static void build_screen(kd_mode_t *self) {
 
 static lv_color_t disp_color(cf_disp_t d) {
     switch (d) {
+    case CF_DISP_BLOCKED:  return COLOR_BLOCKED;
     case CF_DISP_AWAITING: return COLOR_AWAITING;
     case CF_DISP_WORKING:  return COLOR_WORKING;
     default:               return COLOR_MUTED;
     }
 }
 
+/* Row background. Every state but BLOCKED uses the flat panel tone; a blocked
+ * session gets a warm wash so "something wants me" reads from across the room
+ * without having to parse the label. */
+static lv_color_t row_bg_color(cf_disp_t d) {
+    return (d == CF_DISP_BLOCKED) ? COLOR_PANEL_ALT : COLOR_PANEL;
+}
+
 static void render_sessions(claude_state_t *st, cf_session_t *s, int n,
                             long long now) {
-    int working = 0, waiting = 0;
+    int working = 0, waiting = 0, blocked = 0;
     for (int i = 0; i < n; i++) {
         if (s[i].disp == CF_DISP_WORKING)
             working++;
         else if (s[i].disp == CF_DISP_AWAITING)
             waiting++;
+        else if (s[i].disp == CF_DISP_BLOCKED)
+            blocked++;
     }
 
     char sub[96];
     if (n == 0)
         sub[0] = '\0';
+    else if (blocked > 0 && waiting > 0)
+        snprintf(sub, sizeof(sub),
+                 "%d blocked \xE2\x80\xA2 %d waiting \xE2\x80\xA2 %d working",
+                 blocked, waiting, working);
+    else if (blocked > 0)
+        snprintf(sub, sizeof(sub), "%d blocked on you \xE2\x80\xA2 %d working",
+                 blocked, working);
     else if (waiting > 0)
         snprintf(sub, sizeof(sub), "%d working \xE2\x80\xA2 %d waiting on you",
                  working, waiting);
@@ -357,6 +376,7 @@ static void render_sessions(claude_state_t *st, cf_session_t *s, int n,
         cf_session_t *e = &s[i];
         bool dim = (e->disp == CF_DISP_IDLE || e->disp == CF_DISP_STALE);
 
+        lv_obj_set_style_bg_color(r->row, row_bg_color(e->disp), 0);
         lv_obj_set_style_bg_color(r->stripe, disp_color(e->disp), 0);
         lv_label_set_text(r->host, e->host);
         lv_label_set_text(r->proj, e->project);

@@ -48,12 +48,22 @@
  * so a quiet fleet legitimately goes stale — say so rather than imply live. */
 #define CF_LIMITS_STALE_S (60 * 60)
 
+/* Published status, as written by publisher/claude-pub.sh. `blocked` means the
+ * agent is sitting on an AskUserQuestion dialog and cannot proceed without the
+ * user (PreToolUse sets it, PostToolUse clears it back to working). */
+typedef enum {
+    CF_ST_WORKING = 0,
+    CF_ST_AWAITING,
+    CF_ST_BLOCKED,
+} cf_status_t;
+
 /* Enum order is the sort rank: attention first. */
 typedef enum {
-    CF_DISP_AWAITING = 0, /* published `awaiting`, still fresh — your turn   */
-    CF_DISP_WORKING,      /* published `working`, still fresh                */
-    CF_DISP_IDLE,         /* no event for CF_IDLE_S — probably parked        */
-    CF_DISP_STALE,        /* no event for CF_STALE_S — probably killed       */
+    CF_DISP_BLOCKED = 0,  /* published `blocked`, still fresh — hard-blocked  */
+    CF_DISP_AWAITING,     /* published `awaiting`, still fresh — your turn    */
+    CF_DISP_WORKING,      /* published `working`, still fresh                 */
+    CF_DISP_IDLE,         /* no event for CF_IDLE_S — probably parked         */
+    CF_DISP_STALE,        /* no event for CF_STALE_S — probably killed        */
 } cf_disp_t;
 
 typedef struct {
@@ -64,7 +74,7 @@ typedef struct {
     char model[CF_MODEL_MAX]; /* "" until a hook reads it from the transcript*/
     long long ts;             /* unix s of last lifecycle event             */
     long long started_ts;     /* unix s of SessionStart (0 if unknown)      */
-    bool awaiting;            /* published status: awaiting vs working      */
+    cf_status_t status;       /* published status (working/awaiting/blocked)*/
     cf_disp_t disp;           /* derived by cf_sessions_refresh()           */
 } cf_session_t;
 
@@ -94,7 +104,8 @@ bool cf_key_parse(const char *key, size_t keylen,
 
 /* Build a session record from an HGETALL-style field/value list. `host`/`sid`
  * come from the (already validated) key. Requires a `status` field of exactly
- * "working" or "awaiting" and a positive numeric `ts` — anything else rejects
+ * "working", "awaiting" or "blocked" and a positive numeric `ts` — anything
+ * else rejects
  * the record (guards the statusline-after-SessionEnd resurrection race, which
  * leaves a hash with no status). Unknown fields are ignored; missing project
  * falls back to "?". Returns true and fills *out on success. */
@@ -104,13 +115,14 @@ bool cf_session_from_fields(const char *host, const char *sid,
 
 /* Derived display status for a published state at `age_s` seconds old.
  * Negative ages (clock skew) count as fresh. */
-cf_disp_t cf_display_status(bool awaiting, long long age_s);
+cf_disp_t cf_display_status(cf_status_t status, long long age_s);
 
-/* Fixed uppercase label for a display status ("AWAITING INPUT", ...). */
+/* Fixed uppercase label for a display status ("BLOCKED ON YOU", ...). */
 const char *cf_disp_label(cf_disp_t d);
 
 /* Derive every record's disp for `now` and sort attention-first:
- * rank ascending (awaiting, working, idle, stale), then most-recent ts first,
+ * rank ascending (blocked, awaiting, working, idle, stale), then most-recent
+ * ts first,
  * then host/sid lexicographic for a stable render order. */
 void cf_sessions_refresh(cf_session_t *arr, int n, long long now);
 
