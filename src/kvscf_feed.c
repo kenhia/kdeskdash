@@ -146,6 +146,13 @@ int kvscf_parse_append(const char *json, size_t len, kvscf_instance_t *arr,
             if (cJSON_IsNumber(zj))
                 r->z_index = (int)zj->valuedouble;
 
+            /* Favorites (sprint 008). An absent `running` means an older
+             * publisher that only ever listed open windows — treat as running. */
+            const cJSON *runj = cJSON_GetObjectItemCaseSensitive(el, "running");
+            r->running = cJSON_IsBool(runj) ? cJSON_IsTrue(runj) : true;
+            r->favorite =
+                cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(el, "favorite"));
+
             count++;
         }
     }
@@ -156,6 +163,8 @@ int kvscf_parse_append(const char *json, size_t len, kvscf_instance_t *arr,
 
 static int cmp_label(const void *a, const void *b) {
     const kvscf_instance_t *x = a, *y = b;
+    if (x->running != y->running)
+        return x->running ? -1 : 1; /* running block first, favorites after */
     int c = strcasecmp(x->label, y->label);
     if (c)
         return c;

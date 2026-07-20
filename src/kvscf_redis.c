@@ -18,6 +18,11 @@
 #define KV_APPS_MATCH "kvscf:apps:*"
 #define KV_SCAN_COUNT 64
 #define KV_MAX_HOSTS  8      /* distinct publisher hosts (only cleo today) */
+/* Command payload: token + the largest possible id (a folder URI for a closed
+ * Code favorite, not just an HWND) + JSON overhead. Sizing this off KV_ID_MAX
+ * matters: too small and the payload builder returns 0, so the tap silently
+ * does nothing. */
+#define KV_PAYLOAD_MAX (KV_TOKEN_MAX + KV_ID_MAX + 64)
 #define KV_KEY_MAX    96     /* "kvscf:instances:" + host */
 #define KV_VALUE_MAX  32768  /* upper bound on one host's instance JSON */
 
@@ -196,7 +201,7 @@ bool kvscf_redis_launch(const char *host, const char *app_key) {
         return false;
     if (!host || !telemetry_host_token_ok(host, strlen(host)))
         return false;
-    char payload[KV_TOKEN_MAX + 128];
+    char payload[KV_PAYLOAD_MAX];
     if (kvscf_launch_payload(g_token, app_key, payload, sizeof(payload)) == 0)
         return false;
     return publish_focus(host, payload);
@@ -209,7 +214,7 @@ bool kvscf_redis_focus(const char *host, const char *id, bool maximize) {
     if (!host || !telemetry_host_token_ok(host, strlen(host)))
         return false;
 
-    char payload[KV_TOKEN_MAX + 128];
+    char payload[KV_PAYLOAD_MAX];
     if (kvscf_focus_payload(g_token, id, maximize, payload, sizeof(payload)) == 0)
         return false;
     return publish_focus(host, payload);
