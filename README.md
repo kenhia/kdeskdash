@@ -51,6 +51,12 @@ cross-compile approach and adding touch input.
   (port 6380); commands (`{id}` for windows, `{app}` for apps) are authenticated with a shared
   `KVSCF_TOKEN`. See
   [docs/brainstorms](docs/brainstorms/2026-07-18-remote-foreground-mode-requirements.md).
+- **Calc** — a desk calculator built for the wide panel: big result + hex/binary readouts
+  and always-live unit conversions (in↔mm exact; px↔mm via the ruler-measured 7.69 px/mm
+  panel calibration) on the left, six store/recall registers (R0–R5) in the middle, and a
+  keypad (numpad island, `+ − × ÷ xʸ x² x³ ± π e`) on the right. Immediate-execution
+  infix, entirely local — no Redis, no network. See
+  [docs/brainstorms](docs/brainstorms/2026-07-21-calc-mode-requirements.md).
 
 Navigation: swipe **left/right** to cycle content modes, swipe **down** for the Menu.
 
@@ -191,8 +197,8 @@ kdeskdash/
 │   ├── config.{c,h}                # env-var configuration
 │   ├── shell.{c,h}                 # mode shell: registration, gestures, lifecycle
 │   ├── redis.{c,h}                 # optional Redis client (control/persistence/injection)
-│   ├── gol.{c,h} / stopwatch.{c,h} / iconset.{c,h} / kvscf_feed.{c,h} # pure, host-tested mode cores
-│   └── modes/                      # game_of_life, clock, menu, dev, claude, icons, foreground
+│   ├── gol.{c,h} / stopwatch.{c,h} / iconset.{c,h} / kvscf_feed.{c,h} / calc.{c,h} # pure, host-tested mode cores
+│   └── modes/                      # game_of_life, clock, menu, dev, claude, icons, foreground, calc
 ├── fonts/ttf/                      # vendored SymbolsNerdFont-Regular.ttf (icons mode, runtime TinyTTF)
 ├── tests/                          # host unit tests (registry, gol, stopwatch, iconset, …)
 ├── lib/lvgl/                       # LVGL v9.2.2 (submodule)

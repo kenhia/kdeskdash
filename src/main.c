@@ -14,6 +14,7 @@
 #include "config.h"
 #include "kvscf_redis.h"
 #include "lvgl.h"
+#include "modes/calc.h"
 #include "modes/claude.h"
 #include "modes/clock.h"
 #include "modes/dev.h"
@@ -88,6 +89,8 @@ int main(void) {
                           cfg.icons_favorites_path));
     shell_register_content_mode(
         foreground_mode_create("foreground", "Remote", cfg.icons_ttf_path));
+    shell_register_content_mode(
+        calc_mode_create("calc", "Calc"));
     shell_register_menu(menu_mode_create("menu", "Menu"));
 
     /* Optional Redis: remote control + last-mode persistence. Safe when absent.

@@ -37,6 +37,7 @@ add_executable(kdeskdash
     src/config.c
     src/registry.c
     src/shell.c
+    src/calc.c
     src/gol.c
     src/gol_settings.c
     src/golz.c
@@ -63,6 +64,7 @@ add_executable(kdeskdash
     src/modes/claude.c
     src/modes/icons.c
     src/modes/foreground.c
+    src/modes/calc.c
     src/modes/menu.c
 )
 
@@ -139,6 +141,14 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_executable(golz_mc EXCLUDE_FROM_ALL tools/golz_mc.c src/golz.c src/gol.c)
     target_include_directories(golz_mc PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(golz_mc PRIVATE -Wall -Wextra -O2)
+
+    # Pure calculator core: entry editing, immediate-exec ops, registers,
+    # error recovery, hex/bin readouts, unit conversions (needs libm for pow).
+    add_executable(test_calc tests/test_calc.c src/calc.c)
+    target_include_directories(test_calc PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_calc PRIVATE -Wall -Wextra)
+    target_link_libraries(test_calc m)
+    add_test(NAME test_calc COMMAND test_calc)
 
     add_executable(test_stopwatch tests/test_stopwatch.c src/stopwatch.c)
     target_include_directories(test_stopwatch PRIVATE ${CMAKE_SOURCE_DIR}/src)
