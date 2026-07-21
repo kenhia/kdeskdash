@@ -33,7 +33,10 @@
 #define COLOR_INK       lv_color_hex(0xe9edf6)
 #define COLOR_SECONDARY lv_color_hex(0x8b95ab)
 #define COLOR_MUTED     lv_color_hex(0x525d73)
-#define COLOR_ACCENT    lv_color_hex(0xcf6b4a) /* claude coral */
+#define COLOR_ACCENT    lv_color_hex(0xcf6b4a) /* claude coral (menu "Ops" header) */
+#define COLOR_EQ        lv_color_hex(0x99492e) /* darker coral for the "=" key */
+#define COLOR_TEAL      lv_color_hex(0x2ec4c4) /* Edge teal (Remote mode) */
+#define COLOR_GREEN     lv_color_hex(0x38be84) /* Insiders green (Remote tile) */
 #define COLOR_KEY_NUM   lv_color_hex(0x1a2332) /* digit island */
 #define COLOR_KEY_OP    lv_color_hex(0x24344d) /* binary ops */
 #define COLOR_KEY_FN    lv_color_hex(0x141c2b) /* unary/constants/edit */
@@ -202,27 +205,32 @@ static void build_readouts(calc_mode_state_t *st, lv_obj_t *scr) {
     st->result_label = make_label(p, "0", &lv_font_montserrat_48, COLOR_INK);
     lv_obj_align(st->result_label, LV_ALIGN_TOP_RIGHT, -16, 14);
 
-    /* hex/bin rows: caption left, value right. */
-    lv_obj_t *cap = make_label(p, "hex", &lv_font_montserrat_20, COLOR_SECONDARY);
+    /* hex/bin rows: caption left, value right, caption and value in the same
+     * hue so each readout reads as one unit at a glance. */
+    lv_obj_t *cap = make_label(p, "hex", &lv_font_montserrat_20, COLOR_ACCENT);
     lv_obj_set_pos(cap, 16, 92);
-    st->hex_label = make_label(p, "-", &lv_font_montserrat_20, COLOR_SECONDARY);
+    st->hex_label = make_label(p, "-", &lv_font_montserrat_20, COLOR_ACCENT);
     lv_obj_align(st->hex_label, LV_ALIGN_TOP_RIGHT, -16, 88);
 
-    cap = make_label(p, "bin", &lv_font_montserrat_20, COLOR_SECONDARY);
+    cap = make_label(p, "bin", &lv_font_montserrat_20, COLOR_TEAL);
     lv_obj_set_pos(cap, 16, 128);
-    st->bin_label = make_label(p, "-", &lv_font_montserrat_20, COLOR_SECONDARY);
+    st->bin_label = make_label(p, "-", &lv_font_montserrat_20, COLOR_TEAL);
     lv_obj_align(st->bin_label, LV_ALIGN_TOP_RIGHT, -16, 126);
 
-    /* Live conversions of the current value, both directions, always on. */
+    /* Live conversions of the current value, both directions, always on.
+     * Colour keys the direction: green rows produce mm (result on the right),
+     * teal rows consume mm (mm on the left, like the bin/teal family). */
     static const char *conv_caps[4] = {"in > mm", "mm > in", "mm > px",
                                        "px > mm"};
+    const lv_color_t conv_colors[4] = {COLOR_GREEN, COLOR_TEAL, COLOR_TEAL,
+                                       COLOR_GREEN};
     for (int i = 0; i < 4; i++) {
         int y = 178 + i * 58;
         cap = make_label(p, conv_caps[i], &lv_font_montserrat_20,
-                         COLOR_SECONDARY);
+                         conv_colors[i]);
         lv_obj_set_pos(cap, 16, y + 4);
         st->conv_labels[i] =
-            make_label(p, "0", &lv_font_montserrat_28, COLOR_INK);
+            make_label(p, "0", &lv_font_montserrat_28, conv_colors[i]);
         lv_obj_align(st->conv_labels[i], LV_ALIGN_TOP_RIGHT, -16, y);
     }
 }
@@ -291,8 +299,8 @@ static void build_keypad(calc_mode_state_t *st, lv_obj_t *scr) {
              6, 0, 1, 1);
     make_key(st, pad, "pi", CALC_KEY_PI, fn, COLOR_KEY_FN, COLOR_INK, 5, 1, 1, 1);
     make_key(st, pad, "e", CALC_KEY_E, fn, COLOR_KEY_FN, COLOR_INK, 6, 1, 1, 1);
-    make_key(st, pad, "=", CALC_KEY_EQ, &lv_font_montserrat_48, COLOR_ACCENT,
-             COLOR_BG, 5, 2, 2, 2);
+    make_key(st, pad, "=", CALC_KEY_EQ, &lv_font_montserrat_48, COLOR_EQ,
+             COLOR_INK, 5, 2, 2, 2);
 }
 
 static void build_screen(kd_mode_t *self) {
