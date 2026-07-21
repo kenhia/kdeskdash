@@ -47,7 +47,7 @@ logic lives in pure, host-tested C modules with no LVGL/Redis dependency; LVGL m
 thin glue that render a core and wire touch.** Every non-trivial piece of logic should be
 testable without hardware.
 
-- **Pure cores** (`src/gol.c`, `src/golz.c`, `src/stopwatch.c`, `src/registry.c`,
+- **Pure cores** (`src/gol.c`, `src/golz.c`, `src/stopwatch.c`, `src/calc.c`, `src/registry.c`,
   `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/claude_feed.c`,
   `src/telemetry_host.c`, `src/bmp_write.c`, `src/modes/dev_hostlist.c`,
   `src/modes/dev_view.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
