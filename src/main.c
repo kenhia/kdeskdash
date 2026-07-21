@@ -23,6 +23,7 @@
 #include "modes/golz.h"
 #include "modes/icons.h"
 #include "modes/menu.h"
+#include "modes/palette.h"
 #include "redis.h"
 #include "shell.h"
 #include "telemetry.h"
@@ -91,6 +92,8 @@ int main(void) {
         foreground_mode_create("foreground", "Remote", cfg.icons_ttf_path));
     shell_register_content_mode(
         calc_mode_create("calc", "Calc"));
+    shell_register_content_mode(
+        palette_mode_create("palette", "Palette"));
     shell_register_menu(menu_mode_create("menu", "Menu"));
 
     /* Optional Redis: remote control + last-mode persistence. Safe when absent.

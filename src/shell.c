@@ -4,12 +4,13 @@
  */
 #include "shell.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "lvgl.h"
 #include "registry.h"
 
-#define SHELL_MAX_CONTENT 8
+#define SHELL_MAX_CONTENT 16
 
 static kd_mode_t *s_content[SHELL_MAX_CONTENT];
 static int        s_content_count;
@@ -74,8 +75,18 @@ void shell_init(void) {
 }
 
 void shell_register_content_mode(kd_mode_t *m) {
-    if (m && s_content_count < SHELL_MAX_CONTENT)
-        s_content[s_content_count++] = m;
+    if (!m)
+        return;
+    if (s_content_count >= SHELL_MAX_CONTENT) {
+        /* A silently dropped mode is invisible everywhere (menu, swipe cycle,
+         * Redis switch) and cost a debugging session once — be loud. */
+        fprintf(stderr,
+                "kdeskdash: shell mode table full (%d) — dropping \"%s\"; "
+                "raise SHELL_MAX_CONTENT in shell.c\n",
+                SHELL_MAX_CONTENT, m->id ? m->id : "?");
+        return;
+    }
+    s_content[s_content_count++] = m;
 }
 
 void shell_register_menu(kd_mode_t *m) {
