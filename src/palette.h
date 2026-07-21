@@ -69,4 +69,11 @@ const char *kd_pal_usage(int i);
  * Returns the index, or -1 if unknown. */
 int kd_pal_find(const char *name);
 
+/* Fill `indices` (KD_PAL_COUNT slots) with a perceptual display order:
+ * near-neutrals first (low chroma — the slate/grey chrome), then hue families
+ * around the color wheel (reds -> ambers -> greens -> blues -> violets),
+ * dark-to-light within each group. Table order stays semantic; this is for
+ * display (the palette mode's paging). */
+void kd_pal_display_order(int *indices);
+
 #endif /* KDESKDASH_PALETTE_H */

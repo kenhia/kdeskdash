@@ -82,6 +82,48 @@ static void test_find(void) {
     check(kd_pal_find(NULL) == -1, "NULL is safe");
 }
 
+/* Position of a name within a display-order array; -1 if absent. */
+static int order_pos(const int *order, const char *name) {
+    int idx = kd_pal_find(name);
+    for (int i = 0; i < kd_pal_count(); i++)
+        if (order[i] == idx)
+            return i;
+    return -1;
+}
+
+static void test_display_order(void) {
+    int order[KD_PAL_COUNT];
+    kd_pal_display_order(order);
+
+    /* Must be a permutation of 0..count-1. */
+    int seen[KD_PAL_COUNT] = {0};
+    for (int i = 0; i < kd_pal_count(); i++) {
+        check(order[i] >= 0 && order[i] < kd_pal_count(), "order in range");
+        seen[order[i]]++;
+    }
+    for (int i = 0; i < kd_pal_count(); i++)
+        check(seen[i] == 1, "order is a permutation");
+
+    /* The blues cluster (the report that motivated the sort): CODE_BLUE,
+     * CPU_SKY and SELECT_BLUE must sit in one contiguous-ish run. */
+    int cb = order_pos(order, "CODE_BLUE");
+    int cs = order_pos(order, "CPU_SKY");
+    int sb = order_pos(order, "SELECT_BLUE");
+    check(cb >= 0 && cs >= 0 && sb >= 0, "blues present in order");
+    int lo = cb < cs ? (cb < sb ? cb : sb) : (cs < sb ? cs : sb);
+    int hi = cb > cs ? (cb > sb ? cb : sb) : (cs > sb ? cs : sb);
+    check(hi - lo <= 3, "blue family within a 4-card window");
+
+    /* Neutral chrome (VOID, the darkest) leads; MOON_INK is the last
+     * neutral; vivid reds come after the neutral block. */
+    check(order[0] == kd_pal_find("VOID"), "VOID first (darkest neutral)");
+    check(order_pos(order, "MOON_INK") < order_pos(order, "ZOMBIE_RUST"),
+          "neutrals precede hue families");
+    /* Dark-to-light inside a family: ZOMBIE_RUST before RAM_SALMON. */
+    check(order_pos(order, "ZOMBIE_RUST") < order_pos(order, "RAM_SALMON"),
+          "dark red before light red");
+}
+
 static void test_bounds(void) {
     check(kd_pal_name(-1) == NULL, "name(-1) NULL");
     check(kd_pal_name(kd_pal_count()) == NULL, "name(count) NULL");
@@ -93,6 +135,7 @@ int main(void) {
     test_table_integrity();
     test_known_values();
     test_find();
+    test_display_order();
     test_bounds();
 
     if (failures) {

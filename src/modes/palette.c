@@ -29,6 +29,7 @@
 typedef struct {
     lv_obj_t *card; /* container; hidden when the last page runs short */
     lv_obj_t *name_label;
+    lv_obj_t *plain_name_label; /* name again in ink — dark swatches vanish */
     lv_obj_t *usage_label;
     lv_obj_t *sample_label;
     lv_obj_t *filled_box;
@@ -38,6 +39,7 @@ typedef struct {
 
 typedef struct {
     int        page;
+    int        order[KD_PAL_COUNT]; /* perceptual display order */
     pal_card_t cards[CARDS_PER_PAGE];
     lv_obj_t  *page_label;
 } palette_mode_state_t;
@@ -50,16 +52,18 @@ static void refresh_page(palette_mode_state_t *st) {
     char buf[32];
     for (int slot = 0; slot < CARDS_PER_PAGE; slot++) {
         pal_card_t *c = &st->cards[slot];
-        int idx = st->page * CARDS_PER_PAGE + slot;
-        if (idx >= kd_pal_count()) {
+        int pos = st->page * CARDS_PER_PAGE + slot;
+        if (pos >= kd_pal_count()) {
             lv_obj_add_flag(c->card, LV_OBJ_FLAG_HIDDEN);
             continue;
         }
         lv_obj_clear_flag(c->card, LV_OBJ_FLAG_HIDDEN);
+        int idx = st->order[pos];
 
         lv_color_t color = lv_color_hex(kd_pal_rgb(idx));
         lv_label_set_text(c->name_label, kd_pal_name(idx));
         lv_obj_set_style_text_color(c->name_label, color, LV_PART_MAIN);
+        lv_label_set_text(c->plain_name_label, kd_pal_name(idx));
         lv_label_set_text(c->usage_label, kd_pal_usage(idx));
         lv_obj_set_style_text_color(c->sample_label, color, LV_PART_MAIN);
         lv_obj_set_style_bg_color(c->filled_box, color, LV_PART_MAIN);
@@ -129,15 +133,21 @@ static void build_card(palette_mode_state_t *st, lv_obj_t *scr, int slot) {
     c->name_label = make_label(card, "", &lv_font_montserrat_28, PAL(MOON_INK));
     lv_obj_set_pos(c->name_label, 14, 10);
 
+    /* Name repeated in ink: dark swatches (VOID on DEEP_SLATE) render their
+     * in-color name invisible; this line keeps every card identifiable. */
+    c->plain_name_label =
+        make_label(card, "", &lv_font_montserrat_14, PAL(STEEL_MIST));
+    lv_obj_set_pos(c->plain_name_label, 14, 48);
+
     c->usage_label =
         make_label(card, "", &lv_font_montserrat_14, PAL(STEEL_MIST));
     lv_label_set_long_mode(c->usage_label, LV_LABEL_LONG_DOT);
     lv_obj_set_width(c->usage_label, CARD_W - 28);
-    lv_obj_set_pos(c->usage_label, 14, 52);
+    lv_obj_set_pos(c->usage_label, 14, 68);
 
     c->sample_label = make_label(card, "Handgloves 0123456789",
                                  &lv_font_montserrat_20, PAL(MOON_INK));
-    lv_obj_set_pos(c->sample_label, 14, 84);
+    lv_obj_set_pos(c->sample_label, 14, 94);
 
     c->filled_box = make_box(card, 14, 148);
     lv_obj_set_style_border_color(c->filled_box, PAL(GUNMETAL_SEAM),
@@ -205,6 +215,7 @@ static void activate(kd_mode_t *self) {
 kd_mode_t *palette_mode_create(const char *id, const char *title) {
     kd_mode_t *m = calloc(1, sizeof(*m));
     palette_mode_state_t *st = calloc(1, sizeof(*st));
+    kd_pal_display_order(st->order);
     m->id = id;
     m->title = title;
     m->state = st;
