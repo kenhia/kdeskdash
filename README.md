@@ -57,6 +57,12 @@ cross-compile approach and adding touch input.
   keypad (numpad island, `+ − × ÷ xʸ x² x³ ± π e`) on the right. Immediate-execution
   infix, entirely local — no Redis, no network. See
   [docs/brainstorms](docs/brainstorms/2026-07-21-calc-mode-requirements.md).
+- **Palette** — the living style guide: the canonical named color palette
+  (`src/palette.h`, ~30 paint-store names like `CLAUDE_CORAL`, `EDGE_TEAL`,
+  `GUNMETAL_SEAM`) as paged swatch cards — name and sample text in the color, filled +
+  outlined boxes, hex, and a usage note — so colors are judged on the actual panel and
+  referenced by name. See
+  [docs/brainstorms](docs/brainstorms/2026-07-21-palette-mode-requirements.md).
 
 Navigation: swipe **left/right** to cycle content modes, swipe **down** for the Menu.
 
@@ -197,8 +203,8 @@ kdeskdash/
 │   ├── config.{c,h}                # env-var configuration
 │   ├── shell.{c,h}                 # mode shell: registration, gestures, lifecycle
 │   ├── redis.{c,h}                 # optional Redis client (control/persistence/injection)
-│   ├── gol.{c,h} / stopwatch.{c,h} / iconset.{c,h} / kvscf_feed.{c,h} / calc.{c,h} # pure, host-tested mode cores
-│   └── modes/                      # game_of_life, clock, menu, dev, claude, icons, foreground, calc
+│   ├── gol.{c,h} / stopwatch.{c,h} / iconset.{c,h} / kvscf_feed.{c,h} / calc.{c,h} / palette.{c,h} # pure, host-tested mode cores
+│   └── modes/                      # game_of_life, clock, menu, dev, claude, icons, foreground, calc, palette
 ├── fonts/ttf/                      # vendored SymbolsNerdFont-Regular.ttf (icons mode, runtime TinyTTF)
 ├── tests/                          # host unit tests (registry, gol, stopwatch, iconset, …)
 ├── lib/lvgl/                       # LVGL v9.2.2 (submodule)

@@ -38,6 +38,7 @@ add_executable(kdeskdash
     src/registry.c
     src/shell.c
     src/calc.c
+    src/palette.c
     src/gol.c
     src/gol_settings.c
     src/golz.c
@@ -65,6 +66,7 @@ add_executable(kdeskdash
     src/modes/icons.c
     src/modes/foreground.c
     src/modes/calc.c
+    src/modes/palette.c
     src/modes/menu.c
 )
 
@@ -149,6 +151,12 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_compile_options(test_calc PRIVATE -Wall -Wextra)
     target_link_libraries(test_calc m)
     add_test(NAME test_calc COMMAND test_calc)
+
+    # Canonical named palette: table integrity + case-insensitive lookup.
+    add_executable(test_palette tests/test_palette.c src/palette.c)
+    target_include_directories(test_palette PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_palette PRIVATE -Wall -Wextra)
+    add_test(NAME test_palette COMMAND test_palette)
 
     add_executable(test_stopwatch tests/test_stopwatch.c src/stopwatch.c)
     target_include_directories(test_stopwatch PRIVATE ${CMAKE_SOURCE_DIR}/src)

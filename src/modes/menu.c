@@ -52,7 +52,7 @@ static lv_color_t tile_text_color(const char *id) {
 
 /* Group membership + order. Add a new mode's id here to place it; anything
  * missing from both lists falls through to Ops (see build_screen). */
-static const char *FUN_IDS[] = {"game_of_life", "golz", "icons"};
+static const char *FUN_IDS[] = {"game_of_life", "golz", "icons", "palette"};
 static const char *OPS_IDS[] = {"claude", "foreground", "clock", "dev", "calc"};
 #define FUN_N ((int)(sizeof(FUN_IDS) / sizeof(FUN_IDS[0])))
 #define OPS_N ((int)(sizeof(OPS_IDS) / sizeof(OPS_IDS[0])))
