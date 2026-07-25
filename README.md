@@ -12,7 +12,8 @@ cross-compile approach and adding touch input.
 > Status: **active** — a multi-mode shell with swipe navigation (Game of Life, GoLZ,
 > Clock, Dev graphs, Claude agent activity, and a Menu launcher), optional Redis remote
 > control / last-mode persistence / settings injection, and a systemd service for
-> boot-to-dashboard. See [docs/plans](docs/plans/) and [docs/brainstorms](docs/brainstorms/).
+> boot-to-dashboard. See [sprints/](sprints/) for how it got built, one record per
+> unit of work.
 
 > **Note:** Like many of my projects, I've produced this for my own environment. If you
 > want to make use of this code, have your AI agent help change the hardcoded
@@ -39,7 +40,7 @@ cross-compile approach and adding touch input.
   Font Awesome, Material Design, …) in a touch grid, preview the selected glyph at several
   sizes, and mark favourites saved to a bake-ready file. Renders any of ~9,300 glyphs at
   runtime via LVGL's TinyTTF over the vendored `SymbolsNerdFont-Regular.ttf` — no static
-  font bake. See [docs/brainstorms](docs/brainstorms/2026-07-03-icons-nerdfont-browser-requirements.md).
+  font bake. See [sprints/009-icons-nerdfont-browser](sprints/009-icons-nerdfont-browser/requirements.md).
 - **Remote** — the fleet's live editor/browser windows + configured apps (published by
   [`kvscf`](https://github.com/kenhia/kvscf) on `cleo`) in a 4×7 grid. A left **app rail**
   switches the view between **VS Code / Insiders** (`kvscf:instances:*`; open windows first
@@ -50,19 +51,19 @@ cross-compile approach and adding touch input.
   — the dashboard's first *control-plane* mode, not just a view. Publishes to `kvscf:focus:<host>` on the same LAN Redis instance as the Claude feed
   (port 6380); commands (`{id}` for windows, `{app}` for apps) are authenticated with a shared
   `KVSCF_TOKEN`. See
-  [docs/brainstorms](docs/brainstorms/2026-07-18-remote-foreground-mode-requirements.md).
+  [sprints/011-remote-foreground-mode](sprints/011-remote-foreground-mode/requirements.md).
 - **Calc** — a desk calculator built for the wide panel: big result + hex/binary readouts
   and always-live unit conversions (in↔mm exact; px↔mm via the ruler-measured 7.69 px/mm
   panel calibration) on the left, six store/recall registers (R0–R5) in the middle, and a
   keypad (numpad island, `+ − × ÷ xʸ x² x³ ± π e`) on the right. Immediate-execution
   infix, entirely local — no Redis, no network. See
-  [docs/brainstorms](docs/brainstorms/2026-07-21-calc-mode-requirements.md).
+  [sprints/016-calc-mode](sprints/016-calc-mode/requirements.md).
 - **Palette** — the living style guide: the canonical named color palette
   (`src/palette.h`, ~30 paint-store names like `CLAUDE_CORAL`, `EDGE_TEAL`,
   `GUNMETAL_SEAM`) as paged swatch cards — name and sample text in the color, filled +
   outlined boxes, hex, and a usage note — so colors are judged on the actual panel and
   referenced by name. See
-  [docs/brainstorms](docs/brainstorms/2026-07-21-palette-mode-requirements.md).
+  [sprints/017-palette-mode](sprints/017-palette-mode/requirements.md).
 
 Navigation: swipe **left/right** to cycle content modes, swipe **down** for the Menu.
 

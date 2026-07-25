@@ -6,7 +6,7 @@
  * No Redis, no LVGL, host-testable.
  *
  * Feed contract (written by publisher/claude-pub.sh, see
- * docs/plans/2026-07-02-001-feat-claude-mode-plan.md):
+ * sprints/007-claude-mode/plan.md):
  *   claude:session:<host>:<sid>  hash — host/project/cwd/status/ts/started_ts
  *                                (+ model from the hook/transcript; title via
  *                                statusline, which runs in TUI sessions only)

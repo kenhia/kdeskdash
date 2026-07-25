@@ -24,7 +24,7 @@
 #define GOLZ_BANNER_HOLD_MS 12000
 
 /* Per-round machete knob ranges, chosen by the monte-carlo balance sweep
- * (tools/golz_mc.c; see docs/plans/2026-06-27-001-feat-golz-machetes-plan.md).
+ * (tools/golz_mc.c; see sprints/006-golz-machetes.md).
  * Inclusive [min,max], drawn uniformly each round. Paired with the symmetric
  * +3/-3 steps below, these land the self-balanced equilibrium threshold near the
  * 250 default (so it barely drifts) while keeping the tie rate down (~59%); the

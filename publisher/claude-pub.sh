@@ -9,7 +9,7 @@
 #   hook        stdin = hook event JSON (SessionStart/UserPromptSubmit/Stop/SessionEnd)
 #   statusline  stdin = statusline JSON; prints a one-line statusline to stdout
 #
-# Contract (see docs/plans/2026-07-02-001-feat-claude-mode-plan.md):
+# Contract (see sprints/007-claude-mode/plan.md):
 #   claude:session:<host>:<sid>  hash, TTL 2h; hooks own status/ts (+ model,
 #                                read from the transcript); statusline owns
 #                                title and claude:limits (TUI sessions only).

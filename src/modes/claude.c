@@ -2,7 +2,7 @@
  * @file claude.c
  * Claude mode: at-a-glance fleet agent activity + subscription usage limits.
  *
- * Three zones on the 1920x440 panel (design: docs/brainstorms/2026-07-02 +
+ * Three zones on the 1920x440 panel (design: sprints/007-claude-mode/requirements.md +
  * approved mockup): AGENTS — attention-first session rows (awaiting input on
  * top, then working by recency, then idle/stale); RECENT — last completed
  * sessions; USAGE — two 270° arc gauges for the 5-hour and 7-day limits with
