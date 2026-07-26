@@ -7,7 +7,7 @@ speaking RESP over `/dev/tcp` — no `redis-cli`, no `jq`. Works on Linux and on
 Windows under Git Bash (Claude Code runs hooks/statusline via Git Bash when it
 is installed).
 
-Contract and rationale: `docs/plans/2026-07-02-001-feat-claude-mode-plan.md`.
+Contract and rationale: `sprints/007-claude-mode/plan.md`.
 
 ## Install (per machine, once)
 

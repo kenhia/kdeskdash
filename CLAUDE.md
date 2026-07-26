@@ -1,14 +1,51 @@
-# CLAUDE.md
+<!-- kproject:begin — managed by kprojects/install.sh; do not edit inside this block -->
+## kproject conventions
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This project uses the kproject minimal harness
+(`~/src/ai-agents/kprojects`). Keep context small; prefer doing over
+ceremony.
+
+### Layout
+
+- `sprints/` — the project's evolution, one record per PR-sized unit of
+  work (a "sprint")
+  - `planning/` — planning docs; at minimum `roadmap.md` (the general plan)
+  - `review/` — more formal reviews as the project matures
+  - sprint records: `###-<short-name>.md` for small projects, or a
+    `###-<short-name>/` directory of files for larger/more formal ones
+  - a sprint record is one informal narrative: goal, decisions, what
+    shipped, follow-ups — written during the sprint, not after
+- `docs/` — project documentation, architecture, usage
+- `.scratch/` — git-ignored scratch space for user or agent ephemera;
+  use it instead of /tmp
+- `justfile` — dev recipes; default recipe is `@just --list`; `just check`
+  runs the CI gates; `just deploy` (or variants) if the project deploys
+- `.env` — git-ignored; tokens and environment vars
+
+### Workflow
+
+- One sprint ≈ one PR. Sprint proposals and work items are managed in
+  `korg`; durable cross-project knowledge goes in `klams`.
+- If the korg or klams MCP tools are unavailable in your session, say so
+  up front — don't silently work around missing infrastructure.
+- TDD preferred: write the failing test first when practical.
+
+### Tooling preferences
+
+- Python managed by `uv`; lint/format with `ruff`; typecheck with `ty`
+  (astral toolchain)
+- License is MIT unless specifically directed otherwise
+<!-- kproject:end -->
+
+## Project
 
 kdeskdash is a multi-mode, touch-enabled desk dashboard for the Raspberry Pi 5, built in C
 with LVGL v9.2.2. It runs fullscreen on an 11.26" 1920×440 capacitive touch panel
 (hostname `rpidash2`, user `ken`). The README is the canonical reference for hardware,
 modes, env vars, Redis keys, and the systemd service — read it for anything user-facing.
-This file covers what you need to *develop* here.
+This section covers what you need to *develop* here.
 
-## Two build directories
+### Two build directories
 
 There are two distinct CMake build trees. Keep them separate — do not run tests out of `build-pi`.
 
@@ -16,36 +53,40 @@ There are two distinct CMake build trees. Keep them separate — do not run test
   (tests execute on the build host, so they are skipped when cross-compiling).
 - **`build-pi/`** — aarch64 cross-compile for the actual Pi. Produces the deployable binary.
 
-## Common commands
+### Common commands
+
+`just` wraps the usual loops (`just --list` for all of them):
 
 ```bash
-# --- Host tests (the loop you run constantly) ---
-cmake -B build                       # configure once
-cmake --build build -j"$(nproc)"     # build tests + host binary
-ctest --test-dir build --output-on-failure          # run all tests
-ctest --test-dir build -R test_golz --output-on-failure   # run ONE test by name
+just check              # CI gate: build the host tree + run every unit test
+just test golz          # run ONE test by name (ctest -R test_golz)
+just deploy             # cross-compile, scp to ken@rpidash2, restart the service
+just sync-sysroot       # one-time / after Pi apt changes: rsync Pi sysroot to ~/pi5-sysroot
+just install-service    # one-time systemd unit + env file install on the Pi
+just golz-mc --help     # headless GoLZ balance sweep (Monte Carlo over the pure core)
+```
 
-# --- Cross-compile + deploy to the Pi ---
-scripts/sync-sysroot.sh              # one-time / after Pi apt changes: rsync Pi sysroot to ~/pi5-sysroot
+The underlying commands, when you need them directly:
+
+```bash
+cmake -B build && cmake --build build -j"$(nproc)"
+ctest --test-dir build --output-on-failure
 cmake -B build-pi -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake
 cmake --build build-pi --target kdeskdash -j"$(nproc)"
-cmake --build build-pi --target deploy            # scp binary, restart service on ken@rpidash2
-cmake --build build-pi --target install-service   # one-time systemd unit + env file install
-
-# --- GoLZ balance sweep (headless Monte Carlo over the pure core) ---
-cmake --build build --target golz_mc && ./build/golz_mc --help
 ```
 
 Adding a new source file to `kdeskdash` means editing `add_executable(kdeskdash ...)` in
 `CMakeLists.txt`. Adding a test means a new `add_executable` + `add_test` block inside the
 `if(NOT CMAKE_CROSSCOMPILING)` guard — link only the pure `.c` files under test, never LVGL.
 
-## Architecture: pure cores + thin modes + a shell
+### Architecture: pure cores + thin modes + a shell
 
 The central discipline (and the user's stated preference — "less framework"): **business
 logic lives in pure, host-tested C modules with no LVGL/Redis dependency; LVGL modes are
 thin glue that render a core and wire touch.** Every non-trivial piece of logic should be
 testable without hardware.
+
+Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMakeLists.txt`.
 
 - **Pure cores** (`src/gol.c`, `src/golz.c`, `src/stopwatch.c`, `src/calc.c`, `src/palette.c`, `src/registry.c`,
   `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/claude_feed.c`,
@@ -65,7 +106,7 @@ testable without hardware.
 **Adding a mode is one registration call** in `main.c` (`shell_register_content_mode(...)`),
 plus the mode's `.c`/`.h` and its source line in `CMakeLists.txt`.
 
-### Four independent Redis handles — do not conflate them
+#### Four independent Redis handles — do not conflate them
 
 Each has its own `redis_client_t` connection and failure isolation (a down endpoint never
 stalls boot or another path). The generic client + backoff lives in `src/redis.c` /
@@ -84,7 +125,7 @@ stalls boot or another path). The generic client + backoff lives in `src/redis.c
    machine** (foregrounds a window), gated by the shared `KVSCF_TOKEN` (byte-exact, trimmed,
    never logged). PUBLISH rides the ordinary command connection — kdeskdash never SUBSCRIBEs.
 
-## Key patterns (documented in `docs/solutions/best-practices/`)
+### Key patterns (documented in `docs/solutions/best-practices/`)
 
 Before touching simulations or LVGL gesture handlers, these capture hard-won decisions:
 
@@ -100,12 +141,13 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
   — see also the memory note: GoLZ's win ratio is pinned by the ±gens_to_win rule, not the
   machete params.
 
-## Conventions
+### Conventions
 
-- **Docs trail the work.** New features get a brainstorm in `docs/brainstorms/`, a plan in
-  `docs/plans/` (`YYYY-MM-DD-NNN-type-name-plan.md`, living docs with checkboxes), and durable
-  lessons in `docs/solutions/`. Never flag `docs/plans/`, `docs/solutions/`, or
-  `docs/brainstorms/` for deletion.
+- **Sprint records carry the history.** `sprints/001-…` … `sprints/017-…` are the migrated
+  plans (and, where one existed, the paired `requirements.md`) from the first 17 units of
+  work — sprint 017 (palette mode) is the most recent. New work gets a new
+  `sprints/###-<short-name>.md` (or a directory if it warrants one). Durable lessons still
+  go in `docs/solutions/`; don't delete `sprints/` or `docs/solutions/`.
 - **Conventional commits** (`feat:`, `fix:`, `refactor:`, `docs:`), often scoped
   (`feat(golz): ...`). PRs are how work lands (`git log` is squash-merge PRs).
 - **Colors come from the named palette** (`src/palette.h`, `KD_PAL_*` / `kd_pal_rgb`).
@@ -115,7 +157,7 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
 - LVGL is a pinned submodule at `lib/lvgl` (v9.2.2); cJSON is vendored at `lib/cjson`.
   Clone with `--recurse-submodules`.
 
-## Fonts
+### Fonts
 
 Body text uses the built-in Montserrat bitmap fonts (no font-conversion pipeline). The
 `icons` mode is the exception: it renders Nerd Font glyphs at runtime via LVGL's

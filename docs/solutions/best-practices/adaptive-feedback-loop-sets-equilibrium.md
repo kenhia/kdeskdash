@@ -91,5 +91,5 @@ point. One-line change; no re-sweep.
 
 - [Two-layer faction reuse](two-layer-faction-reuse.md) — the architecture the
   machete layer was added to.
-- Implementation plan: [docs/plans/2026-06-27-001-feat-golz-machetes-plan.md](../../plans/2026-06-27-001-feat-golz-machetes-plan.md)
+- Implementation plan: [sprints/006-golz-machetes.md](../../../sprints/006-golz-machetes.md)
   (Monte-carlo results section).

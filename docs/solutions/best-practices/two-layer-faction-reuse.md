@@ -199,7 +199,7 @@ static void test_living_parity_no_zombies(void) {
 
 - [LVGL swipe-vs-tap gesture guard](lvgl-swipe-vs-tap-gesture-guard.md)
   — the companion pattern for the GoLZ tap menu / banner overlays reused from the GoL mode.
-- Implementation plan: [docs/plans/2026-06-09-002-feat-golz-zombies-mode-plan.md](../../plans/2026-06-09-002-feat-golz-zombies-mode-plan.md)
+- Implementation plan: [sprints/005-golz-zombies-mode/plan.md](../../../sprints/005-golz-zombies-mode/plan.md)
   (Architecture Decisions section, "keep `gol_t`/`gol_step` unmodified").
 - Prior art in the same codebase: the RGB tri-board Game of Life variant kept a single
   `gol_t` per board and composited in a pure `gol_compose_pixel` helper rather than

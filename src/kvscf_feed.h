@@ -5,7 +5,7 @@
  * no LVGL, host-testable.
  *
  * Feed contract (published by kvscf on `cleo`, frozen 2026-07-18 — see
- * docs/brainstorms/2026-07-18-remote-foreground-mode-requirements.md):
+ * sprints/011-remote-foreground-mode/requirements.md):
  *   kvscf:instances:<host>   String = JSON { "host", "instances":[ {…} ] }, TTL 10s
  *     instance: id(HWND string, opaque focus token), label, remote(local|ssh|…),
  *               remote_host(nullable), app(stable|insiders|exploration|unknown),

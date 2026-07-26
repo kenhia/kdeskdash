@@ -9,7 +9,7 @@
  * The 3×3 grids are reserved capacity (9 slots/side, filled top-left); this
  * replaced a single horizontal row that clipped once the modes grew past ~6.
  * Visuals follow the claude-mode design language (dark panel tiles, hairline
- * border, coral pressed accent). See docs/plans/2026-07-18-002.
+ * border, coral pressed accent). See sprints/012-menu-groups.md.
  */
 #include "modes/menu.h"
 
