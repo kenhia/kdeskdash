@@ -10,8 +10,14 @@
 
 #include <stdbool.h>
 
-/* Default output path when the trigger key carries no path of its own. */
-#define SCREENSHOT_DEFAULT_PATH "/tmp/kdeskdash-shot.bmp"
+/* Default output path when the trigger key carries no path of its own.
+ *
+ * The state directory, not /tmp: the systemd unit sets PrivateTmp=yes, so a
+ * shot written to /tmp lands in the service's private namespace where scripts
+ * on the device (scripts/kddss) cannot see it. StateDirectory=kdeskdash is the
+ * one path that is both writable under ProtectSystem=strict and visible on the
+ * host filesystem. */
+#define SCREENSHOT_DEFAULT_PATH "/var/lib/kdeskdash/kdeskdash-shot.bmp"
 
 /* Snapshot the active screen to `path` (BMP). Runs on the UI thread; the
  * render takes a few tens of ms at 1920x440 — fine for a one-shot trigger.

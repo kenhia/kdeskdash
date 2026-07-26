@@ -1,12 +1,36 @@
 #!/usr/bin/env bash
-# Sync an aarch64 sysroot from the Pi for cross-compilation.
+# Sync an aarch64 sysroot from a Pi for cross-compilation.
+#
+# Usage:
+#   scripts/sync-sysroot.sh [host]        # host defaults to rpidash2
+#
+# One sysroot serves every dashboard Pi: rpidash2 (Pi 5) and rpidash3 (Pi 4) run
+# the same Debian 13 Trixie aarch64 userspace, and the binary we build is generic
+# aarch64. Sync from whichever board is handy; the sysroot is not board-specific.
 #
 # Prerequisite on the Pi: sudo apt-get install -y libdrm-dev libhiredis-dev
 # (linux/input.h, needed by lv_evdev, ships with linux-libc-dev which is already present.)
 set -euo pipefail
 
-PI_HOST="${PI_HOST:-ken@rpidash2}"
-SYSROOT="${PI5_SYSROOT:-$HOME/pi5-sysroot}"
+# Positional host wins; PI_HOST stays supported for existing habits. A bare
+# hostname gets the ken@ user prefix the fleet uses.
+host="${1:-${PI_HOST:-rpidash2}}"
+case "$host" in
+  *@*) PI_HOST="$host" ;;
+  *)   PI_HOST="ken@$host" ;;
+esac
+
+# PI5_SYSROOT is the pre-multi-Pi name, still honoured; so is an existing
+# ~/pi5-sysroot, so nobody has to re-sync just because the name changed.
+if [ -n "${PI_SYSROOT:-}" ]; then
+  SYSROOT="$PI_SYSROOT"
+elif [ -n "${PI5_SYSROOT:-}" ]; then
+  SYSROOT="$PI5_SYSROOT"
+elif [ ! -d "$HOME/pi-sysroot" ] && [ -d "$HOME/pi5-sysroot" ]; then
+  SYSROOT="$HOME/pi5-sysroot"
+else
+  SYSROOT="$HOME/pi-sysroot"
+fi
 
 mkdir -p "$SYSROOT/lib" "$SYSROOT/usr"
 

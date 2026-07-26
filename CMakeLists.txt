@@ -94,9 +94,16 @@ if(CMAKE_CROSSCOMPILING)
     target_link_options(kdeskdash PRIVATE -Wl,--allow-shlib-undefined)
 endif()
 
-# Deploy to the Pi: cmake --build build-pi --target deploy
+# Deploy to a Pi: cmake --build build-pi --target deploy
 # Stops the service (or a manually-run instance), copies the binary, restarts it.
+#
+# `just deploy <host>` / `just install-service <host>` are the multi-Pi front
+# door and call scripts/deploy.sh directly. These targets stay for back-compat
+# with the single-target KDESKDASH_TARGET cache variable; both routes run the
+# same script.
 set(KDESKDASH_TARGET "ken@rpidash2" CACHE STRING "ssh target for deploy")
+# Strip any user@ prefix to get the bare host, which names the per-host env file.
+string(REGEX REPLACE "^[^@]*@" "" KDESKDASH_HOST "${KDESKDASH_TARGET}")
 add_custom_target(deploy
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/deploy.sh deploy ${KDESKDASH_TARGET} ${CMAKE_BINARY_DIR}/kdeskdash ${CMAKE_SOURCE_DIR}/fonts/ttf/SymbolsNerdFont-Regular.ttf
     DEPENDS kdeskdash
@@ -104,10 +111,11 @@ add_custom_target(deploy
 )
 
 # One-time service setup: cmake --build build-pi --target install-service
-# Installs the systemd unit and an env file (only if absent), reloads, and
-# enables the service. Safe to re-run; it will not overwrite an edited env file.
+# Installs the systemd unit and that host's env file (only if absent), reloads,
+# and enables the service. Safe to re-run; it will not overwrite an edited env
+# file. Hosts with no deploy/hosts/<host>.env fall back to the example.
 add_custom_target(install-service
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/deploy.sh install-service ${KDESKDASH_TARGET} ${CMAKE_SOURCE_DIR}/deploy/kdeskdash.service ${CMAKE_SOURCE_DIR}/deploy/kdeskdash.env.example
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/deploy.sh install-service ${KDESKDASH_TARGET} ${CMAKE_SOURCE_DIR}/deploy/kdeskdash.service ${CMAKE_SOURCE_DIR}/deploy/hosts/${KDESKDASH_HOST}.env
     COMMENT "Installing kdeskdash systemd service on ${KDESKDASH_TARGET}"
 )
 
