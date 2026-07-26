@@ -1,12 +1,15 @@
 # systemd unit for the kdeskdash dashboard appliance.
 #
-# Install on the Pi (rpidash2):
+# Normally installed by `just install-service <host>`; by hand it is:
 #   sudo install -D -m644 deploy/kdeskdash.service /etc/systemd/system/kdeskdash.service
-#   sudo install -D -m600 deploy/kdeskdash.env.example /etc/kdeskdash/kdeskdash.env  # then edit
+#   sudo install -D -m600 deploy/hosts/<host>.env /etc/kdeskdash/kdeskdash.env
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now kdeskdash
 #
-# The binary is deployed to /usr/local/bin/kdeskdash by `cmake --build build-pi --target deploy`.
+# Secrets (KVSCF_TOKEN) go in /etc/kdeskdash/secrets.env, hand-installed once per
+# device and never committed — see deploy/hosts/README.md.
+#
+# The binary is deployed to /usr/local/bin/kdeskdash by `just deploy <host>`.
 [Unit]
 Description=kdeskdash touch dashboard
 # Redis is optional; start after it when present so remote control/persistence
@@ -26,7 +29,13 @@ User=root
 ExecStart=/usr/local/bin/kdeskdash
 # Leading '-' makes the env file optional: every KDESKDASH_* var has a built-in
 # default, so a missing file must not block the appliance from starting.
+#
+# Two files, deliberately: the first is the device's committed config
+# (deploy/hosts/<host>.env, installed by install-service), the second holds
+# secrets that must never reach the repo — hand-installed, mode 0600. Later
+# EnvironmentFile= entries win, so a secret may also override a config value.
 EnvironmentFile=-/etc/kdeskdash/kdeskdash.env
+EnvironmentFile=-/etc/kdeskdash/secrets.env
 Restart=always
 RestartSec=2
 

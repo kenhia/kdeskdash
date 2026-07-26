@@ -2,12 +2,14 @@
 # Deploy / service management for kdeskdash on the Pi.
 #
 # Usage:
-#   scripts/deploy.sh deploy          <target> <binary>
-#   scripts/deploy.sh install-service <target> <service-file> <env-example>
+#   scripts/deploy.sh deploy          <target> <binary> [ttf]
+#   scripts/deploy.sh install-service <target> <service-file> <env-file>
 #
-# Invoked by the CMake `deploy` and `install-service` targets, but also safe to
-# run by hand. Keeping the remote shell pipelines here (instead of inline in
-# CMakeLists) avoids fragile nested-quote escaping through cmake -> make -> sh.
+# Invoked by `just deploy <host>` / `just install-service <host>` (and by the
+# legacy CMake targets of the same names), but also safe to run by hand. The
+# target is any ssh destination, so one build serves every dashboard Pi.
+# Keeping the remote shell pipelines here (instead of inline in CMakeLists)
+# avoids fragile nested-quote escaping through cmake -> make -> sh.
 set -euo pipefail
 
 cmd=${1:?usage: deploy.sh <deploy|install-service> ...}
@@ -42,18 +44,32 @@ case "$cmd" in
   install-service)
     target=${2:?missing ssh target}
     service=${3:?missing service file}
-    env_example=${4:?missing env example file}
-    scp "$service" "$env_example" "$target:~/"
+    env_file=${4:?missing env file}
+    # A host with no committed deploy/hosts/<host>.env yet still gets a working
+    # install: fall back to the full-surface example, which is all-defaults.
+    if [ ! -f "$env_file" ]; then
+      fallback="$(dirname "$service")/kdeskdash.env.example"
+      echo "note: $env_file not found — installing $fallback instead" >&2
+      echo "      (commit that file to give this host its own config)" >&2
+      env_file="$fallback"
+    fi
+    scp "$service" "$env_file" "$target:~/"
     svc=$(basename "$service")
-    env=$(basename "$env_example")
-    # Install the unit + an env file (only if absent), reload, enable.
+    env=$(basename "$env_file")
+    # Install the unit + an env file (only if absent, so hand edits survive),
+    # reload, enable. Secrets are NOT installed here: /etc/kdeskdash/secrets.env
+    # is hand-installed once per device (see deploy/hosts/README.md).
     ssh "$target" "
       set -e
       sudo install -D -m644 ~/$svc /etc/systemd/system/kdeskdash.service
       sudo install -d -m755 /etc/kdeskdash
       if [ ! -f /etc/kdeskdash/kdeskdash.env ]; then
         sudo install -m600 ~/$env /etc/kdeskdash/kdeskdash.env
+        echo 'installed /etc/kdeskdash/kdeskdash.env from $env'
+      else
+        echo 'kept existing /etc/kdeskdash/kdeskdash.env (not overwritten)'
       fi
+      rm -f ~/$svc ~/$env
       sudo systemctl daemon-reload
       sudo systemctl enable kdeskdash
     "

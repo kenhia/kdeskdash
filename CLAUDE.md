@@ -39,9 +39,12 @@ ceremony.
 
 ## Project
 
-kdeskdash is a multi-mode, touch-enabled desk dashboard for the Raspberry Pi 5, built in C
-with LVGL v9.2.2. It runs fullscreen on an 11.26" 1920×440 capacitive touch panel
-(hostname `rpidash2`, user `ken`). The README is the canonical reference for hardware,
+kdeskdash is a multi-mode, touch-enabled desk dashboard for the Raspberry Pi, built in C
+with LVGL v9.2.2. It runs fullscreen on an 11.26" 1920×440 capacitive touch panel. Two
+devices run the same generic-aarch64 build, both as user `ken`: `rpidash2` (Pi 5, dev
+desk) and `rpidash3` (Pi 4, work desk). Per-device config lives in `deploy/hosts/<host>.env`;
+secrets are hand-installed to `/etc/kdeskdash/secrets.env` and never committed. The
+README is the canonical reference for hardware,
 modes, env vars, Redis keys, and the systemd service — read it for anything user-facing.
 This section covers what you need to *develop* here.
 
@@ -58,12 +61,12 @@ There are two distinct CMake build trees. Keep them separate — do not run test
 `just` wraps the usual loops (`just --list` for all of them):
 
 ```bash
-just check              # CI gate: build the host tree + run every unit test
-just test golz          # run ONE test by name (ctest -R test_golz)
-just deploy             # cross-compile, scp to ken@rpidash2, restart the service
-just sync-sysroot       # one-time / after Pi apt changes: rsync Pi sysroot to ~/pi5-sysroot
-just install-service    # one-time systemd unit + env file install on the Pi
-just golz-mc --help     # headless GoLZ balance sweep (Monte Carlo over the pure core)
+just check                    # CI gate: build the host tree + run every unit test
+just test golz                # run ONE test by name (ctest -R test_golz)
+just deploy [host]            # cross-compile, scp, restart the service (default rpidash2)
+just sync-sysroot [host]      # one-time / after Pi apt changes: rsync a Pi sysroot to ~/pi-sysroot
+just install-service [host]   # one-time per device: systemd unit + that host's env file
+just golz-mc --help           # headless GoLZ balance sweep (Monte Carlo over the pure core)
 ```
 
 The underlying commands, when you need them directly:
@@ -140,12 +143,19 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
 - **Adaptive feedback loop sets equilibrium** (`adaptive-feedback-loop-sets-equilibrium.md`)
   — see also the memory note: GoLZ's win ratio is pinned by the ±gens_to_win rule, not the
   machete params.
+- **Sandboxing needs a second device** (`systemd-sandboxing-needs-a-second-device.md`) —
+  `install-service` never overwrites a device's env file but *does* overwrite the unit, so a
+  fleet drifts one device at a time. `PrivateTmp=yes` had been hiding device screenshots
+  since sprint 010 and only surfaced when rpidash3 became the first host to run the committed
+  unit. Re-run `install-service` everywhere after touching `deploy/kdeskdash.service`, and
+  prefer `StateDirectory` for anything the outside world must read.
 
 ### Conventions
 
 - **Sprint records carry the history.** `sprints/001-…` … `sprints/017-…` are the migrated
   plans (and, where one existed, the paired `requirements.md`) from the first 17 units of
-  work — sprint 017 (palette mode) is the most recent. New work gets a new
+  work; `sprints/018-multi-pi-deploy.md` is the first written natively under the kproject
+  harness and is the most recent. New work gets a new
   `sprints/###-<short-name>.md` (or a directory if it warrants one). Durable lessons still
   go in `docs/solutions/`; don't delete `sprints/` or `docs/solutions/`.
 - **Conventional commits** (`feat:`, `fix:`, `refactor:`, `docs:`), often scoped

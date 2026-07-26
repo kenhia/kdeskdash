@@ -15,22 +15,22 @@ check: build
 test name: build
     ctest --test-dir build -R test_{{ name }} --output-on-failure
 
-# Cross-compile the aarch64 binary for the Pi
+# Cross-compile the aarch64 binary for the Pis (generic aarch64 — one build, every board)
 build-pi:
     cmake -B build-pi -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake
     cmake --build build-pi --target kdeskdash -j"$(nproc)"
 
-# Cross-compile, scp the binary to ken@rpidash2, restart the service
-deploy: build-pi
-    cmake --build build-pi --target deploy
+# Cross-compile, scp the binary to a Pi, restart the service (e.g. `just deploy rpidash3`)
+deploy host="rpidash2": build-pi
+    scripts/deploy.sh deploy ken@{{ host }} build-pi/kdeskdash fonts/ttf/SymbolsNerdFont-Regular.ttf
 
-# One-time: install the systemd unit + env file on the Pi
-install-service: build-pi
-    cmake --build build-pi --target install-service
+# One-time per device: install the systemd unit + that host's env file
+install-service host="rpidash2":
+    scripts/deploy.sh install-service ken@{{ host }} deploy/kdeskdash.service deploy/hosts/{{ host }}.env
 
-# One-time / after Pi apt changes: rsync the Pi sysroot to ~/pi5-sysroot
-sync-sysroot:
-    scripts/sync-sysroot.sh
+# One-time / after Pi apt changes: rsync a Pi sysroot to ~/pi-sysroot (one sysroot serves every board)
+sync-sysroot host="rpidash2":
+    scripts/sync-sysroot.sh {{ host }}
 
 # Headless GoLZ balance sweep (Monte Carlo over the pure core)
 golz-mc *ARGS:

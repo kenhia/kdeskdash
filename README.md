@@ -69,10 +69,27 @@ Navigation: swipe **left/right** to cycle content modes, swipe **down** for the 
 
 ## Hardware / target
 
-- Raspberry Pi 5 (8GB), Debian 13 (Trixie), hostname `rpidash2`, user `ken`
+Two panels run the same build — the binary is generic aarch64, so board choice
+does not fork the artifact:
+
+| Host | Board | Desk |
+|---|---|---|
+| `rpidash2` | Raspberry Pi 5, 8GB | dev desk |
+| `rpidash3` | Raspberry Pi 4 Model B Rev 1.5, 8GB | work desk |
+
+Both run Debian 13 (Trixie) as user `ken`, and share the rest of the hardware
+story:
+
 - GeeekPi 11.26" 1920x440 HDMI capacitive touch (ILITEK controller)
-- Display: DRM `/dev/dri/card1` (vc4 GPU) · Touch: evdev `/dev/input/by-id/usb-ILITEK_ILITEK-TOUCH-event-if00`
+- Display: DRM `/dev/dri/card1` (vc4) · Touch: evdev `/dev/input/by-id/usb-ILITEK_ILITEK-TOUCH-event-if00`
 - 3D Printed case (work in progress, will include STLs once I finish the design)
+
+The Pi 4 needs no overrides for either: it puts the vc4 display on `card1` too
+(`card0` is the render-only v3d node) and negotiates the panel's native
+1920x440 straight from EDID. Its evdev *index* differs — `event0` rather than
+`event1` — but the by-id path above is the default and resolves correctly on
+both. On the Pi 4's A72 the GoL/GoLZ `rgb 1` composite is the only mode that
+noticeably works harder; see the sprint 018 record for measurements.
 
 ## Build (cross-compile from a dev host)
 
@@ -82,7 +99,7 @@ Navigation: swipe **left/right** to cycle content modes, swipe **down** for the 
 # On the dev host: cross toolchain
 sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu cmake pkg-config rsync
 
-# On the Pi: DRM dev headers + hiredis (linux/input.h for touch is already present)
+# On each Pi: DRM dev headers + hiredis (linux/input.h for touch is already present)
 ssh ken@rpidash2 'sudo apt-get install -y libdrm-dev libhiredis-dev'
 ```
 
@@ -93,18 +110,35 @@ git clone --recurse-submodules <repo-url>   # LVGL is pinned at v9.2.2 in lib/lv
 cd kdeskdash
 ```
 
-### 3. Sync the Pi sysroot
+### 3. Sync a Pi sysroot
 
 ```bash
-scripts/sync-sysroot.sh        # rsyncs /lib, /usr/lib, /usr/include into ~/pi5-sysroot
+just sync-sysroot              # rsyncs /lib, /usr/lib, /usr/include into ~/pi-sysroot
+just sync-sysroot rpidash3     # ...from a specific board
 ```
+
+One sysroot serves every dashboard: both boards run the same Trixie aarch64
+userspace (verified — matching `libdrm` and `libhiredis` versions), and only the
+kernel flavor differs, which never reaches the linker. An existing
+`~/pi5-sysroot` from before the rename is still used as-is, so no re-sync is
+forced.
 
 ### 4. Build and deploy
 
 ```bash
+just build-pi                  # cross-compile once
+just deploy                    # ...to rpidash2 (the default)
+just deploy rpidash3           # ...to any other dashboard
+```
+
+Both recipes go through `scripts/deploy.sh`, which stops the service, installs
+the binary to `/usr/local/bin/kdeskdash`, and restarts it. The equivalent CMake
+targets still work for a single fixed target:
+
+```bash
 cmake -B build-pi -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake
 cmake --build build-pi --target kdeskdash -j"$(nproc)"
-cmake --build build-pi --target deploy        # scp binary to ken@rpidash2:~/kdeskdash
+cmake --build build-pi --target deploy -DKDESKDASH_TARGET=ken@rpidash3
 ```
 
 ## Run (on the Pi)
@@ -125,13 +159,13 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `REDISCLI_AUTH`        | _(unset)_            | Control Redis password, if any (AUTH) |
 | `KDESKDASH_TELEMETRY_REDIS_HOST` | `rpi53`    | Telemetry source Redis host (kpidash host metrics; read-only, separate from the control Redis). Used by `dev` mode. |
 | `KDESKDASH_TELEMETRY_REDIS_PORT` | `6379`     | Telemetry source Redis port |
-| `KDESKDASH_TELEMETRY_REDISCLI_AUTH` | _(unset)_ | Telemetry source Redis password, if any (AUTH) |
+| `KDESKDASH_TELEMETRY_REDISCLI_AUTH` | _(unset)_ | Telemetry source Redis password (AUTH). **Secret** — rpi53's telemetry Redis requires it, so `dev` mode shows no host data without it. Install via `/etc/kdeskdash/secrets.env`, not a committed host file. |
 | `KDESKDASH_CLAUDE_REDIS_HOST` | `127.0.0.1`   | Claude-feed Redis host (agent activity + usage limits; a second, LAN-reachable instance on the Pi itself). Used by `claude` mode. |
 | `KDESKDASH_CLAUDE_REDIS_PORT` | `6380`        | Claude-feed Redis port |
 | `KDESKDASH_CLAUDE_REDISCLI_AUTH` | _(unset)_  | Claude-feed Redis password, if any (AUTH) |
 | `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
 | `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
-| `KVSCF_TOKEN`          | _(unset)_            | `Remote`-mode shared secret authenticating window-focus commands to `kvscf` on `cleo` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → the window list still shows but tapping cannot focus ("view only"). The kvscf feed reuses the Claude-feed endpoint (`KDESKDASH_CLAUDE_REDIS_*`, port 6380). Keep out of version control. |
+| `KVSCF_TOKEN`          | _(unset)_            | `Remote`-mode shared secret authenticating window-focus commands to that device's `kvscf` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → the window list still shows but tapping cannot focus ("view only"). The kvscf feed reuses the Claude-feed endpoint (`KDESKDASH_CLAUDE_REDIS_*`, port 6380). **Secret** — install via `/etc/kdeskdash/secrets.env`, never a committed host file. |
 
 ## Redis (optional)
 
@@ -150,7 +184,7 @@ Keys:
 | `kdeskdash:gol:settings` | hash   | One-shot Game of Life settings, consumed (deleted) on the next GoL entry. |
 | `kdeskdash:dev:left`     | string | Dev mode: hostname assigned to the left charts; written on assign, restored on dev entry. |
 | `kdeskdash:dev:right`    | string | Dev mode: hostname assigned to the right charts; written on assign, restored on dev entry. |
-| `kdeskdash:screenshot`   | string | One-shot device self-screenshot (consumed with GETDEL): `SET` any value to write the active screen to `/tmp/kdeskdash-shot.bmp`; a value starting with `/` names the output path. How the README hero image above was taken — no glossy-panel photography. [scripts/kddss](scripts/kddss) wraps the whole flow: `kddss [basename]` triggers the shot and lands a PNG in the current directory. |
+| `kdeskdash:screenshot`   | string | One-shot device self-screenshot (consumed with GETDEL): `SET` any value to write the active screen to `/var/lib/kdeskdash/kdeskdash-shot.bmp`; a value starting with `/` names the output path. (The state directory, not `/tmp` — the unit's `PrivateTmp=yes` would hide a `/tmp` shot inside the service's namespace.) How the README hero image above was taken — no glossy-panel photography. [scripts/kddss](scripts/kddss) wraps the whole flow: `kddss [basename]` triggers the shot and lands a PNG in the current directory; `KDD_HOST=rpidash3 kddss` targets another panel. |
 
 Examples (run on the Pi or any host pointed at its Redis):
 
@@ -168,16 +202,28 @@ composited into the red/green/blue channels.
 
 ## Service (boot-to-dashboard)
 
-Install the systemd unit once, then deploys restart it automatically:
+Install the systemd unit once per device, then deploys restart it automatically:
 
 ```bash
-cmake --build build-pi --target install-service   # installs unit + /etc/kdeskdash/kdeskdash.env, enables
-ssh ken@rpidash2 'sudo systemctl start kdeskdash'
+just install-service            # rpidash2 (the default)
+just install-service rpidash3   # any other dashboard
+ssh ken@rpidash3 'sudo systemctl start kdeskdash'
 ```
 
-Edit `/etc/kdeskdash/kdeskdash.env` on the Pi to override the environment variables above
-(template: [deploy/kdeskdash.env.example](deploy/kdeskdash.env.example)). The deploy target
-(`cmake --build build-pi --target deploy`) stops the service, installs the binary to
+That installs the unit and the device's committed config from
+[deploy/hosts/](deploy/hosts/) — `<host>.env` → `/etc/kdeskdash/kdeskdash.env` —
+but only if that file is absent, so hand edits on the panel are never clobbered.
+[deploy/kdeskdash.env.example](deploy/kdeskdash.env.example) stays the
+full-surface reference for every variable in the table above.
+
+**Secrets are a separate file.** The unit reads a second, optional
+`/etc/kdeskdash/secrets.env` after the config file. `KVSCF_TOKEN` and
+`KDESKDASH_TELEMETRY_REDISCLI_AUTH` live there, hand-installed once per device at
+mode 0600 and never committed — see [deploy/hosts/README.md](deploy/hosts/README.md).
+Without it the panel still boots; Remote reports "view only" and Dev shows no
+host data.
+
+`just deploy [host]` stops the service, installs the binary to
 `/usr/local/bin/kdeskdash`, and starts it.
 
 ## Project layout
@@ -186,10 +232,14 @@ Edit `/etc/kdeskdash/kdeskdash.env` on the Pi to override the environment variab
 kdeskdash/
 ├── CMakeLists.txt                  # LVGL + libdrm + hiredis + pthread; deploy/install-service
 ├── lv_conf.h                       # LVGL config: DRM + EVDEV + Montserrat fonts
-├── cmake/aarch64-toolchain.cmake   # Pi 5 cross-compile toolchain
+├── cmake/aarch64-toolchain.cmake   # aarch64 cross-compile toolchain (one build, every Pi)
 ├── deploy/
 │   ├── kdeskdash.service           # systemd unit (boot-to-dashboard)
-│   ├── kdeskdash.env.example       # env template -> /etc/kdeskdash/kdeskdash.env
+│   ├── kdeskdash.env.example       # full-surface env reference (every var + default)
+│   ├── hosts/                      # per-device committed config, no secrets
+│   │   ├── rpidash2.env            #   Pi 5, dev desk
+│   │   ├── rpidash3.env            #   Pi 4, work desk
+│   │   └── README.md               #   install flow + the hand-installed secrets.env
 │   ├── redis-claude.conf           # claude-feed Redis instance (port 6380, ephemeral)
 │   └── redis-claude.service        # systemd unit for the claude-feed instance
 ├── publisher/
@@ -197,8 +247,9 @@ kdeskdash/
 │   ├── settings-fragment.json      # ~/.claude/settings.json hook + statusline config
 │   └── README.md                   # per-machine install + smoke test
 ├── scripts/
-│   ├── sync-sysroot.sh             # rsync Pi sysroot for cross-compilation
-│   └── deploy.sh                   # remote deploy / systemd install
+│   ├── sync-sysroot.sh             # rsync a Pi sysroot for cross-compilation
+│   ├── deploy.sh                   # remote deploy / systemd install (takes any ssh target)
+│   └── kddss                       # trigger + fetch a device screenshot as PNG
 ├── src/
 │   ├── main.c                      # entry: DRM + evdev bring-up, main loop, teardown
 │   ├── config.{c,h}                # env-var configuration

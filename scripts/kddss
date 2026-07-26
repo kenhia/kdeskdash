@@ -6,11 +6,15 @@
 #   kddss                        -> ./kdeskdash-YYYYmmdd-HHMMSS.png
 #   kddss golz-zombie-invasion   -> ./golz-zombie-invasion.png
 #
+# Target another dashboard with KDD_HOST, e.g.
+#   KDD_HOST=ken@rpidash3 kddss work-desk-boot
+#
 # Requires: ssh access to the dashboard Pi; python3+PIL or ffmpeg locally for
 # PNG conversion (falls back to keeping the raw BMP otherwise).
 set -euo pipefail
 
 KDD_HOST="${KDD_HOST:-ken@rpidash2}"
+case "$KDD_HOST" in *@*) ;; *) KDD_HOST="ken@$KDD_HOST" ;; esac
 
 base="${1:-kdeskdash-$(date +%Y%m%d-%H%M%S)}"
 base="${base%.png}"
@@ -22,17 +26,21 @@ trap 'rm -f "$tmp_bmp"' EXIT
 # freshness is judged by mtime (a stale file from a previous run must not
 # satisfy the wait). Wrapped in bash -s so the remote login shell's dialect
 # doesn't matter.
+# Two candidate paths: the state directory is where the current build writes
+# (the unit's PrivateTmp=yes hides /tmp from anyone outside the service), and
+# /tmp is the legacy location, still correct for a device that has not been
+# redeployed yet. Whichever goes fresh first wins.
 ssh "$KDD_HOST" 'bash -s' > "$tmp_bmp" <<'EOF'
-f=/tmp/kdeskdash-shot.bmp
+new=/var/lib/kdeskdash/kdeskdash-shot.bmp
+old=/tmp/kdeskdash-shot.bmp
+fresh() { m=$(stat -c %Y "$1" 2>/dev/null || echo 0); [ "$m" -ge "$2" ]; }
 t0=$(date +%s)
 redis-cli set kdeskdash:screenshot 1 > /dev/null
 for i in $(seq 1 14); do
-    m=$(stat -c %Y "$f" 2>/dev/null || echo 0)
-    [ "$m" -ge "$t0" ] && break
+    fresh "$new" "$t0" && { cat "$new"; exit 0; }
+    fresh "$old" "$t0" && { cat "$old"; exit 0; }
     sleep 0.5
 done
-m=$(stat -c %Y "$f" 2>/dev/null || echo 0)
-[ "$m" -ge "$t0" ] && cat "$f"
 exit 0
 EOF
 
