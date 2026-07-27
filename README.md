@@ -48,8 +48,10 @@ cross-compile approach and adding touch input.
   (`kvscf:edge:*`, named windows first in teal, then unnamed with a tab count), and **Apps**
   (`kvscf:apps:*`, non-running apps greyed). **Tapping brings a window to the foreground on its
   host — or launches it** (a closed Code favorite relaunches the editor; a stopped app starts)
-  — the dashboard's first *control-plane* mode, not just a view. Publishes to `kvscf:focus:<host>` on the same LAN Redis instance as the Claude feed
-  (port 6380); commands (`{id}` for windows, `{app}` for apps) are authenticated with a shared
+  — the dashboard's first *control-plane* mode, not just a view. Publishes to `kvscf:focus:<host>`
+  on its own endpoint (`KDESKDASH_KVSCF_REDIS_*`, defaulting to the Claude-feed instance on port
+  6380, so a panel can read the shared fleet feed while driving a different kvscf); commands
+  (`{id}` for windows, `{app}` for apps) are authenticated with a per-instance
   `KVSCF_TOKEN`. See
   [sprints/011-remote-foreground-mode](sprints/011-remote-foreground-mode/requirements.md).
 - **Calc** — a desk calculator built for the wide panel: big result + hex/binary readouts
@@ -66,6 +68,33 @@ cross-compile approach and adding touch input.
   [sprints/017-palette-mode](sprints/017-palette-mode/requirements.md).
 
 Navigation: swipe **left/right** to cycle content modes, swipe **down** for the Menu.
+
+### Per-device mode sets
+
+A panel does not have to carry every mode. `KDESKDASH_MODES` names the ones it
+registers, in the order it registers them, grouped into the Menu's sections:
+
+```bash
+KDESKDASH_MODES="fun:game_of_life,golz,icons,palette;ops:claude,foreground,clock,dev,calc"
+```
+
+Each section is `name:id,id,…`; sections are separated by `;`. Valid ids are the
+mode ids above (`game_of_life`, `golz`, `clock`, `dev`, `claude`, `icons`,
+`foreground`, `calc`, `palette`) and the section names are `fun` and `ops`, the
+two the Menu draws. **A section's list order is both the swipe-cycle order and
+the Menu tile order** — the two can no longer disagree.
+
+Unset means every mode, which is what both panels ship with. Each device's line
+lives in its [deploy/hosts/](deploy/hosts/) file, so changing a panel's mode set
+is a one-line edit and a redeploy — including adding a future mode to just one
+device.
+
+Nothing about a bad value can leave you with a panel you cannot navigate: an
+unknown mode id or section name is warned about on stderr and skipped, and a
+spec that selects *nothing* usable falls back to the full set rather than
+rendering an empty menu. `journalctl -u kdeskdash` shows what was dropped. The
+grammar and every one of those degradation paths are host-tested in
+[tests/test_modeset.c](tests/test_modeset.c).
 
 ## Hardware / target
 
@@ -163,6 +192,10 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_CLAUDE_REDIS_HOST` | `127.0.0.1`   | Claude-feed Redis host (agent activity + usage limits; a second, LAN-reachable instance on the Pi itself). Used by `claude` mode. |
 | `KDESKDASH_CLAUDE_REDIS_PORT` | `6380`        | Claude-feed Redis port |
 | `KDESKDASH_CLAUDE_REDISCLI_AUTH` | _(unset)_  | Claude-feed Redis password, if any (AUTH) |
+| `KDESKDASH_KVSCF_REDIS_HOST` | _(claude-feed host)_ | kvscf instance the `Remote` mode reads and publishes to. Unset reuses the Claude-feed value, which is right when both live on the same Redis; set it when a panel reads the fleet Claude feed but drives a *different* kvscf. |
+| `KDESKDASH_KVSCF_REDIS_PORT` | _(claude-feed port)_ | As above. Each of the three falls back independently — set only the host and you inherit the Claude-feed port and auth. |
+| `KDESKDASH_KVSCF_REDISCLI_AUTH` | _(claude-feed auth)_ | As above. |
+| `KDESKDASH_MODES`      | _(unset → all modes)_ | Per-device mode set: `fun:<ids>;ops:<ids>`. See [Per-device mode sets](#per-device-mode-sets). |
 | `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
 | `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
 | `KVSCF_TOKEN`          | _(unset)_            | `Remote`-mode shared secret authenticating window-focus commands to that device's `kvscf` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → the window list still shows but tapping cannot focus ("view only"). The kvscf feed reuses the Claude-feed endpoint (`KDESKDASH_CLAUDE_REDIS_*`, port 6380). **Secret** — install via `/etc/kdeskdash/secrets.env`, never a committed host file. |
@@ -255,6 +288,7 @@ kdeskdash/
 │   ├── config.{c,h}                # env-var configuration
 │   ├── shell.{c,h}                 # mode shell: registration, gestures, lifecycle
 │   ├── redis.{c,h}                 # optional Redis client (control/persistence/injection)
+│   ├── modeset.{c,h}               # pure core: KDESKDASH_MODES grammar + the mode roster
 │   ├── gol.{c,h} / stopwatch.{c,h} / iconset.{c,h} / kvscf_feed.{c,h} / calc.{c,h} / palette.{c,h} # pure, host-tested mode cores
 │   └── modes/                      # game_of_life, clock, menu, dev, claude, icons, foreground, calc, palette
 ├── fonts/ttf/                      # vendored SymbolsNerdFont-Regular.ttf (icons mode, runtime TinyTTF)

@@ -23,10 +23,16 @@ Everything below is the open korg backlog for `kdeskdash`.
      unit and wants an `install-service` re-run, and both panels want their two
      secrets (`KVSCF_TOKEN`, `KDESKDASH_TELEMETRY_REDISCLI_AUTH`) moved into
      `/etc/kdeskdash/secrets.env`.
-  2. **Per-device mode sets (runtime variants)** (korg 667: WI 662–665) — next
-     up. `KDESKDASH_MODES` pure-core parser, registration/menu wiring, kvscf
-     endpoint split, curated sets live on both devices. The commented
-     `KDESKDASH_MODES` lines are already sitting in `deploy/hosts/*.env`.
+  2. ~~**Per-device mode sets (runtime variants)** (korg 667: WI 662–665)~~ —
+     **sprint 019, shipped.** `KDESKDASH_MODES` pure-core parser,
+     registration/menu wiring, kvscf endpoint split, curated sets live on both
+     devices. Record:
+     [../019-per-device-mode-sets.md](../019-per-device-mode-sets.md). One item
+     deferred by circumstance: rpidash3's kvscf endpoint + token wait on the
+     work-side kvscf existing.
+
+  With both halves landed, **WI 503 has only Part C left** — the Launcher /
+  Stream-Deck-replacement epic, which now rolls out per-device for free.
 
 - **Calc post-live-test follow-ups** (korg WI 509, M). Deferred from sprint 016
   pending real desk use: trig (sin/cos/tan + inverses, deg/rad toggle), √x, 1/x,

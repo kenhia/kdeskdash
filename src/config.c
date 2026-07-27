@@ -55,6 +55,21 @@ void config_load(kdeskdash_config_t *cfg) {
     const char *cauth = getenv("KDESKDASH_CLAUDE_REDISCLI_AUTH");
     cfg->claude_redis_auth = (cauth && cauth[0] != '\0') ? cauth : NULL;
 
+    /* kvscf endpoint (foreground mode). On rpidash2 the kvscf keys live on the
+     * same instance as the claude feed, so unset means "reuse the claude-feed
+     * values" and that device's env needs no change. A second panel reads the
+     * same fleet claude feed but drives a *different* kvscf, which is what this
+     * split exists for. Each field falls back independently — set only the host
+     * and you inherit the claude port and auth. */
+    cfg->kvscf_redis_host =
+        env_or("KDESKDASH_KVSCF_REDIS_HOST", cfg->claude_redis_host);
+    int kport = atoi(env_or("KDESKDASH_KVSCF_REDIS_PORT", "0"));
+    cfg->kvscf_redis_port =
+        (kport > 0 && kport <= 65535) ? kport : cfg->claude_redis_port;
+    const char *kauth = getenv("KDESKDASH_KVSCF_REDISCLI_AUTH");
+    cfg->kvscf_redis_auth =
+        (kauth && kauth[0] != '\0') ? kauth : cfg->claude_redis_auth;
+
     /* Icons mode: the runtime Symbols Nerd Font (deployed as a file) and the
      * favourites list it curates. Both default to system paths the deploy sets
      * up; overridable for dev runs pointing at the in-repo TTF. */
@@ -67,4 +82,8 @@ void config_load(kdeskdash_config_t *cfg) {
      * kvscf on cleo. Empty when unset (focusing disabled); kvscf_redis trims any
      * trailing CR/LF before use, since it must byte-match the cleo-side secret. */
     cfg->kvscf_token = env_or("KVSCF_TOKEN", "");
+
+    /* Per-device mode set. NULL (unset or empty) means the full built-in set —
+     * the modeset core owns the grammar and every degradation path. */
+    cfg->modes_spec = env_or("KDESKDASH_MODES", NULL);
 }

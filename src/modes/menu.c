@@ -1,10 +1,14 @@
 /**
  * @file menu.c
- * Menu launcher mode: content modes are grouped into two side-by-side 3×3
- * panels — "Fun" (left) and "Ops" (right) — each tile opening its mode on tap.
- * A mode's group + order come from the FUN_IDS / OPS_IDS tables below; any
- * registered content mode not in either table is appended to Ops so a new mode
- * can never silently vanish from the menu (it just lands in Ops until assigned).
+ * Menu launcher mode: content modes are grouped into side-by-side 3×3 panels —
+ * "Fun" then "Ops" today — each tile opening its mode on tap.
+ *
+ * A mode's group and order come from the **modeset** (src/modeset.h), which is
+ * the same list that decided which modes got registered and in what swipe order.
+ * This file used to own that mapping in static FUN_IDS/OPS_IDS tables; those
+ * moved into modeset.c's roster, so per-device sets and the menu can never
+ * disagree. Any registered content mode the modeset does not mention is appended
+ * to the last section, so a mode can never silently vanish from the menu.
  *
  * The 3×3 grids are reserved capacity (9 slots/side, filled top-left); this
  * replaced a single horizontal row that clipped once the modes grew past ~6.
@@ -13,6 +17,8 @@
  */
 #include "modes/menu.h"
 
+#include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -50,19 +56,12 @@ static lv_color_t tile_text_color(const char *id) {
     return COLOR_INK;
 }
 
-/* Group membership + order. Add a new mode's id here to place it; anything
- * missing from both lists falls through to Ops (see build_screen). */
-static const char *FUN_IDS[] = {"game_of_life", "golz", "icons", "palette"};
-static const char *OPS_IDS[] = {"claude", "foreground", "clock", "dev", "calc"};
-#define FUN_N ((int)(sizeof(FUN_IDS) / sizeof(FUN_IDS[0])))
-#define OPS_N ((int)(sizeof(OPS_IDS) / sizeof(OPS_IDS[0])))
-
-static bool id_in(const char *id, const char *const *list, int n) {
-    for (int i = 0; i < n; i++)
-        if (strcmp(id, list[i]) == 0)
-            return true;
-    return false;
-}
+/* The modeset the menu draws. Borrowed from main.c (static there), or the
+ * built-in default when the caller passes NULL. */
+typedef struct {
+    const modeset_t *modes;
+    modeset_t        fallback;
+} menu_state_t;
 
 static void tile_cb(lv_event_t *e) {
     /* A swipe that starts on a tile still releases over it, so LVGL would fire
@@ -136,19 +135,42 @@ static void build_group(lv_obj_t *parent, const char *header,
             make_tile(grid, modes[i]);
 }
 
-/* Collect the registered modes for a group, in the id-list order, skipping any
- * not registered. Returns the count placed in out (capacity GROUP_CAP). */
-static int collect(const char *const *ids, int nids, kd_mode_t **out) {
+/* Collect one section's registered modes, in the modeset's order, skipping any
+ * that never registered. Returns the count placed in out (capacity GROUP_CAP). */
+static int collect(const modeset_t *ms, int s, kd_mode_t **out) {
     int n = 0;
-    for (int i = 0; i < nids && n < GROUP_CAP; i++) {
-        kd_mode_t *m = shell_find_mode(ids[i]);
+    int size = modeset_section_size(ms, s);
+    for (int i = 0; i < size && n < GROUP_CAP; i++) {
+        kd_mode_t *m = shell_find_mode(modeset_section_at(ms, s, i));
         if (m)
             out[n++] = m;
     }
     return n;
 }
 
+/* Section names are lowercase ids ("fun"); the header shows them title-cased.
+ * When section names become author-supplied (korg WI 668) this is the seam that
+ * stops doing the capitalising and starts trusting the name verbatim. */
+static void header_text(char *dst, size_t cap, const char *name) {
+    snprintf(dst, cap, "%s", name ? name : "");
+    if (dst[0])
+        dst[0] = (char)toupper((unsigned char)dst[0]);
+}
+
+/* Thin vertical rule between two section panels. */
+static void build_divider(lv_obj_t *parent) {
+    lv_obj_t *div = lv_obj_create(parent);
+    lv_obj_remove_style_all(div);
+    lv_obj_set_size(div, 1, LV_PCT(80));
+    lv_obj_set_style_bg_color(div, COLOR_HAIRLINE, 0);
+    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
+    lv_obj_add_flag(div, LV_OBJ_FLAG_GESTURE_BUBBLE);
+}
+
 static void build_screen(kd_mode_t *self) {
+    menu_state_t *st = self->state;
+    const modeset_t *ms = st->modes;
+
     lv_obj_t *scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr, COLOR_BG, LV_PART_MAIN);
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
@@ -158,32 +180,31 @@ static void build_screen(kd_mode_t *self) {
     lv_obj_set_flex_align(scr, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
 
-    kd_mode_t *fun[GROUP_CAP];
-    kd_mode_t *ops[GROUP_CAP];
-    int nfun = collect(FUN_IDS, FUN_N, fun);
-    int nops = collect(OPS_IDS, OPS_N, ops);
+    int nsec = modeset_section_count(ms);
+    kd_mode_t *group[MODESET_MAX_SECTIONS][GROUP_CAP];
+    int        ngroup[MODESET_MAX_SECTIONS];
+    for (int s = 0; s < nsec; s++)
+        ngroup[s] = collect(ms, s, group[s]);
 
-    /* Safety net: any content mode in neither list joins Ops so it stays
-     * reachable from the menu (until it's assigned a home above). */
-    int count = shell_content_count();
-    for (int i = 0; i < count && nops < GROUP_CAP; i++) {
-        kd_mode_t *m = shell_content_at(i);
-        if (m && m->id && !id_in(m->id, FUN_IDS, FUN_N) &&
-            !id_in(m->id, OPS_IDS, OPS_N))
-            ops[nops++] = m;
+    /* Safety net: a content mode registered without the modeset mentioning it
+     * (nothing does today) joins the last section so it stays reachable. */
+    if (nsec > 0) {
+        int last = nsec - 1;
+        int count = shell_content_count();
+        for (int i = 0; i < count && ngroup[last] < GROUP_CAP; i++) {
+            kd_mode_t *m = shell_content_at(i);
+            if (m && m->id && !modeset_section_of(ms, m->id))
+                group[last][ngroup[last]++] = m;
+        }
     }
 
-    build_group(scr, "Fun", fun, nfun);
-
-    /* Hairline divider between the two groups. */
-    lv_obj_t *div = lv_obj_create(scr);
-    lv_obj_remove_style_all(div);
-    lv_obj_set_size(div, 1, LV_PCT(80));
-    lv_obj_set_style_bg_color(div, COLOR_HAIRLINE, 0);
-    lv_obj_set_style_bg_opa(div, LV_OPA_COVER, 0);
-    lv_obj_add_flag(div, LV_OBJ_FLAG_GESTURE_BUBBLE);
-
-    build_group(scr, "Ops", ops, nops);
+    for (int s = 0; s < nsec; s++) {
+        char header[MODESET_NAME_MAX];
+        header_text(header, sizeof(header), modeset_section_name(ms, s));
+        if (s > 0)
+            build_divider(scr);
+        build_group(scr, header, group[s], ngroup[s]);
+    }
 
     self->screen = scr;
 }
@@ -194,11 +215,23 @@ static void activate(kd_mode_t *self) {
         build_screen(self);
 }
 
-kd_mode_t *menu_mode_create(const char *id, const char *title) {
+kd_mode_t *menu_mode_create(const char *id, const char *title,
+                            const modeset_t *modes) {
     kd_mode_t *m = calloc(1, sizeof(*m));
+    menu_state_t *st = calloc(1, sizeof(*st));
+
+    /* A NULL modeset would otherwise mean an empty menu — draw the full default
+     * instead, matching the modeset core's own "never blank the panel" rule. */
+    if (modes) {
+        st->modes = modes;
+    } else {
+        modeset_default(&st->fallback);
+        st->modes = &st->fallback;
+    }
+
     m->id = id;
     m->title = title;
-    m->state = NULL;
+    m->state = st;
     m->activate = activate;
     m->deactivate = NULL;
     m->tick = NULL;

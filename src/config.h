@@ -20,9 +20,13 @@ typedef struct {
     const char *claude_redis_host; /* KDESKDASH_CLAUDE_REDIS_HOST — claude-feed instance, default 127.0.0.1 (local on rpidash2) */
     int         claude_redis_port; /* KDESKDASH_CLAUDE_REDIS_PORT — default 6380 */
     const char *claude_redis_auth; /* KDESKDASH_CLAUDE_REDISCLI_AUTH — NULL when unset (no AUTH) */
+    const char *kvscf_redis_host;  /* KDESKDASH_KVSCF_REDIS_HOST — foreground-mode kvscf; falls back to the claude-feed values */
+    int         kvscf_redis_port;  /* KDESKDASH_KVSCF_REDIS_PORT — falls back to claude_redis_port */
+    const char *kvscf_redis_auth;  /* KDESKDASH_KVSCF_REDISCLI_AUTH — falls back to claude_redis_auth */
     const char *icons_ttf_path;    /* KDESKDASH_ICONS_TTF — Symbols Nerd Font read at runtime by the icons mode */
     const char *icons_favorites_path; /* KDESKDASH_ICONS_FAVORITES — icons-mode favourites file (load/save) */
     const char *kvscf_token;       /* KVSCF_TOKEN — shared secret for foreground-mode focus commands ("" when unset; trimmed at use) */
+    const char *modes_spec;        /* KDESKDASH_MODES — per-device mode set; NULL when unset (modeset falls back to the full default) */
 } kdeskdash_config_t;
 
 /* Populate cfg from the environment, falling back to defaults. */

@@ -37,6 +37,7 @@ add_executable(kdeskdash
     src/config.c
     src/registry.c
     src/shell.c
+    src/modeset.c
     src/calc.c
     src/palette.c
     src/gol.c
@@ -165,6 +166,13 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_palette PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_palette PRIVATE -Wall -Wextra)
     add_test(NAME test_palette COMMAND test_palette)
+
+    # Per-device mode selection: the KDESKDASH_MODES grammar, the built-in
+    # default/roster, and every way a malformed spec has to degrade safely.
+    add_executable(test_modeset tests/test_modeset.c src/modeset.c)
+    target_include_directories(test_modeset PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_modeset PRIVATE -Wall -Wextra)
+    add_test(NAME test_modeset COMMAND test_modeset)
 
     add_executable(test_stopwatch tests/test_stopwatch.c src/stopwatch.c)
     target_include_directories(test_stopwatch PRIVATE ${CMAKE_SOURCE_DIR}/src)

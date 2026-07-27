@@ -109,19 +109,29 @@ fixed by moving the default shot path to the state directory. rpidash2 still run
 a pre-sandboxing unit and wants an `install-service` re-run alongside its secrets
 migration.
 
-## Sprint 2 — Per-device mode sets (korg 667)
+## Sprint 2 — Per-device mode sets (korg 667) — **shipped**
 
-- [ ] **WI 662** — `src/modeset.c/h` pure core + `tests/test_modeset.c`
+Record: [../019-per-device-mode-sets.md](../019-per-device-mode-sets.md).
+
+- [x] **WI 662** — `src/modeset.c/h` pure core + `tests/test_modeset.c`
   (grammar, defaults, dedupe, unknown-id, ordering).
-- [ ] **WI 663** — registration table in `main.c`, menu groups sourced from the
-  modeset (FUN_IDS/OPS_IDS move in as the built-in default), conditional feed
-  init, active-mode-restore fallback verified. Byte-identical when unset.
-- [ ] **WI 664** — `KDESKDASH_KVSCF_REDIS_*` with claude-feed fallback.
-- [ ] **WI 665** — curated sets live on both devices, README + roadmap updated.
+- [x] **WI 663** — registration in `main.c` (an id→constructor dispatch rather
+  than a table — the constructors don't share a signature), menu groups sourced
+  from the modeset (FUN_IDS/OPS_IDS moved in as the built-in default),
+  conditional feed init, active-mode-restore fallback verified.
+- [x] **WI 664** — `KDESKDASH_KVSCF_REDIS_*` with per-field claude-feed fallback.
+- [x] **WI 665** — curated sets live on both devices, README + roadmap updated.
 
-Exit: each panel shows exactly its configured mode set; rpidash2 visually
-unchanged; adding the future Launcher mode to rpidash3 is a one-line env edit
-plus the mode itself.
+Exit met: each panel shows exactly its configured mode set, and rpidash2's menu
+is byte-identical before and after its flip. One deliberate deviation from
+"byte-identical when unset": the swipe cycle and the menu are now one list, so
+swipe runs Fun-then-Ops instead of the old registration order. The two had
+silently diverged; rpidash2's own explicit config line produces the new order
+anyway, so the convergence arrived with WI 665 regardless. Ken accepted it.
+
+Also fixed on the way: under systemd every startup `printf` had been sitting in
+a 4KB pipe buffer until shutdown, so `journalctl` showed nothing from a running
+service.
 
 ## Out of scope / later
 
