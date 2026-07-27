@@ -8,6 +8,7 @@
  */
 #include <signal.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "claude_redis.h"
@@ -24,6 +25,7 @@
 #include "modes/icons.h"
 #include "modes/menu.h"
 #include "modes/palette.h"
+#include "modeset.h"
 #include "redis.h"
 #include "shell.h"
 #include "telemetry.h"
@@ -37,7 +39,48 @@ static void signal_handler(int sig) {
     g_running = 0;
 }
 
+/* id -> constructor. This is the build's mode roster on the creation side; the
+ * *selection* side (which ids exist, their default order and grouping) lives in
+ * modeset.c. Adding a mode means one line there, one case here, and its source
+ * in CMakeLists.
+ *
+ * A dispatch rather than a `{id, title, fn}` table because the constructors do
+ * not share a signature — icons and foreground need paths from cfg — and three
+ * adapter shims to force uniformity would cost more than they'd save.
+ *
+ * Returns NULL for an id this build cannot create, which modeset's roster
+ * already rules out; the caller warns rather than trusting the two to agree. */
+static kd_mode_t *create_mode(const char *id, const kdeskdash_config_t *cfg) {
+    if (strcmp(id, "game_of_life") == 0)
+        return game_of_life_mode_create("game_of_life", "Game of Life");
+    if (strcmp(id, "golz") == 0)
+        return golz_mode_create("golz", "GoLZ");
+    if (strcmp(id, "clock") == 0)
+        return clock_mode_create("clock", "Clock");
+    if (strcmp(id, "dev") == 0)
+        return dev_mode_create("dev", "Dev");
+    if (strcmp(id, "claude") == 0)
+        return claude_mode_create("claude", "Claude");
+    if (strcmp(id, "icons") == 0)
+        return icons_mode_create("icons", "Icons", cfg->icons_ttf_path,
+                                 cfg->icons_favorites_path);
+    if (strcmp(id, "foreground") == 0)
+        return foreground_mode_create("foreground", "Remote",
+                                      cfg->icons_ttf_path);
+    if (strcmp(id, "calc") == 0)
+        return calc_mode_create("calc", "Calc");
+    if (strcmp(id, "palette") == 0)
+        return palette_mode_create("palette", "Palette");
+    return NULL;
+}
+
 int main(void) {
+    /* Under systemd stdout is a pipe, so glibc block-buffers it: every startup
+     * printf sat in a 4KB buffer until shutdown, which made `journalctl -u
+     * kdeskdash` look silent on a running service. Line-buffer so diagnostics
+     * land when they happen, matching stderr's unbuffered warnings. */
+    setvbuf(stdout, NULL, _IOLBF, 0);
+
     /* Signal handling for clean teardown (R8) */
     struct sigaction sa;
     sa.sa_handler = signal_handler;
@@ -72,29 +115,27 @@ int main(void) {
                         "rotation is not yet supported on this DRM driver — "
                         "ignoring (see plan Unit 1).\n");
     }
-    /* Mode shell: Game of Life and Clock are content modes; the Menu launcher
-     * is the swipe-down target and startup default. */
+    /* Mode shell. Which content modes this panel registers, in what order and
+     * under which Menu section, comes from KDESKDASH_MODES via the modeset core
+     * — unset means the full built-in set. Static because the Menu keeps a
+     * pointer to it for the lifetime of the program. The Menu launcher itself is
+     * always registered: it is the swipe-down target and startup default. */
+    static modeset_t modes;
+    if (modeset_parse(&modes, cfg.modes_spec))
+        printf("kdeskdash: mode set from KDESKDASH_MODES (%d modes)\n",
+               modeset_count(&modes));
+
     shell_init();
-    shell_register_content_mode(
-        game_of_life_mode_create("game_of_life", "Game of Life"));
-    shell_register_content_mode(
-        golz_mode_create("golz", "GoLZ"));
-    shell_register_content_mode(
-        clock_mode_create("clock", "Clock"));
-    shell_register_content_mode(
-        dev_mode_create("dev", "Dev"));
-    shell_register_content_mode(
-        claude_mode_create("claude", "Claude"));
-    shell_register_content_mode(
-        icons_mode_create("icons", "Icons", cfg.icons_ttf_path,
-                          cfg.icons_favorites_path));
-    shell_register_content_mode(
-        foreground_mode_create("foreground", "Remote", cfg.icons_ttf_path));
-    shell_register_content_mode(
-        calc_mode_create("calc", "Calc"));
-    shell_register_content_mode(
-        palette_mode_create("palette", "Palette"));
-    shell_register_menu(menu_mode_create("menu", "Menu"));
+    for (int i = 0; i < modeset_count(&modes); i++) {
+        const char *id = modeset_at(&modes, i);
+        kd_mode_t *m = create_mode(id, &cfg);
+        if (m)
+            shell_register_content_mode(m);
+        else
+            fprintf(stderr, "kdeskdash: no constructor for mode \"%s\" — "
+                            "skipped\n", id);
+    }
+    shell_register_menu(menu_mode_create("menu", "Menu", &modes));
 
     /* Optional Redis: remote control + last-mode persistence. Safe when absent.
      * Register the persistence hook before starting so the restored/initial
@@ -106,21 +147,31 @@ int main(void) {
         redis_get_active_mode(last_mode, sizeof(last_mode)) ? last_mode : NULL;
     shell_start(restore);
 
+    /* Feeds are initialised only for modes this panel actually registered. The
+     * handles were already isolated enough that a stray connection was harmless;
+     * this makes it not happen at all, so a device without Dev never dials the
+     * telemetry endpoint and never backs off against it. */
+
     /* Telemetry source (kpidash host metrics). Lazy connect on its own handle:
      * a down/slow endpoint never stalls boot or the control path. */
-    telemetry_init(cfg.telemetry_redis_host, cfg.telemetry_redis_port,
-                   cfg.telemetry_redis_auth);
+    if (modeset_enabled(&modes, "dev"))
+        telemetry_init(cfg.telemetry_redis_host, cfg.telemetry_redis_port,
+                       cfg.telemetry_redis_auth);
 
     /* Claude feed (agent activity + usage limits): third independent handle,
      * localhost instance on this Pi by default. */
-    claude_redis_init(cfg.claude_redis_host, cfg.claude_redis_port,
-                      cfg.claude_redis_auth);
+    if (modeset_enabled(&modes, "claude"))
+        claude_redis_init(cfg.claude_redis_host, cfg.claude_redis_port,
+                          cfg.claude_redis_auth);
 
-    /* kvscf window feed (foreground mode): reads/publishes on the same 6380 data
-     * instance as the claude feed, but on its own handle for failure isolation.
+    /* kvscf window feed (foreground mode): its own endpoint, defaulting to the
+     * claude-feed values because on rpidash2 both live on the same 6380
+     * instance — but a second panel reads that same fleet claude feed while
+     * driving a different kvscf. Own handle either way, for failure isolation.
      * The focus token comes from KVSCF_TOKEN (empty -> focusing disabled). */
-    kvscf_redis_init(cfg.claude_redis_host, cfg.claude_redis_port,
-                     cfg.claude_redis_auth, cfg.kvscf_token);
+    if (modeset_enabled(&modes, "foreground"))
+        kvscf_redis_init(cfg.kvscf_redis_host, cfg.kvscf_redis_port,
+                         cfg.kvscf_redis_auth, cfg.kvscf_token);
 
     /* Capacitive touch via evdev (ILITEK, default /dev/input/event1).
      * Touch is optional: if it cannot be opened, the display still runs. */
