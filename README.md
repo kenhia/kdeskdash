@@ -48,8 +48,10 @@ cross-compile approach and adding touch input.
   (`kvscf:edge:*`, named windows first in teal, then unnamed with a tab count), and **Apps**
   (`kvscf:apps:*`, non-running apps greyed). **Tapping brings a window to the foreground on its
   host — or launches it** (a closed Code favorite relaunches the editor; a stopped app starts)
-  — the dashboard's first *control-plane* mode, not just a view. Publishes to `kvscf:focus:<host>` on the same LAN Redis instance as the Claude feed
-  (port 6380); commands (`{id}` for windows, `{app}` for apps) are authenticated with a shared
+  — the dashboard's first *control-plane* mode, not just a view. Publishes to `kvscf:focus:<host>`
+  on its own endpoint (`KDESKDASH_KVSCF_REDIS_*`, defaulting to the Claude-feed instance on port
+  6380, so a panel can read the shared fleet feed while driving a different kvscf); commands
+  (`{id}` for windows, `{app}` for apps) are authenticated with a per-instance
   `KVSCF_TOKEN`. See
   [sprints/011-remote-foreground-mode](sprints/011-remote-foreground-mode/requirements.md).
 - **Calc** — a desk calculator built for the wide panel: big result + hex/binary readouts
