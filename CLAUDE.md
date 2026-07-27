@@ -92,7 +92,7 @@ testable without hardware.
 Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMakeLists.txt`.
 
 - **Pure cores** (`src/gol.c`, `src/golz.c`, `src/stopwatch.c`, `src/calc.c`, `src/palette.c`, `src/registry.c`,
-  `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/claude_feed.c`,
+  `src/modeset.c`, `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/claude_feed.c`,
   `src/telemetry_host.c`, `src/bmp_write.c`, `src/modes/dev_hostlist.c`,
   `src/modes/dev_view.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
   explicit `uint32_t *state` seam). Each has a `tests/test_*.c`.
@@ -103,11 +103,20 @@ Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMak
   gesture navigation: swipe left/right cycles content modes (wrapping), swipe down opens the
   Menu. It does **not** own mode storage; `main.c` keeps registered modes alive for the
   program's lifetime. A change callback (`shell_set_change_cb`) persists the active mode to Redis.
-- **Entry** (`src/main.c`) — DRM display + evdev touch bring-up, registers every mode, wires
-  the three Redis handles, runs the LVGL main loop until SIGINT/SIGTERM, tears down cleanly.
+- **Entry** (`src/main.c`) — DRM display + evdev touch bring-up, registers the modes the
+  modeset selects, wires the Redis handles the enabled modes actually use, runs the LVGL main
+  loop until SIGINT/SIGTERM, tears down cleanly.
 
-**Adding a mode is one registration call** in `main.c` (`shell_register_content_mode(...)`),
-plus the mode's `.c`/`.h` and its source line in `CMakeLists.txt`.
+**Which modes a panel registers is configuration**, not a build flag: `src/modeset.c` parses
+`KDESKDASH_MODES` (`"fun:<ids>;ops:<ids>"`), and its roster table is simultaneously the
+built-in default, the default menu grouping, and the list of legal ids. A section's list
+order is both the swipe-cycle order and the menu tile order — `menu.c` owns no id lists of
+its own, so a device's set and its menu cannot drift apart. Every malformed spec degrades
+(warn + skip; a spec selecting nothing falls back to the full set) because a blank panel is
+only recoverable over SSH.
+
+**Adding a mode is three lines**: the roster in `src/modeset.c`, a case in `main.c`'s
+`create_mode()` dispatch, and its source in `CMakeLists.txt` — plus the mode's own `.c`/`.h`.
 
 #### Four independent Redis handles — do not conflate them
 
@@ -122,11 +131,16 @@ stalls boot or another path). The generic client + backoff lives in `src/redis.c
 3. **Claude feed** (`src/claude_redis.c`, `KDESKDASH_CLAUDE_REDIS_*`) — fleet Claude Code
    agent activity + usage limits, fed by `publisher/claude-pub.sh` hooks. Port 6380.
 4. **kvscf feed** (`src/kvscf_redis.c`) — the `foreground` ("Remote") mode: reads
-   `kvscf:instances:*` and **publishes** `kvscf:focus:<host>` on the *same 6380 instance* as
-   the Claude feed, but on its own handle (reuses the `KDESKDASH_CLAUDE_REDIS_*` endpoint
-   config; own connection for isolation). This is the only mode that **writes/acts on another
-   machine** (foregrounds a window), gated by the shared `KVSCF_TOKEN` (byte-exact, trimmed,
-   never logged). PUBLISH rides the ordinary command connection — kdeskdash never SUBSCRIBEs.
+   `kvscf:instances:*` and **publishes** `kvscf:focus:<host>`. Its own handle *and* its own
+   endpoint config (`KDESKDASH_KVSCF_REDIS_*`), each field falling back independently to the
+   Claude feed's — on rpidash2 both genuinely live on the same 6380 instance, but a panel can
+   read the shared fleet Claude feed while driving a different kvscf. This is the only mode
+   that **writes/acts on another machine** (foregrounds a window), gated by `KVSCF_TOKEN`
+   (byte-exact, trimmed, never logged; per-kvscf-instance, so it lives in each device's
+   `secrets.env`). PUBLISH rides the ordinary command connection — kdeskdash never SUBSCRIBEs.
+
+Feeds are initialised **only for modes the modeset registered**, so a panel without Dev never
+dials the telemetry endpoint at all.
 
 ### Key patterns (documented in `docs/solutions/best-practices/`)
 
@@ -155,7 +169,7 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
 - **Sprint records carry the history.** `sprints/001-…` … `sprints/017-…` are the migrated
   plans (and, where one existed, the paired `requirements.md`) from the first 17 units of
   work; `sprints/018-multi-pi-deploy.md` is the first written natively under the kproject
-  harness and is the most recent. New work gets a new
+  harness and `sprints/019-per-device-mode-sets.md` is the most recent. New work gets a new
   `sprints/###-<short-name>.md` (or a directory if it warrants one). Durable lessons still
   go in `docs/solutions/`; don't delete `sprints/` or `docs/solutions/`.
 - **Conventional commits** (`feat:`, `fix:`, `refactor:`, `docs:`), often scoped
