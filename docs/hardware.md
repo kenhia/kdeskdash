@@ -5,12 +5,10 @@ how it goes together. The result is a self-contained desk unit — a 1920×440
 touch panel and a Raspberry Pi in one printed case, with a single power lead and
 an ethernet cable out the back.
 
-This is the *build* side. Once it is assembled and imaged, the
-[README](../README.md) covers the software: cross-compiling, deploying, and the
-boot-to-dashboard service.
-
-> **Photos are coming.** This guide is text-only for now. A full set of assembly
-> photos will land when the case is reprinted in ABS.
+This is the *build* side. This page covers what to buy and how to print it; the
+step-by-step build with photos is in **[Assembling the panel](assembly.md)**.
+Once it is assembled and imaged, the [README](../README.md) covers the software:
+cross-compiling, deploying, and the boot-to-dashboard service.
 
 ## Bill of materials
 
@@ -26,7 +24,7 @@ called out below so you know what you are actually buying.
 | [Silkland USB-C 90° right-angle adapter](https://www.amazon.com/dp/B0CNGFZ1JD) | 1 | **Sold as a 2-pack.** This specific adapter is known to clear the case — others may not fit. |
 | [M3 × 8 mm socket-head cap screws](https://www.amazon.com/dp/B07CMQ1SQH) | 6 | Sold 100 to a bag, so you will have plenty of spares. |
 | [M3 heat-set inserts, 4 mm](https://www.amazon.com/dp/B0FD88XTV4) | 6 | Sold as a 300-piece kit spanning M3 3–10 mm, and it includes the soldering-iron tip you need to set them. |
-| [3M VHB 5952 acrylic foam tape, 3/4" × 15 yd](https://www.amazon.com/dp/B0016HM7SE) | optional | Only if you hit the tape problem in [step 3](#3-mount-the-pi-to-the-monitor). It has to be real VHB — see [the note below](#a-word-on-the-tape). Sold in a 15-yard industrial roll, which is vastly more than this job needs, so it is not worth buying solely for this unless you have another use for it. |
+| [3M VHB 5952 acrylic foam tape, 3/4" × 15 yd](https://www.amazon.com/dp/B0016HM7SE) | optional | Only if you hit the tape problem in [step 3](assembly.md#3-mount-the-pi-to-the-monitor). It has to be real VHB — see [the note there](assembly.md#a-word-on-the-tape). Sold in a 15-yard industrial roll, which is vastly more than this job needs, so it is not worth buying solely for this unless you have another use for it. |
 
 You will also need a soldering iron (to set the inserts) and a hex driver for
 the M3 screws.
@@ -62,15 +60,43 @@ parts fit on one plate:
 > parts. The parts already exist — they just need indexing features added so
 > they align properly, which is not worth doing speculatively.
 
-### Settings
+### Settings — print it in PLA
 
-The case in service was printed in **matte black PLA** on stock settings — 15%
-infill, nothing special — in about 9.5 hours, and it has held up fine. But there
-is real heat in this enclosure, with a Pi and a monitor running inside it, so the
-Pi 5 case is being reprinted in **ABS**.
+**Print in PLA.** The case in service was printed in **matte black PLA** on
+stock settings — 15% infill, nothing special — in about 9.5 hours, and it has
+held up fine. There is real heat in this enclosure, with a Pi and a monitor
+running inside it, but in practice it has not turned out to be enough heat to
+worry about.
 
-Current ABS print, on a **Bambu H2D** with **Bambu ABS Black**, starting from the
-`0.20mm Standard @BBL H2D` profile:
+### ABS: not yet — the model needs work first
+
+**These STLs are not ready to print in ABS.** They will be, and the work is in
+progress, but as published they are dimensioned for PLA and an ABS print of them
+comes out wrong in two ways.
+
+**Shrinkage.** ABS shrinks as it cools, and over a 277 mm part that adds up: the
+first ABS body came out roughly **1.5 mm short**. That is enough to matter on a
+part whose whole job is to hold a monitor in a groove. The fix is ordinary —
+measure the finished part exactly, work out the scale compensation, apply it to
+the model, regenerate the STL, reprint, test fit — but it has to actually be
+done, and printing an uncompensated STL in ABS just burns 12 hours to arrive at
+the same conclusion.
+
+**The blind overhang.** There is an overhang inside the case that PLA bridges
+acceptably and ABS does not; the ABS print sagged there. It came out *good
+enough* to use, but not good enough to publish as a recommendation. The intended
+fix is to add an access hole in the back so the overhang can be closed up
+properly, which should remove the problem rather than just improve it.
+
+Both are model changes, not slicer settings, so there is no profile you can set
+to work around them today. Updated STLs will land when the compensated version
+has been reprinted and test-fitted.
+
+#### The ABS settings so far
+
+Recorded for when the model is ready — this is the profile the trial print used,
+not a recommendation to go print one now. On a **Bambu H2D** with **Bambu ABS
+Black**, starting from the `0.20mm Standard @BBL H2D` profile:
 
 | Setting | Value | Why |
 |---|---|---|
@@ -92,85 +118,12 @@ more hours to the print!
 
 ## Assembly
 
-### 1. Set the heat-set inserts
+The build itself, step by step and with photos, is its own page:
+**[Assembling the panel](assembly.md)**.
 
-Six inserts into the main case body, three at each end.
-
-**Then let them cool for about 30 minutes before you put any load on them.** If
-you have not done heat-set inserts before, this is the step that goes wrong:
-inserts that are still warm will turn in the plastic the first time you tighten
-a screw, and once an insert spins it is very hard to recover.
-
-### 2. Image the Pi
-
-Raspberry Pi OS **Lite, 64-bit** — the headless image. kdeskdash draws straight
-to DRM and reads touch from evdev; it does not need or want a desktop
-environment.
-
-### 3. Mount the Pi to the monitor
-
-The monitor ships with its own mounting instructions for the Pi, and they are
-decent. Follow them.
-
-**One thing to know first.** The vendor uses ordinary tape to secure the
-monitor's PCB to the panel, and it does not survive the heat of a Pi and monitor
-running together in an enclosed case. The Pi 5 unit's PCB came loose; the Pi 4
-one has not yet, but I would not count on it.
-
-If you have VHB on hand, it is worth pre-empting: the vendor tape runs along the
-long edges of the PCB, top and bottom. *Carefully* free the PCB, then reattach
-it with two strips of VHB. Take your time — this is a ribbon-cable-adjacent
-operation and there is no upside to rushing it.
-
-If you do not already own suitable tape, it is reasonable to skip this and deal
-with it only if the PCB actually lets go.
-
-#### A word on the tape
-
-It needs to be genuine **VHB** — 3M's acrylic foam tape, of which 5952 (black,
-~1.1 mm) is the common general-purpose grade. This matters more than it sounds
-like it should. The failure you are fixing is *heat-driven adhesive creep*, and
-the heavy-duty tapes sold for wall mounting are frequently **removable** —
-engineered to release cleanly, which is precisely the property you do not want
-six inches from a Pi under load. VHB is a permanent structural bond and is rated
-for sustained elevated temperature.
-
-The tradeoff is that it means it: assume anything you stick with VHB is not
-coming apart again without damage. Dry-fit first.
-
-### 4. Fit the right-angle adapter
-
-Insert the 90° adapter into the **monitor's** power USB-C port — not the Pi's.
-The adapter is what lets the power lead exit within the case's depth.
-
-### 5. Attach the left side
-
-Three M3 × 8 screws.
-
-**Do not crank them.** Snug is enough; overtightening strips the inserts you
-just set. If you printed in PLA or PETG, both will creep a little under load —
-gently retighten after a couple of days, then again after about a week, and they
-will settle.
-
-### 6. Route the cables
-
-Thread the power and ethernet cables in through the back of the case and out
-through the still-open right side.
-
-### 7. Connect them
-
-Power to the monitor via the 90° adapter; ethernet to the Pi.
-
-### 8. Seat the monitor
-
-Line the monitor up with the grooves in the case. **Orientation matters:** the
-power cable should be toward the top, and the ethernet and USB ports should face
-you. Slide it gently all the way in.
-
-### 9. Close it up
-
-Secure the right side with the remaining three M3 × 8 screws — same restraint on
-torque as step 5.
+Roughly: set the six heat-set inserts and let them cool, image the Pi, mount the
+Pi to the monitor, close one end of the case, route and connect the cables, slide
+the monitor in, and close the other end. Budget an evening.
 
 ## Networking
 

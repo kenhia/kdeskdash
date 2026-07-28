@@ -114,8 +114,9 @@ story:
 - Display: DRM `/dev/dri/card1` (vc4) · Touch: evdev `/dev/input/by-id/usb-ILITEK_ILITEK-TOUCH-event-if00`
 - 3D printed case — STLs in [stl/](stl/)
 
-**Building one?** [docs/hardware.md](docs/hardware.md) is the full build guide:
-bill of materials with links, print settings, and step-by-step assembly.
+**Building one?** [docs/hardware.md](docs/hardware.md) has the bill of materials
+with links and the print settings; [docs/assembly.md](docs/assembly.md) is the
+step-by-step build with photos.
 
 The Pi 4 needs no overrides for either: it puts the vc4 display on `card1` too
 (`card0` is the render-only v3d node) and negotiates the panel's native
@@ -300,5 +301,7 @@ kdeskdash/
 ├── lib/lvgl/                       # LVGL v9.2.2 (submodule)
 ├── stl/                            # 3D-printable case: main body + left/right end caps
 └── docs/                           # brainstorms, plans, solutions
-    └── hardware.md                 #   BOM + print settings + assembly guide
+    ├── hardware.md                 #   BOM + print settings
+    ├── assembly.md                 #   step-by-step build, with photos
+    └── images/assembly/            #   assembly photos
 ```
