@@ -8,8 +8,9 @@
  * Feed contract (written by publisher/claude-pub.sh, see
  * sprints/007-claude-mode/plan.md):
  *   claude:session:<host>:<sid>  hash — host/project/cwd/status/ts/started_ts
- *                                (+ model from the hook/transcript; title via
- *                                statusline, which runs in TUI sessions only)
+ *                                (+ model and title, both read from the
+ *                                transcript by the hooks; the statusline
+ *                                re-writes agreeing values for TUI sessions)
  *   claude:limits                hash — five_hour_pct/..., seven_day_pct/...
  *   claude:recent                list of {"host","project","title","ended_ts","dur_s"}
  *
@@ -70,7 +71,7 @@ typedef struct {
     char host[CF_HOST_MAX];
     char sid[CF_SID_MAX];
     char project[CF_PROJECT_MAX];
-    char title[CF_TITLE_MAX]; /* "" until statusline enriches (TUI only)    */
+    char title[CF_TITLE_MAX]; /* Claude's session name; "" until it exists  */
     char model[CF_MODEL_MAX]; /* "" until a hook reads it from the transcript*/
     long long ts;             /* unix s of last lifecycle event             */
     long long started_ts;     /* unix s of SessionStart (0 if unknown)      */

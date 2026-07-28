@@ -10,9 +10,10 @@
 #   statusline  stdin = statusline JSON; prints a one-line statusline to stdout
 #
 # Contract (see sprints/007-claude-mode/plan.md):
-#   claude:session:<host>:<sid>  hash, TTL 2h; hooks own status/ts (+ model,
-#                                read from the transcript); statusline owns
-#                                title and claude:limits (TUI sessions only).
+#   claude:session:<host>:<sid>  hash, TTL 2h; hooks own status/ts (+ model and
+#                                title, both read from the transcript);
+#                                statusline owns claude:limits and re-writes an
+#                                agreeing title/model (TUI sessions only).
 #   claude:recent                LPUSH + LTRIM on SessionEnd (reason != clear).
 #
 # Fire-and-forget: network I/O is backgrounded, failures are silent, exit is
@@ -128,8 +129,28 @@ model_from_transcript() {
     | tail -n1 | sed -e 's/.*:"//' -e 's/"$//'
 }
 
+# Claude's own session name, e.g. "Build Honorverse star system data scraper".
+# It is in NO hook or statusline payload — the hook `session_title` field only
+# ever carries a user-set --name//rename. The auto-name lives only in the
+# transcript, as one of two record types:
+#   {"type":"ai-title","aiTitle":"…"}          CLI / Code sessions
+#   {"type":"custom-title","customTitle":"…"}  desktop app auto-name, CLI rename
+# Both are rewritten as the session evolves, so the LAST record of either type
+# is the current one (measured 2026-07-27 over 55 transcripts: median 3, p90 15,
+# max 24 lines from EOF, and only 1/55 carried both — last-in-file settles it).
+title_from_transcript() {
+  local tpath="$1"
+  tpath=$(printf '%s' "$tpath" | tr '\\' '/')
+  [ -n "$tpath" ] && [ -f "$tpath" ] || return 0
+  tail -n 100 "$tpath" 2>/dev/null \
+    | grep -oE '"(aiTitle|customTitle)":"([^"\\]|\\.)*"' \
+    | tail -n1 \
+    | sed -e 's/^"[A-Za-z]*"[[:space:]]*:[[:space:]]*"//' -e 's/"$//' \
+          -e 's/\\"/"/g' -e 's/\\\\/\\/g' -e 's/\\\//\//g'
+}
+
 hook_mode() {
-  local json event sid key cwd project reason started dur title rec tpath mid
+  local json event sid key cwd project reason started dur title rec tpath mid sname
   json=$(cat)
   event=$(jstr "$json" hook_event_name)
   sid=$(token "$(jstr "$json" session_id)")
@@ -187,10 +208,18 @@ hook_mode() {
       ;;
     *) exit 0 ;;
   esac
-  # Enrich with the model from the transcript — the only source hooks can see
-  # (the statusline, which also writes model, never runs headless/desktop).
+  # Enrich with model + session name from the transcript — the only source hooks
+  # can see (the statusline, which also writes both, never runs headless/desktop
+  # and so covers only a fraction of the fleet). The name lags: Claude does not
+  # generate one for the first few turns, so `title` stays empty early and the
+  # view falls back to `project`.
   mid=$(model_from_transcript "$tpath")
   [ -n "$mid" ] && resp HSET "$key" model "$(plain "$(model_label "$mid")")"
+  sname=$(title_from_transcript "$tpath")
+  if [ -n "$sname" ]; then
+    resp HSET "$key" title "$(plain "$sname")"
+    printf '%s' "$sname" > "${STATE_DIR}/${sid}.title" 2>/dev/null
+  fi
   send
 }
 

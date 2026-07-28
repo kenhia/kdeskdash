@@ -41,6 +41,16 @@ anything sourced only from the statusline stops refreshing.
   every assistant line. A bounded `tail | grep | sed` keeps the cost independent of
   transcript size, and it works for every session type. (Normalize the id to a short label
   in the publisher: `claude-opus-4-8` -> `Opus 4.8`.)
+
+  **Sprint 020 applied this to `title` literally**, which is where the pattern paid off
+  twice over. The session name is not merely statusline-only — it is in *no* hook payload
+  at all (the hook's `session_title` field carries only a user-set `--name`/`/rename`), so
+  the transcript was not a convenience but the sole source. It lives there as
+  `{"type":"ai-title","aiTitle":…}` (CLI) or `{"type":"custom-title","customTitle":…}`
+  (desktop auto-name), both rewritten as the session evolves — take the last record of
+  either type. Measured over 55 transcripts, that record sits max 24 lines from EOF, and
+  every session that yielded nothing had no such record *anywhere* in the file, so the
+  bounded tail costs nothing. See `publisher/README.md` § Session name.
 - **Usage limits (5h / 7d percentages) genuinely cannot** be recovered from hooks or the
   transcript — they exist only in the statusline `rate_limits` field. Do not fake freshness:
   make the consumer honest instead. `cf_limits_stale()` greys the gauges and badges the
