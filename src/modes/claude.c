@@ -163,9 +163,12 @@ static void make_row(claude_state_t *st, lv_obj_t *parent, int i) {
     lv_label_set_long_mode(r->host, LV_LABEL_LONG_DOT);
 
     /* proj is the stable identifier (fixed); the session name is the element
-     * that soaks up the width RECENT gave back, and ellipsises when it can't. */
+     * that soaks up the width RECENT gave back, and ellipsises when it can't.
+     * 280 fits the fleet's longest repo name ("agent-wiki-tooling", 18ch at
+     * montserrat_28) — the identifier is the one field that must not clip, so
+     * it wins the tie against the title, which reads fine truncated. */
     r->proj = make_label(r->row, &lv_font_montserrat_28, COLOR_INK);
-    lv_obj_set_width(r->proj, 220);
+    lv_obj_set_width(r->proj, 280);
     lv_label_set_long_mode(r->proj, LV_LABEL_LONG_DOT);
 
     r->title = make_label(r->row, &lv_font_montserrat_20, COLOR_TITLE);
