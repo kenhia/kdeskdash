@@ -112,7 +112,10 @@ story:
 
 - GeeekPi 11.26" 1920x440 HDMI capacitive touch (ILITEK controller)
 - Display: DRM `/dev/dri/card1` (vc4) · Touch: evdev `/dev/input/by-id/usb-ILITEK_ILITEK-TOUCH-event-if00`
-- 3D Printed case (work in progress, will include STLs once I finish the design)
+- 3D printed case — STLs in [stl/](stl/)
+
+**Building one?** [docs/hardware.md](docs/hardware.md) is the full build guide:
+bill of materials with links, print settings, and step-by-step assembly.
 
 The Pi 4 needs no overrides for either: it puts the vc4 display on `card1` too
 (`card0` is the render-only v3d node) and negotiates the panel's native
@@ -295,5 +298,7 @@ kdeskdash/
 ├── fonts/ttf/                      # vendored SymbolsNerdFont-Regular.ttf (icons mode, runtime TinyTTF)
 ├── tests/                          # host unit tests (registry, gol, stopwatch, iconset, …)
 ├── lib/lvgl/                       # LVGL v9.2.2 (submodule)
+├── stl/                            # 3D-printable case: main body + left/right end caps
 └── docs/                           # brainstorms, plans, solutions
+    └── hardware.md                 #   BOM + print settings + assembly guide
 ```
