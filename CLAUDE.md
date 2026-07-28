@@ -169,7 +169,8 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
 - **Sprint records carry the history.** `sprints/001-…` … `sprints/017-…` are the migrated
   plans (and, where one existed, the paired `requirements.md`) from the first 17 units of
   work; `sprints/018-multi-pi-deploy.md` is the first written natively under the kproject
-  harness and `sprints/019-per-device-mode-sets.md` is the most recent. New work gets a new
+  harness, and everything after it follows that shape — `ls sprints/` for the latest rather
+  than trusting a number written here. New work gets a new
   `sprints/###-<short-name>.md` (or a directory if it warrants one). Durable lessons still
   go in `docs/solutions/`; don't delete `sprints/` or `docs/solutions/`.
 - **Conventional commits** (`feat:`, `fix:`, `refactor:`, `docs:`), often scoped
