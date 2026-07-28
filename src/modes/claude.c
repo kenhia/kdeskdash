@@ -2,11 +2,15 @@
  * @file claude.c
  * Claude mode: at-a-glance fleet agent activity + subscription usage limits.
  *
- * Three zones on the 1920x440 panel (design: sprints/007-claude-mode/requirements.md +
+ * Two zones on the 1920x440 panel (design: sprints/007-claude-mode/requirements.md +
  * approved mockup): AGENTS — attention-first session rows (awaiting input on
- * top, then working by recency, then idle/stale); RECENT — last completed
- * sessions; USAGE — two 270° arc gauges for the 5-hour and 7-day limits with
- * an "as of" freshness line (limits only update while some session runs).
+ * top, then working by recency, then idle/stale), each labelled with Claude's
+ * own session name; USAGE — two 270° arc gauges for the 5-hour and 7-day limits
+ * with an "as of" freshness line (limits only update while some session runs).
+ *
+ * A RECENT zone (last completed sessions) sat between them until sprint 020;
+ * it was traded for the width the session names needed — the publisher still
+ * writes claude:recent, and claude_redis_get_recent() still reads it.
  *
  * All ordering/derivation lives in the pure claude_feed core; this file owns
  * LVGL rendering and feed I/O cadence. Data is polled only while active.
@@ -22,19 +26,18 @@
 #include "claude_redis.h"
 #include "lvgl.h"
 
-#define CLAUDE_POLL_MS     2000 /* sessions + limits + recent refresh cadence */
+#define CLAUDE_POLL_MS     2000 /* sessions + limits refresh cadence */
 #define CLAUDE_DISCOVER_MS 5000 /* SCAN discovery cadence */
 
-#define CLAUDE_ROWS    5 /* session rows on screen; overflow -> "+N more" */
-#define CLAUDE_RECENTS 4
+#define CLAUDE_ROWS 5 /* session rows on screen; overflow -> "+N more" */
 
 /* Zone widths (px); usage takes the remainder of 1920. Hardware-calibrated
  * 2026-07-03: at 1120 the usage zone (430 - 60 padding = 370 content) clipped
  * the arc edges and the worst-case reset line ("resets Thu 05:00" needs a
  * ~176px column; 170 + 176 + 24 gap > 370). 40px ≈ 5.2mm at the panel's
- * 7.69 px/mm (see clock.c MM_TO_PX) moved to USAGE fixes both with slack. */
-#define ZONE_AGENTS_W 1080
-#define ZONE_RECENT_W 370
+ * 7.69 px/mm (see clock.c MM_TO_PX) moved to USAGE fixes both with slack.
+ * Sprint 020 folded RECENT's 370 into AGENTS; USAGE keeps its calibrated 470. */
+#define ZONE_AGENTS_W 1450
 #define ROW_H         58
 
 /* Design tokens (validated against this surface — see the plan). */
@@ -49,22 +52,22 @@
 #define COLOR_AWAITING  lv_color_hex(0xb9832c) /* doubles as the warn tone */
 #define COLOR_BLOCKED   lv_color_hex(0xe0563f) /* hard-blocked: hotter than awaiting */
 #define COLOR_PANEL_ALT lv_color_hex(0x2a1109) /* row wash behind BLOCKED ON YOU */
+/* Session name. CPU_SKY (palette.h) deliberately: the obvious "bright accent"
+ * picks collide with the status column — GPU_GRASS reads as COLOR_WORKING
+ * green, VRAM_MANGO as COLOR_AWAITING amber / COLOR_ACCENT coral — so a title
+ * in either could be misread as a status. Blue belongs to no status here. */
+#define COLOR_TITLE     lv_color_hex(0x4dabf7)
 
 typedef struct {
     lv_obj_t *row;
     lv_obj_t *stripe;
     lv_obj_t *host;
     lv_obj_t *proj;
+    lv_obj_t *title;
     lv_obj_t *model;
     lv_obj_t *status;
     lv_obj_t *age;
 } claude_row_t;
-
-typedef struct {
-    lv_obj_t *box;
-    lv_obj_t *title;
-    lv_obj_t *meta;
-} claude_recent_t;
 
 typedef struct {
     lv_obj_t *arc;
@@ -77,9 +80,6 @@ typedef struct {
     claude_row_t rows[CLAUDE_ROWS];
     lv_obj_t *more;     /* "+N more" under the rows */
     lv_obj_t *empty;    /* "no agents active" placeholder */
-
-    claude_recent_t recents[CLAUDE_RECENTS];
-    lv_obj_t *recent_empty;
 
     claude_gauge_t five;
     claude_gauge_t seven;
@@ -162,46 +162,28 @@ static void make_row(claude_state_t *st, lv_obj_t *parent, int i) {
     lv_obj_set_width(r->host, 120);
     lv_label_set_long_mode(r->host, LV_LABEL_LONG_DOT);
 
+    /* proj is the stable identifier (fixed); the session name is the element
+     * that soaks up the width RECENT gave back, and ellipsises when it can't. */
     r->proj = make_label(r->row, &lv_font_montserrat_28, COLOR_INK);
-    lv_obj_set_flex_grow(r->proj, 1);
+    lv_obj_set_width(r->proj, 220);
     lv_label_set_long_mode(r->proj, LV_LABEL_LONG_DOT);
+
+    r->title = make_label(r->row, &lv_font_montserrat_20, COLOR_TITLE);
+    lv_obj_set_flex_grow(r->title, 1);
+    lv_label_set_long_mode(r->title, LV_LABEL_LONG_DOT);
 
     r->model = make_label(r->row, &lv_font_montserrat_20, COLOR_SECONDARY);
     lv_obj_set_width(r->model, 130);
     lv_label_set_long_mode(r->model, LV_LABEL_LONG_DOT);
 
     r->status = make_label(r->row, &lv_font_montserrat_20, COLOR_MUTED);
-    lv_obj_set_width(r->status, 290);
+    lv_obj_set_width(r->status, 240);
     lv_obj_set_style_text_letter_space(r->status, 2, 0);
     lv_label_set_long_mode(r->status, LV_LABEL_LONG_CLIP);
 
     r->age = make_label(r->row, &lv_font_montserrat_20, COLOR_SECONDARY);
     lv_obj_set_width(r->age, 90);
     lv_obj_set_style_text_align(r->age, LV_TEXT_ALIGN_RIGHT, 0);
-}
-
-static void make_recent(claude_state_t *st, lv_obj_t *parent, int i) {
-    claude_recent_t *rc = &st->recents[i];
-
-    rc->box = lv_obj_create(parent);
-    lv_obj_remove_style_all(rc->box);
-    lv_obj_set_size(rc->box, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_color(rc->box, COLOR_PANEL, 0);
-    lv_obj_set_style_bg_opa(rc->box, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(rc->box, 10, 0);
-    lv_obj_set_style_pad_hor(rc->box, 18, 0);
-    lv_obj_set_style_pad_ver(rc->box, 10, 0);
-    lv_obj_set_style_pad_row(rc->box, 3, 0);
-    lv_obj_clear_flag(rc->box, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(rc->box, LV_FLEX_FLOW_COLUMN);
-
-    rc->title = make_label(rc->box, &lv_font_montserrat_20, COLOR_INK);
-    lv_obj_set_width(rc->title, LV_PCT(100));
-    lv_label_set_long_mode(rc->title, LV_LABEL_LONG_DOT);
-
-    rc->meta = make_label(rc->box, &lv_font_montserrat_20, COLOR_MUTED);
-    lv_obj_set_width(rc->meta, LV_PCT(100));
-    lv_label_set_long_mode(rc->meta, LV_LABEL_LONG_DOT);
 }
 
 static void make_gauge(claude_gauge_t *g, lv_obj_t *parent, const char *window) {
@@ -271,15 +253,6 @@ static void build_screen(kd_mode_t *self) {
     lv_obj_set_flex_grow(st->empty, 1);
     lv_obj_set_style_text_align(st->empty, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(st->empty, LV_PCT(100));
-
-    /* --- RECENT --- */
-    lv_obj_t *zr = make_zone(scr, ZONE_RECENT_W, true);
-    lv_obj_set_style_pad_row(zr, 8, 0);
-    make_zone_label(zr, "RECENT");
-    for (int i = 0; i < CLAUDE_RECENTS; i++)
-        make_recent(st, zr, i);
-    st->recent_empty = make_label(zr, &lv_font_montserrat_20, COLOR_MUTED);
-    lv_label_set_text(st->recent_empty, "nothing yet");
 
     /* --- USAGE --- */
     lv_obj_t *zu = make_zone(scr, 0, true);
@@ -381,6 +354,15 @@ static void render_sessions(claude_state_t *st, cf_session_t *s, int n,
         lv_label_set_text(r->host, e->host);
         lv_label_set_text(r->proj, e->project);
         lv_obj_set_style_text_color(r->proj, dim ? COLOR_SECONDARY : COLOR_INK, 0);
+
+        /* The name lags — Claude generates none for the first few turns, so a
+         * young session has an empty title. Repeat the project rather than
+         * leave a hole, muted so it reads as "no name yet" and not as one. */
+        bool named = e->title[0] != '\0';
+        lv_label_set_text(r->title, named ? e->title : e->project);
+        lv_obj_set_style_text_color(
+            r->title, dim || !named ? COLOR_MUTED : COLOR_TITLE, 0);
+
         lv_label_set_text(r->model, e->model);
         lv_obj_set_style_text_color(r->model, dim ? COLOR_MUTED : COLOR_SECONDARY, 0);
         lv_label_set_text(r->status, cf_disp_label(e->disp));
@@ -406,37 +388,6 @@ static void render_sessions(claude_state_t *st, cf_session_t *s, int n,
         lv_obj_clear_flag(st->empty, LV_OBJ_FLAG_HIDDEN);
     else
         lv_obj_add_flag(st->empty, LV_OBJ_FLAG_HIDDEN);
-}
-
-static void render_recent(claude_state_t *st, cf_recent_t *rec, int n,
-                          long long now) {
-    for (int i = 0; i < CLAUDE_RECENTS; i++) {
-        claude_recent_t *rc = &st->recents[i];
-        if (i >= n) {
-            lv_obj_add_flag(rc->box, LV_OBJ_FLAG_HIDDEN);
-            continue;
-        }
-        lv_obj_clear_flag(rc->box, LV_OBJ_FLAG_HIDDEN);
-
-        /* Prefer the project name (short, recognisable); the enriched title is
-         * often long — it belongs to the tooltip-less future, not 370px. */
-        lv_label_set_text(rc->title, rec[i].project);
-
-        char when[16], dur[16], meta[128];
-        cf_fmt_age(now - rec[i].ended_ts, when, sizeof(when));
-        if (rec[i].dur_s > 0) {
-            cf_fmt_age(rec[i].dur_s, dur, sizeof(dur));
-            snprintf(meta, sizeof(meta), "%s \xE2\x80\xA2 %s ago \xE2\x80\xA2 %s",
-                     rec[i].host, when, dur);
-        } else {
-            snprintf(meta, sizeof(meta), "%s \xE2\x80\xA2 %s ago", rec[i].host, when);
-        }
-        lv_label_set_text(rc->meta, meta);
-    }
-    if (n == 0)
-        lv_obj_clear_flag(st->recent_empty, LV_OBJ_FLAG_HIDDEN);
-    else
-        lv_obj_add_flag(st->recent_empty, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void render_gauge(claude_gauge_t *g, float pct, long long resets_at,
@@ -507,13 +458,9 @@ static void poll(claude_state_t *st) {
     cf_limits_t limits;
     claude_redis_get_limits(&limits);
 
-    cf_recent_t recent[CLAUDE_RECENTS];
-    int nrec = claude_redis_get_recent(recent, CLAUDE_RECENTS);
-
     bool up = claude_redis_reachable();
     if (up) {
         render_sessions(st, sessions, n, now);
-        render_recent(st, recent, nrec, now);
         render_limits(st, &limits, now);
         lv_obj_add_flag(st->unavail, LV_OBJ_FLAG_HIDDEN);
     } else {

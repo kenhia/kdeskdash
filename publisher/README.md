@@ -52,6 +52,36 @@ printf '%s' '{"hook_event_name":"SessionEnd","reason":"other","session_id":"smok
   reliably await SessionEnd hooks at exit, so a `-p` run can leave a session
   hash behind — the dashboard's idle→stale ladder + 2h TTL absorbs it.
 
+## Session name (`title`)
+
+Each row on the dashboard is labelled with Claude's own session name. It is in
+**no** hook or statusline payload — the hook `session_title` field carries only a
+user-set `--name` / `/rename` and is usually empty. The auto-generated name lives
+only in the transcript JSONL, as one of two record types:
+
+| record | source |
+| --- | --- |
+| `{"type":"ai-title","aiTitle":"…"}` | CLI / Code sessions |
+| `{"type":"custom-title","customTitle":"…"}` | desktop app auto-name; also CLI `--name` / `/rename` |
+
+Both are rewritten as a session evolves, so `title_from_transcript()` takes the
+**last record of either type**. Measured over 55 local transcripts (2026-07-27):
+the last title record sits median 3 / p90 15 / max 24 lines from EOF, so the
+bounded `tail -n 100` never misses one, and only 1/55 carried both types —
+last-in-file settles that case. Sessions with no title at all genuinely have no
+such record anywhere in the file (verified), not one beyond the tail window.
+
+Because `transcript_path` is on every hook payload, this yields a name for **all**
+sessions — TUI, VS Code, desktop app, headless — where the old statusline-only
+`session_name` source covered TUI alone. The statusline still writes `title`; it
+simply agrees now.
+
+**The name lags.** Claude generates none for the first few turns, so `title` is
+empty early in a session; the dashboard falls back to repeating `project` in a
+muted tone. Unlike the `blocked` status there is **no deploy-ordering
+constraint** — `title` has always been an accepted hash field, so publisher and
+dashboard can land in either order.
+
 ## Blocked-on-you (AskUserQuestion)
 
 `PreToolUse` and `PostToolUse`, both matched on `AskUserQuestion`, publish
