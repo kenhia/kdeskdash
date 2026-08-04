@@ -7,8 +7,9 @@ it. Zero dependencies: one bash script speaking RESP over `/dev/tcp` — no
 `redis-cli`, no `jq`. Works on Linux and on Windows under Git Bash (Claude Code
 runs hooks/statusline via Git Bash when it is installed).
 
-Contract and rationale: `sprints/007-claude-mode/plan.md`; the multi-source
-`claude:limits` contract: `docs/solutions/best-practices/` (sprint 023).
+Contract and rationale: `sprints/007-claude-mode/plan.md`; the generalized
+one-key-many-writers pattern:
+`docs/solutions/best-practices/independent-writers-need-independent-stamps.md`.
 
 ## Install (per machine, once)
 
@@ -37,8 +38,24 @@ no DNS is involved.
 
 The statusline only runs while a session is rendering, so on a statusline-only
 install the USAGE gauges freeze the moment the last session ends. `poll` mode
-refreshes `claude:limits` from whichever session-free source the machine has,
-best first:
+refreshes `claude:limits` from whichever session-free source the machine has.
+
+### Choosing a source, per machine
+
+A decision table, not a recommendation — machines differ:
+
+| Your machine | Path | What you get / give up |
+|---|---|---|
+| Runs the Claude **desktop app** | **file** — the app's own `plan-usage-history.json` | Percentages only, no network, no credentials, no terms question. No reset stamps, no model-scoped window. |
+| Headless with **live Claude Code CLI credentials** | **oauth** — the endpoint the official client polls | Everything: percentages, reset stamps, the model-scoped weekly window. Needs `user:profile` scope and a maintained `~/.claude/.credentials.json`. |
+| Neither | statusline only | Gauges update while you work and grey between sessions — which is at least honest now (the panel greys per gauge on the writer's own cadence). |
+
+One machine on the oauth path covers the whole fleet's scoped gauge — the
+quota is account-global, so more pollers add freshness, not coverage. The
+`.credentials.json` caveat matters: the **CLI** maintains that file, the
+desktop app neither writes nor refreshes it, so on a desktop-only machine it
+sits expired and the oauth path correctly declines (the fleet's cleo is
+exactly this case, hence its scheduled task rides the file path).
 
 - **file** — `plan-usage-history.json`, which the Claude **desktop app**
   samples on its own 5-minute timer whether or not any session runs (measured:
@@ -56,6 +73,50 @@ best first:
 reads it back before writing: it never publishes over a fresher observation,
 so a live statusline on any host always wins. Run it on a ~5-minute timer —
 no faster; that is the desktop app's own cadence against the same endpoint.
+
+### The `claude:limits` contract
+
+One hash, several independent writers on different cadences. The rules that
+keep them from corrupting each other (the generalized pattern is in
+`docs/solutions/best-practices/independent-writers-need-independent-stamps.md`):
+stamps are observation times; last observation wins via read-back; a writer
+sets only fields it can actually supply, never a sentinel for unknown; and a
+field-set whose availability differs by source gets its **own** stamp and its
+own read-back guard — otherwise a file-source write (newer, but blind to the
+scoped fields) would leave the scoped gauge frozen and looking fresh.
+
+| field | writers | notes |
+|---|---|---|
+| `five_hour_pct`, `seven_day_pct` | all | percent used, headline windows |
+| `five_hour_resets_at`, `seven_day_resets_at` | statusline, oauth | unix s; the file source leaves them untouched |
+| `updated_at` | all | **observation** time of the headline set |
+| `host` | all | which machine produced the observation |
+| `source` | all | `statusline` \| `file` \| `oauth` |
+| `expected_refresh_s` | all | writer's cadence (statusline 60, poll 300); the panel greys a gauge past stamp + cadence + 60s grace |
+| `scoped_model` | oauth | display string (e.g. `Fable`); the API's model id is null — render it, never match on it |
+| `scoped_pct` | oauth | percent used, model-scoped weekly window |
+| `scoped_resets_at` | oauth | unix s |
+| `scoped_active` | oauth | 1 when this window is the binding constraint |
+| `scoped_count` | oauth | `weekly_scoped` entries seen in `limits[]`; ever >1 means the flat fields need to become indexed |
+| `scoped_updated_at` | oauth | independent stamp for the scoped set — the load-bearing rule above |
+| `scoped_expected_refresh_s` | oauth | cadence for the scoped set |
+
+### Terms of service, plainly
+
+Users forking this deserve to know which line they're standing on. The
+statusline and file paths read local first-party data written to your own
+disk by software you're licensed to run — no terms surface at all. The oauth
+path reads your own quota counter from an undocumented first-party endpoint
+with your own client's credentials at the official client's own cadence; the
+consumer terms' automated-access clause can be read against any scripted
+call, so this is a judgment call each user makes — the practical risk is the
+endpoint changing shape, which the publisher treats as "keep the last value",
+never as zero. **Browser-cookie scraping is deliberately not implemented**:
+tools in this space (the CodexBar lineage this design was researched against)
+ship a tier that lifts `sessionKey` from a browser cookie store to call
+`claude.ai/api/*`. That is the one method that reads squarely as prohibited
+automated access, and a `sessionKey` is a full-account bearer credential —
+either reason alone disqualifies it.
 
 ### Windows (scheduled task, the cleo install)
 
@@ -104,11 +165,15 @@ printf '%s' '{"hook_event_name":"SessionEnd","reason":"other","session_id":"smok
   | ~/.claude/kdeskdash-pub/claude-pub.sh hook   # cleans up + pushes a recent record
 ```
 
-## Fleet notes (2026-07-03; AskUserQuestion hooks added 2026-07-19)
+## Fleet notes (2026-07-03; AskUserQuestion hooks 2026-07-19; poll mode 2026-08-04)
 
-- `kai`: installed (Claude Code 2.1.198).
+- `kai`: installed (Claude Code 2.1.198). Poll: systemd user timer
+  `kdeskdash-claude-poll` on the **oauth** path — the fleet's source of the
+  scoped gauge and reset stamps (recorded as k-homelab WI #963).
 - `cleo`: installed (Git Bash at `C:\Program Files\Git\bin\bash.exe`; script path
   written with forward slashes). Local state lands in `%USERPROFILE%\.claude\kdeskdash-pub\state`.
+  Poll: scheduled task `kdeskdash-claude-poll` on the **file** path (its
+  `.credentials.json` is expired and the desktop app never refreshes it).
 - `kubs0`: installed (Claude Code 2.1.199 at `~/.local/bin/claude`). Interactive
   sessions run the full lifecycle; headless `claude -p` on 2.1.199 does not
   reliably await SessionEnd hooks at exit, so a `-p` run can leave a session
