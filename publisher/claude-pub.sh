@@ -34,6 +34,12 @@ KDD_RECENT_KEEP=19      # LTRIM 0 19 -> 20 entries
 KDD_LIMITS_MIN_S=5      # statusline publish throttle
 KDD_POLL_MAX_AGE_S=900  # plan-usage-history sample older than this = app closed
 
+# What the panel should expect between writes from each mode, published as
+# expected_refresh_s / scoped_expected_refresh_s so the greying policy lives
+# with the thing that knows its own cadence (the panel adds its own buffer).
+KDD_STATUSLINE_EXPECT_S=60  # statusline: sub-minute while a session renders
+KDD_POLL_EXPECT_S=300       # poll: the 5-minute timer on every host
+
 STATE_DIR="${HOME}/.claude/kdeskdash-pub/state"
 
 # ---------- tiny JSON helpers (flat fields on a single-line document) ----------
@@ -272,7 +278,8 @@ statusline_mode() {
     resp HSET claude:limits \
       five_hour_pct "${fh_pct:-0}" five_hour_resets_at "${fh_reset:-0}" \
       seven_day_pct "${sd_pct:-0}" seven_day_resets_at "${sd_reset:-0}" \
-      updated_at "$NOW" host "$HOST" source statusline
+      updated_at "$NOW" host "$HOST" source statusline \
+      expected_refresh_s "$KDD_STATUSLINE_EXPECT_S"
   fi
   if [ -n "$sid" ]; then
     key="claude:session:${HOST}:${sid}"
@@ -298,6 +305,9 @@ statusline_mode() {
 #
 # Results land in these globals rather than a parsed return string.
 P_T="" ; P_FH="" ; P_SD="" ; P_FHR="" ; P_SDR="" ; P_SRC=""
+# Model-scoped weekly window (oauth only): model label, percent, resets epoch,
+# is_active flag, and how many weekly_scoped entries the reply carried.
+P_SCM="" ; P_SCP="" ; P_SCR="" ; P_SCA="" ; P_SCN=""
 
 # Send PAYLOAD and return one bulk-string reply. Empty on nil or any failure.
 send_read() {
@@ -312,10 +322,11 @@ send_read() {
   ) 2>/dev/null
 }
 
-# Observation time already stored, so we can refuse to publish over a fresher one.
-stored_updated_at() {
+# Stored observation time (updated_at / scoped_updated_at), so a writer can
+# refuse to publish over a fresher one. Empty when absent or unreachable.
+stored_epoch() {
   PAYLOAD=""
-  resp HGET claude:limits updated_at
+  resp HGET claude:limits "$1"
   send_read | tr -cd '0-9'
 }
 
@@ -387,7 +398,7 @@ oauth_token() {
 }
 
 from_oauth() {
-  local tok ver body fhb sdb
+  local tok ver body fhb sdb lim seg
   command -v curl >/dev/null 2>&1 || return 1
   tok=$(oauth_token) || return 1
   [ -n "$tok" ] || return 1
@@ -407,28 +418,65 @@ from_oauth() {
   [ -n "$P_FH" ] || [ -n "$P_SD" ] || return 1
   P_FHR=$(iso2epoch "$(jstr "$fhb" resets_at)")
   P_SDR=$(iso2epoch "$(jstr "$sdb" resets_at)")
+  # The model-scoped weekly window rides only in limits[] — the legacy
+  # top-level keys (seven_day_opus & friends) are :null and never carry it.
+  # Bound to the array, then to the first weekly_scoped entry; only one has
+  # ever been observed, and scoped_count records if that changes. The model
+  # arrives as a display string with a null id ("Fable") — pass it through,
+  # never match on it.
+  lim="${body#*\"limits\":\[}"
+  if [ "$lim" != "$body" ]; then
+    lim="${lim%%\]*}"
+    P_SCN=$(printf '%s' "$lim" | grep -o '"kind":"weekly_scoped"' | wc -l | tr -cd '0-9')
+    seg="${lim#*\"kind\":\"weekly_scoped\"}"
+    if [ "$seg" != "$lim" ]; then
+      seg="${seg%%\"kind\":*}"          # bound to this entry, not the next
+      P_SCP=$(jnum "$seg" percent) ; P_SCP="${P_SCP%%.*}"
+      P_SCM=$(jstr "$seg" display_name)
+      P_SCR=$(iso2epoch "$(jstr "$seg" resets_at)")
+      P_SCA=0 ; case "$seg" in *'"is_active":true'*) P_SCA=1 ;; esac
+    fi
+  fi
   P_T="$NOW" ; P_SRC=oauth
   return 0
 }
 
 poll_mode() {
-  local prev
+  local prev sprev
   from_file || from_oauth || exit 0
 
-  # Never publish over a fresher observation — a live statusline, on this host
-  # or any other, is always the better number.
-  prev=$(stored_updated_at)
-  [ -n "$prev" ] && [ "$prev" -ge "${P_T:-$NOW}" ] && exit 0
+  # The headline and scoped sets are guarded INDEPENDENTLY, each by its own
+  # observation stamp. Sharing one guard would let a fresher file-source write
+  # (which cannot supply scoped fields) block an oauth writer's scoped update —
+  # the exact silent-freeze the split stamps exist to prevent.
+  prev=$(stored_epoch updated_at)
+  sprev=$(stored_epoch scoped_updated_at)
 
   PAYLOAD=""
-  resp HSET claude:limits \
-    five_hour_pct "${P_FH:-0}" seven_day_pct "${P_SD:-0}" \
-    updated_at "${P_T:-$NOW}" host "$HOST" source "$P_SRC"
-  # Reset stamps only when the source actually knows them. The history file
-  # carries percentages only, and writing 0 would break the panel's countdown —
-  # leaving the previous value in place is the honest degradation.
-  [ -n "$P_FHR" ] && resp HSET claude:limits five_hour_resets_at "$P_FHR"
-  [ -n "$P_SDR" ] && resp HSET claude:limits seven_day_resets_at "$P_SDR"
+  # Headline: never publish over a fresher observation — a live statusline,
+  # on this host or any other, is always the better number.
+  if [ -z "$prev" ] || [ "$prev" -lt "${P_T:-$NOW}" ]; then
+    resp HSET claude:limits \
+      five_hour_pct "${P_FH:-0}" seven_day_pct "${P_SD:-0}" \
+      updated_at "${P_T:-$NOW}" host "$HOST" source "$P_SRC" \
+      expected_refresh_s "$KDD_POLL_EXPECT_S"
+    # Reset stamps only when the source actually knows them. The history file
+    # carries percentages only, and writing 0 would break the panel's countdown —
+    # leaving the previous value in place is the honest degradation.
+    [ -n "$P_FHR" ] && resp HSET claude:limits five_hour_resets_at "$P_FHR"
+    [ -n "$P_SDR" ] && resp HSET claude:limits seven_day_resets_at "$P_SDR"
+  fi
+  # Scoped set: oauth is its only producer, stamped with its own
+  # scoped_updated_at so a headline-only write can never make it look fresh.
+  if [ -n "$P_SCM" ] && [ -n "$P_SCP" ] && \
+     { [ -z "$sprev" ] || [ "$sprev" -lt "${P_T:-$NOW}" ]; }; then
+    resp HSET claude:limits \
+      scoped_model "$(plain "$P_SCM")" scoped_pct "$P_SCP" \
+      scoped_active "${P_SCA:-0}" scoped_count "${P_SCN:-1}" \
+      scoped_updated_at "${P_T:-$NOW}" \
+      scoped_expected_refresh_s "$KDD_POLL_EXPECT_S"
+    [ -n "$P_SCR" ] && resp HSET claude:limits scoped_resets_at "$P_SCR"
+  fi
   send_sync
 }
 
