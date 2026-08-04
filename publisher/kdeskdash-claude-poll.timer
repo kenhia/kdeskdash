@@ -1,0 +1,13 @@
+# Poll no faster than 5 minutes — that is the desktop app's own cadence against
+# the same endpoint. Monotonic triggers, so Persistent= would be a no-op here;
+# OnStartupSec covers the first run after the user manager comes up (lingering
+# must be on for that to happen without a login — `loginctl enable-linger`).
+[Unit]
+Description=kdeskdash claude-feed poll every 5 minutes
+
+[Timer]
+OnStartupSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
