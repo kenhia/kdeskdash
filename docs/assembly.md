@@ -164,7 +164,7 @@ the DRM/evdev path are both working and the rest is software.
 
 *Honest transparency: these photos are from the "bad" ABS print — the one whose
 shrinkage sent the model back for compensation, described in
-[ABS: not yet](hardware.md#abs-not-yet--the-model-needs-work-first). The last
+[A note about ABS](hardware.md#a-note-about-abs). The last
 three are the exception: those are everything put back into the PLA case, which
 is what is on the desk, because I wanted my dashboard back. That is why the
 surface finish changes near the end — same geometry, different print.*

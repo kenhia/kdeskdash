@@ -68,34 +68,37 @@ held up fine. There is real heat in this enclosure, with a Pi and a monitor
 running inside it, but in practice it has not turned out to be enough heat to
 worry about.
 
-### ABS: not yet — the model needs work first
+### A note about ABS
 
-**These STLs are not ready to print in ABS.** They will be, and the work is in
-progress, but as published they are dimensioned for PLA and an ABS print of them
-comes out wrong in two ways.
+**ABS is not recommended at this time.** You *can* get a working part out of
+these STLs — scale every piece by **100.545%** in the slicer and the shrinkage
+comes out right — but that only fixes the dimensions. Even with decently tuned
+settings I am still getting visual defects, and those are a result of the
+**model**, not the slicer. No profile tuning is going to make them go away.
 
-**Shrinkage.** ABS shrinks as it cools, and over a 277 mm part that adds up: the
-first ABS body came out roughly **1.5 mm short**. That is enough to matter on a
-part whose whole job is to hold a monitor in a groove. The fix is ordinary —
-measure the finished part exactly, work out the scale compensation, apply it to
-the model, regenerate the STL, reprint, test fit — but it has to actually be
-done, and printing an uncompensated STL in ABS just burns 12 hours to arrive at
-the same conclusion.
+So the scale factor is offered as a way to make an ABS case that *fits*, not as
+a recommendation to print one. I am giving more thought to how to get an ABS
+print that looks good enough for a project like this. Perfection is not the
+goal — but an obvious defect you have to look at every day is a different
+thing, and that is what needs resolving before ABS gets a recommendation here.
 
-**The blind overhang.** There is an overhang inside the case that PLA bridges
-acceptably and ABS does not; the ABS print sagged there. It came out *good
-enough* to use, but not good enough to publish as a recommendation. The intended
-fix is to add an access hole in the back so the overhang can be closed up
-properly, which should remove the problem rather than just improve it.
+Where the number comes from: ABS shrinks as it cools, and over a 277 mm part
+that adds up. The first ABS body came out roughly 1.5 mm short, which is enough
+to matter on a part whose whole job is to hold a monitor in a groove. 100.545%
+is that shortfall compensated.
 
-Both are model changes, not slicer settings, so there is no profile you can set
-to work around them today. Updated STLs will land when the compensated version
-has been reprinted and test-fitted.
+The defect I most want gone is a **blind overhang** inside the case, which PLA
+bridges acceptably and ABS sags on. The intended fix is an access hole in the
+back so the overhang can be closed up properly rather than bridged at all —
+a model change, which is why it has to wait for a revised model rather than a
+better profile.
+
+Updated STLs will land once the revised model has been printed and test-fitted.
 
 #### The ABS settings so far
 
-Recorded for when the model is ready — this is the profile the trial print used,
-not a recommendation to go print one now. On a **Bambu H2D** with **Bambu ABS
+The profile the trial prints used — recorded so it is not lost, not a
+recommendation to go print one now. On a **Bambu H2D** with **Bambu ABS
 Black**, starting from the `0.20mm Standard @BBL H2D` profile:
 
 | Setting | Value | Why |
