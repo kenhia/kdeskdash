@@ -1,13 +1,14 @@
 # claude-feed publisher
 
 Publishes Claude Code session activity (hooks) and subscription usage limits
-(statusline) from each dev machine to the claude-feed Redis on `rpidash2:6380`,
-where the dashboard's `claude` mode reads it. Zero dependencies: one bash script
-speaking RESP over `/dev/tcp` — no `redis-cli`, no `jq`. Works on Linux and on
-Windows under Git Bash (Claude Code runs hooks/statusline via Git Bash when it
-is installed).
+(statusline + a session-free `poll` mode) from each dev machine to the
+claude-feed Redis on `rpidash2:6380`, where the dashboard's `claude` mode reads
+it. Zero dependencies: one bash script speaking RESP over `/dev/tcp` — no
+`redis-cli`, no `jq`. Works on Linux and on Windows under Git Bash (Claude Code
+runs hooks/statusline via Git Bash when it is installed).
 
-Contract and rationale: `sprints/007-claude-mode/plan.md`.
+Contract and rationale: `sprints/007-claude-mode/plan.md`; the multi-source
+`claude:limits` contract: `docs/solutions/best-practices/` (sprint 023).
 
 ## Install (per machine, once)
 
@@ -31,6 +32,67 @@ limits hash and the dashboard shows "no data yet").
 Override the target instance per machine with `KDD_REDIS_HOST` / `KDD_REDIS_PORT`
 in the environment if it ever moves; the default is pinned to the rpidash2 IP so
 no DNS is involved.
+
+## `poll` mode — usage limits with no session running
+
+The statusline only runs while a session is rendering, so on a statusline-only
+install the USAGE gauges freeze the moment the last session ends. `poll` mode
+refreshes `claude:limits` from whichever session-free source the machine has,
+best first:
+
+- **file** — `plan-usage-history.json`, which the Claude **desktop app**
+  samples on its own 5-minute timer whether or not any session runs (measured:
+  4,638 of 4,660 gaps were exactly 5 min over 27 days). No network, no
+  credentials. Percentages only — this file carries no reset timestamps, and
+  the script deliberately leaves the `*_resets_at` fields untouched rather
+  than writing a sentinel.
+- **oauth** — `GET api.anthropic.com/api/oauth/usage` with the CLI's own
+  credentials (`~/.claude/.credentials.json`), for headless hosts. Supplies
+  reset timestamps too. The `User-Agent: claude-code/<version>` header is
+  load-bearing (see the comments in the script); if no CLI version can be
+  resolved the call is skipped entirely.
+
+`updated_at` is the **observation** time, not the publish time, and `poll`
+reads it back before writing: it never publishes over a fresher observation,
+so a live statusline on any host always wins. Run it on a ~5-minute timer —
+no faster; that is the desktop app's own cadence against the same endpoint.
+
+### Windows (scheduled task, the cleo install)
+
+Registered from an unelevated PowerShell — `-LogonType S4U` needs elevation,
+so the task runs Interactive, and an Interactive console app **always** flashes
+a window; `poll-hidden.vbs` is the shim that suppresses it (window style 0,
+wait-on-return true so the exit code and time limit still apply). Copy it next
+to the script, then:
+
+```powershell
+$vbs      = "$env:USERPROFILE\.claude\kdeskdash-pub\poll-hidden.vbs"
+$action   = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument "//B //Nologo `"$vbs`""
+# RepetitionDuration must be finite: [TimeSpan]::MaxValue is rejected as out of range.
+$repeat   = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+              -RepetitionInterval (New-TimeSpan -Minutes 5) `
+              -RepetitionDuration (New-TimeSpan -Days 3650)
+$atlogon  = New-ScheduledTaskTrigger -AtLogOn
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
+              -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
+Register-ScheduledTask -TaskName 'kdeskdash-claude-poll' `
+  -Action $action -Trigger $repeat,$atlogon -Settings $settings
+```
+
+Two more Windows traps the shim and script already handle, so don't "fix" them
+away: `bash` on PATH may be WSL, not Git Bash (the vbs resolves
+`%ProgramFiles%\Git\bin\bash.exe` explicitly), and the MSIX-packaged desktop
+app redirects `%APPDATA%\Claude\...` into
+`%LOCALAPPDATA%\Packages\Claude_<hash>\LocalCache\Roaming\Claude\` for some
+processes — `from_file` probes both locations.
+
+### Linux headless (systemd user timer, the kai install)
+
+See `deploy/` conventions; the unit pair is documented with the sprint-023
+record. `OnUnitActiveSec=5min`, `Persistent=true`, and lingering enabled so it
+survives logout. systemd user units get a minimal PATH — `cli_version()`
+probes the usual install locations itself, but verify the first run under the
+timer, not just an interactive shell.
 
 ## Smoke test
 

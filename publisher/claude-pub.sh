@@ -8,6 +8,7 @@
 # Modes (first arg):
 #   hook        stdin = hook event JSON (SessionStart/UserPromptSubmit/Stop/SessionEnd)
 #   statusline  stdin = statusline JSON; prints a one-line statusline to stdout
+#   poll        no stdin; refreshes claude:limits with NO session running
 #
 # Contract (see sprints/007-claude-mode/plan.md):
 #   claude:session:<host>:<sid>  hash, TTL 2h; hooks own status/ts (+ model and
@@ -15,6 +16,10 @@
 #                                statusline owns claude:limits and re-writes an
 #                                agreeing title/model (TUI sessions only).
 #   claude:recent                LPUSH + LTRIM on SessionEnd (reason != clear).
+#
+# claude:limits gained a `source` field (statusline|file|oauth) and `updated_at`
+# is now the OBSERVATION time, not the publish time — poll mode refuses to write
+# over a newer observation, so a live statusline (on any host) always wins.
 #
 # Fire-and-forget: network I/O is backgrounded, failures are silent, exit is
 # always 0 — a dead Redis must never slow a Claude session down.
@@ -27,6 +32,7 @@ KDD_REDIS_PORT="${KDD_REDIS_PORT:-6380}"
 KDD_TTL_S=7200
 KDD_RECENT_KEEP=19      # LTRIM 0 19 -> 20 entries
 KDD_LIMITS_MIN_S=5      # statusline publish throttle
+KDD_POLL_MAX_AGE_S=900  # plan-usage-history sample older than this = app closed
 
 STATE_DIR="${HOME}/.claude/kdeskdash-pub/state"
 
@@ -266,7 +272,7 @@ statusline_mode() {
     resp HSET claude:limits \
       five_hour_pct "${fh_pct:-0}" five_hour_resets_at "${fh_reset:-0}" \
       seven_day_pct "${sd_pct:-0}" seven_day_resets_at "${sd_reset:-0}" \
-      updated_at "$NOW" host "$HOST"
+      updated_at "$NOW" host "$HOST" source statusline
   fi
   if [ -n "$sid" ]; then
     key="claude:session:${HOST}:${sid}"
@@ -276,8 +282,159 @@ statusline_mode() {
   send
 }
 
+# ---------- poll mode: limits with no session running ----------
+#
+# The statusline is the only thing that ever fed claude:limits, so the panel
+# froze the moment Ken stopped working. Two session-free sources, best first:
+#
+#   file   %APPDATA%/Claude/plan-usage-history.json — the DESKTOP APP writes it
+#          itself on a 5-minute timer (measured: 4638 of 4660 gaps were exactly
+#          5 min over 27 days). Needs the app open, not a session. No network,
+#          no credentials, nothing to get wrong. Percentages ONLY — the file
+#          carries no reset timestamps.
+#   oauth  GET api.anthropic.com/api/oauth/usage, the same call the official
+#          client makes. For headless hosts with no desktop app. Undocumented,
+#          so every failure here is "keep the last value", never "publish 0".
+#
+# Results land in these globals rather than a parsed return string.
+P_T="" ; P_FH="" ; P_SD="" ; P_FHR="" ; P_SDR="" ; P_SRC=""
+
+# Send PAYLOAD and return one bulk-string reply. Empty on nil or any failure.
+send_read() {
+  [ -n "$PAYLOAD" ] || return 0
+  (
+    exec 3<>"/dev/tcp/${KDD_REDIS_HOST}/${KDD_REDIS_PORT}" || exit 0
+    printf '%s' "$PAYLOAD" >&3
+    read -r -t 2 hdr <&3 || exit 0
+    case "$hdr" in '$-1'*|'') exit 0 ;; esac
+    read -r -t 2 val <&3 || exit 0
+    printf '%s' "$val"
+  ) 2>/dev/null
+}
+
+# Observation time already stored, so we can refuse to publish over a fresher one.
+stored_updated_at() {
+  PAYLOAD=""
+  resp HGET claude:limits updated_at
+  send_read | tr -cd '0-9'
+}
+
+# ISO-8601 (with fractional seconds and offset) -> epoch seconds. GNU date only;
+# a BSD/macOS date fails silently to empty, which the caller treats as unknown.
+iso2epoch() {
+  [ -n "$1" ] || return 0
+  date -d "$1" +%s 2>/dev/null | tr -cd '0-9'
+}
+
+from_file() {
+  local f rec t age
+  for f in "${APPDATA}/Claude/plan-usage-history.json" \
+           "${LOCALAPPDATA}/Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude/plan-usage-history.json" \
+           "${HOME}/Library/Application Support/Claude/plan-usage-history.json" \
+           "${HOME}/.config/Claude/plan-usage-history.json" ; do
+    [ -n "$f" ] && [ -f "$f" ] || continue
+    # One 400KB line; only the tail matters. Match a WHOLE sample object so a
+    # half-flushed write can never pair this sample's t with the last one's fh.
+    rec=$(tail -c 600 "$f" 2>/dev/null | tr -d '\r\n' \
+          | grep -oE '\{"t":[0-9]+,[^{}]*"u":\{[^{}]*\}\}' | tail -n1)
+    [ -n "$rec" ] || continue
+    t=$(jnum "$rec" t)
+    [ -n "$t" ] || continue
+    t=$((t / 1000))
+    age=$((NOW - t)) ; [ "$age" -lt 0 ] && age=0
+    [ "$age" -le "$KDD_POLL_MAX_AGE_S" ] || continue   # app closed; try oauth
+    P_FH=$(jnum "$rec" fh) ; P_SD=$(jnum "$rec" sd)
+    [ -n "$P_FH" ] || [ -n "$P_SD" ] || continue
+    P_T="$t" ; P_SRC=file
+    return 0
+  done
+  return 1
+}
+
+# Cached `claude --version`, refreshed daily. The UA below is load-bearing: a
+# request without claude-code/<version> lands in an aggressively rate-limited
+# bucket and gets persistent 429s (anthropics/claude-code#31021).
+cli_version() {
+  local vf="${STATE_DIR}/cli.version" v mt c
+  if [ -f "$vf" ]; then
+    v=$(tr -cd '0-9.' < "$vf" 2>/dev/null)
+    mt=$(stat -c %Y "$vf" 2>/dev/null | tr -cd '0-9')
+    [ -n "$v" ] && [ -n "$mt" ] && [ $((NOW - mt)) -lt 86400 ] && { printf '%s' "$v"; return 0; }
+  fi
+  for c in claude "${HOME}/.local/bin/claude" "${HOME}/.claude/local/claude" /usr/local/bin/claude ; do
+    v=$("$c" --version 2>/dev/null | awk '{print $1}' | tr -cd '0-9.')
+    [ -n "$v" ] && { printf '%s' "$v" > "$vf" 2>/dev/null; printf '%s' "$v"; return 0; }
+  done
+  # Stale cache beats no UA; no cache at all means we must not call.
+  [ -n "$v" ] && printf '%s' "$v"
+  return 0
+}
+
+# accessToken from the CLI's own credential file. Bounded to the claudeAiOauth
+# block: mcpOAuth entries further down the file carry accessToken fields too,
+# and jstr's greedy match would otherwise return the LAST one.
+oauth_token() {
+  local f="${HOME}/.claude/.credentials.json" j exp
+  [ -f "$f" ] || return 1
+  j=$(tr -d '\r\n' < "$f" 2>/dev/null)
+  case "$j" in *'"claudeAiOauth"'*) ;; *) return 1 ;; esac
+  j="${j#*\"claudeAiOauth\"}"
+  j="${j%%\"mcpOAuth\"*}"
+  exp=$(jnum "$j" expiresAt)                       # ms; note refreshTokenExpiresAt
+  [ -n "$exp" ] && [ $((exp / 1000)) -le "$NOW" ] && return 1   # expired
+  case "$j" in *'"user:profile"'*) ;; *) return 1 ;; esac        # scope required
+  jstr "$j" accessToken
+}
+
+from_oauth() {
+  local tok ver body fhb sdb
+  command -v curl >/dev/null 2>&1 || return 1
+  tok=$(oauth_token) || return 1
+  [ -n "$tok" ] || return 1
+  ver=$(cli_version)
+  [ -n "$ver" ] || return 1
+  body=$(curl -s --max-time 10 https://api.anthropic.com/api/oauth/usage \
+           -H "Authorization: Bearer ${tok}" \
+           -H "anthropic-beta: oauth-2025-04-20" \
+           -H "User-Agent: claude-code/${ver}" 2>/dev/null | tr -d '\r\n')
+  [ -n "$body" ] || return 1
+  # "seven_day":{ matches the exact key; seven_day_opus & friends are :null.
+  fhb="${body#*\"five_hour\":\{}" ; fhb="${fhb%%\}*}"
+  sdb="${body#*\"seven_day\":\{}" ; sdb="${sdb%%\}*}"
+  [ "$fhb" != "$body" ] || return 1
+  P_FH=$(jnum "$fhb" utilization) ; P_FH="${P_FH%%.*}"   # 22.0 -> 22
+  P_SD=$(jnum "$sdb" utilization) ; P_SD="${P_SD%%.*}"
+  [ -n "$P_FH" ] || [ -n "$P_SD" ] || return 1
+  P_FHR=$(iso2epoch "$(jstr "$fhb" resets_at)")
+  P_SDR=$(iso2epoch "$(jstr "$sdb" resets_at)")
+  P_T="$NOW" ; P_SRC=oauth
+  return 0
+}
+
+poll_mode() {
+  local prev
+  from_file || from_oauth || exit 0
+
+  # Never publish over a fresher observation — a live statusline, on this host
+  # or any other, is always the better number.
+  prev=$(stored_updated_at)
+  [ -n "$prev" ] && [ "$prev" -ge "${P_T:-$NOW}" ] && exit 0
+
+  PAYLOAD=""
+  resp HSET claude:limits \
+    five_hour_pct "${P_FH:-0}" seven_day_pct "${P_SD:-0}" \
+    updated_at "${P_T:-$NOW}" host "$HOST" source "$P_SRC"
+  # Reset stamps only when the source actually knows them. The history file
+  # carries percentages only, and writing 0 would break the panel's countdown —
+  # leaving the previous value in place is the honest degradation.
+  [ -n "$P_FHR" ] && resp HSET claude:limits five_hour_resets_at "$P_FHR"
+  [ -n "$P_SDR" ] && resp HSET claude:limits seven_day_resets_at "$P_SDR"
+  send_sync
+}
+
 case "$1" in
   hook)       hook_mode ;;
   statusline) statusline_mode ;;
+  poll)       poll_mode ;;
 esac
 exit 0
