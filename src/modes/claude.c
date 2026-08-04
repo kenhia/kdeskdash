@@ -5,8 +5,11 @@
  * Two zones on the 1920x440 panel (design: sprints/007-claude-mode/requirements.md +
  * approved mockup): AGENTS — attention-first session rows (awaiting input on
  * top, then working by recency, then idle/stale), each labelled with Claude's
- * own session name; USAGE — two 270° arc gauges for the 5-hour and 7-day limits
- * with an "as of" freshness line (limits only update while some session runs).
+ * own session name; USAGE — 270° arc gauges for the 5-hour and 7-day limits
+ * plus, when an oauth writer supplies one, the model-scoped weekly window
+ * (sprint 023) in a 2-over-1 triangle, with an "as of" freshness readout on
+ * the header line and per-gauge staleness greying (each gauge greys on its
+ * own writer's stamp + cadence).
  *
  * A RECENT zone (last completed sessions) sat between them until sprint 020;
  * it was traded for the width the session names needed — the publisher still
@@ -17,6 +20,7 @@
  */
 #include "modes/claude.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +43,15 @@
  * Sprint 020 folded RECENT's 370 into AGENTS; USAGE keeps its calibrated 470. */
 #define ZONE_AGENTS_W 1450
 #define ROW_H         58
+
+/* Three gauges in a 2-over-1 triangle since sprint 023 (5 HR + 7 DAY on top,
+ * the model-scoped weekly centred below). The zone's 392px content height has
+ * to hold header + two gauge rows, each arc + caption + reset line (~50px of
+ * text): 2*(arc + 50) + header 25 + 2 row gaps of 10 <= 392 caps the arc at
+ * ~123. The top row's ~193px columns still clear the ~176px worst-case reset
+ * line ("resets Thu 05:00") from the 2026-07-03 calibration. */
+#define GAUGE_ARC_D 122
+#define GAUGE_ARC_W 10
 
 /* Design tokens (validated against this surface — see the plan). */
 #define COLOR_BG        lv_color_hex(0x05070d)
@@ -72,6 +85,8 @@ typedef struct {
 typedef struct {
     lv_obj_t *arc;
     lv_obj_t *pct;
+    lv_obj_t *cap;   /* window caption; fixed for 5 HR / 7 DAY, the scoped
+                      * gauge re-labels from scoped_model on every render */
     lv_obj_t *reset;
 } claude_gauge_t;
 
@@ -83,6 +98,8 @@ typedef struct {
 
     claude_gauge_t five;
     claude_gauge_t seven;
+    claude_gauge_t scoped;
+    lv_obj_t *row_scoped; /* hidden whenever the hash has no scoped set */
     lv_obj_t *asof;
 
     lv_obj_t *unavail; /* full-panel quiet banner when the feed is down */
@@ -201,7 +218,7 @@ static void make_gauge(claude_gauge_t *g, lv_obj_t *parent, const char *window) 
 
     /* 270° gauge, lv_arc's native default orientation (135° start). */
     g->arc = lv_arc_create(col);
-    lv_obj_set_size(g->arc, 170, 170);
+    lv_obj_set_size(g->arc, GAUGE_ARC_D, GAUGE_ARC_D);
     lv_arc_set_rotation(g->arc, 135);
     lv_arc_set_bg_angles(g->arc, 0, 270);
     lv_arc_set_range(g->arc, 0, 100);
@@ -209,20 +226,33 @@ static void make_gauge(claude_gauge_t *g, lv_obj_t *parent, const char *window) 
     lv_obj_remove_style(g->arc, NULL, LV_PART_KNOB);
     lv_obj_clear_flag(g->arc, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_arc_color(g->arc, COLOR_HAIRLINE, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(g->arc, 14, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(g->arc, GAUGE_ARC_W, LV_PART_MAIN);
     lv_obj_set_style_arc_color(g->arc, COLOR_ACCENT, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(g->arc, 14, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(g->arc, GAUGE_ARC_W, LV_PART_INDICATOR);
     lv_obj_set_style_arc_rounded(g->arc, true, LV_PART_MAIN);
     lv_obj_set_style_arc_rounded(g->arc, true, LV_PART_INDICATOR);
 
-    g->pct = make_label(g->arc, &lv_font_montserrat_36, COLOR_INK);
+    g->pct = make_label(g->arc, &lv_font_montserrat_28, COLOR_INK);
     lv_obj_center(g->pct);
 
-    lv_obj_t *win = make_label(col, &lv_font_montserrat_20, COLOR_SECONDARY);
-    lv_label_set_text(win, window);
-    lv_obj_set_style_text_letter_space(win, 4, 0);
+    g->cap = make_label(col, &lv_font_montserrat_20, COLOR_SECONDARY);
+    lv_label_set_text(g->cap, window);
+    lv_obj_set_style_text_letter_space(g->cap, 4, 0);
 
     g->reset = make_label(col, &lv_font_montserrat_20, COLOR_MUTED);
+}
+
+/* A horizontal band of the USAGE zone holding gauge columns, centred. */
+static lv_obj_t *make_gauge_row(lv_obj_t *parent) {
+    lv_obj_t *row = lv_obj_create(parent);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_column(row, 24, 0);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_START);
+    return row;
 }
 
 static void build_screen(kd_mode_t *self) {
@@ -259,23 +289,30 @@ static void build_screen(kd_mode_t *self) {
 
     /* --- USAGE --- */
     lv_obj_t *zu = make_zone(scr, 0, true);
-    make_zone_label(zu, "USAGE");
 
-    lv_obj_t *gauges = lv_obj_create(zu);
-    lv_obj_remove_style_all(gauges);
-    lv_obj_set_size(gauges, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_column(gauges, 24, 0);
-    lv_obj_clear_flag(gauges, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(gauges, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(gauges, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START,
-                          LV_FLEX_ALIGN_START);
-    make_gauge(&st->five, gauges, "5 HR");
-    make_gauge(&st->seven, gauges, "7 DAY");
+    /* Header line carries the freshness readout ("as of 2m ago"), right
+     * justified — the bottom footer it replaced is where the third gauge
+     * now lives, and per-gauge greying carries the per-window truth. */
+    lv_obj_t *uhead = lv_obj_create(zu);
+    lv_obj_remove_style_all(uhead);
+    lv_obj_set_size(uhead, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_clear_flag(uhead, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(uhead, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(uhead, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_END,
+                          LV_FLEX_ALIGN_CENTER);
+    make_zone_label(uhead, "USAGE");
+    st->asof = make_label(uhead, &lv_font_montserrat_20, COLOR_MUTED);
 
-    st->asof = make_label(zu, &lv_font_montserrat_20, COLOR_MUTED);
-    lv_obj_set_width(st->asof, LV_PCT(100));
-    lv_obj_set_style_text_align(st->asof, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_flex_grow(st->asof, 1);
+    lv_obj_t *top = make_gauge_row(zu);
+    make_gauge(&st->five, top, "5 HR");
+    make_gauge(&st->seven, top, "7 DAY");
+
+    /* The model-scoped weekly window, centred under the pair. Hidden until a
+     * scoped set exists (only oauth writers produce one), so a panel with no
+     * such writer keeps a clean two-gauge layout. */
+    st->row_scoped = make_gauge_row(zu);
+    make_gauge(&st->scoped, st->row_scoped, "");
+    lv_obj_add_flag(st->row_scoped, LV_OBJ_FLAG_HIDDEN);
 
     /* --- unreachable banner (hidden by default) --- */
     st->unavail = lv_label_create(scr);
@@ -402,10 +439,14 @@ static void render_gauge(claude_gauge_t *g, float pct, long long resets_at,
         lv_label_set_text(g->reset, "");
         return;
     }
+    /* Staleness greys ONLY the percentage value: the arc and reset caption
+     * keep rendering the last-known data, the number stops claiming it is
+     * live. (A frozen bright number is indistinguishable from a fresh one —
+     * that is the failure this exists to prevent.) */
     bool warn = pct >= CF_LIMITS_WARN_PCT;
-    lv_color_t c = stale ? COLOR_MUTED : (warn ? COLOR_AWAITING : COLOR_ACCENT);
     lv_arc_set_value(g->arc, (int)(pct + 0.5f));
-    lv_obj_set_style_arc_color(g->arc, c, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(g->arc, warn ? COLOR_AWAITING : COLOR_ACCENT,
+                               LV_PART_INDICATOR);
 
     char buf[16];
     snprintf(buf, sizeof(buf), "%d%%", (int)(pct + 0.5f));
@@ -421,9 +462,28 @@ static void render_gauge(claude_gauge_t *g, float pct, long long resets_at,
 
 static void render_limits(claude_state_t *st, const cf_limits_t *l,
                           long long now) {
+    /* Gauges grey independently: the headline pair on updated_at, the scoped
+     * gauge on scoped_updated_at — different writers, different cadences. */
     bool stale = cf_limits_stale(l, now);
     render_gauge(&st->five, l->five_pct, l->five_reset, now, l->valid, stale);
     render_gauge(&st->seven, l->seven_pct, l->seven_reset, now, l->valid, stale);
+
+    if (l->valid && l->scoped_valid) {
+        /* Caption from scoped_model verbatim (uppercased): the API exposes
+         * only a display string with a null id today, so render whatever
+         * arrives rather than expecting "Fable". */
+        char cap[CF_MODEL_MAX];
+        int i;
+        for (i = 0; l->scoped_model[i] != '\0' && i < (int)sizeof(cap) - 1; i++)
+            cap[i] = (char)toupper((unsigned char)l->scoped_model[i]);
+        cap[i] = '\0';
+        lv_label_set_text(st->scoped.cap, cap);
+        render_gauge(&st->scoped, l->scoped_pct, l->scoped_reset, now, true,
+                     cf_limits_scoped_stale(l, now));
+        lv_obj_clear_flag(st->row_scoped, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(st->row_scoped, LV_OBJ_FLAG_HIDDEN);
+    }
 
     if (!l->valid) {
         lv_label_set_text(st->asof, "no data yet");

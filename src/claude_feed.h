@@ -44,9 +44,12 @@
 /* Usage arc switches to the warning treatment at this utilisation. */
 #define CF_LIMITS_WARN_PCT 80.0f
 
-/* Usage snapshot is treated as stale (greyed + badged) once its last publish is
- * this old. Limits only refresh while an interactive statusline session runs,
- * so a quiet fleet legitimately goes stale — say so rather than imply live. */
+/* Usage staleness. Writers publish their own cadence (expected_refresh_s /
+ * scoped_expected_refresh_s: statusline 60, poll 300) and the panel greys a
+ * gauge once its OWN stamp is cadence + grace old — no source knowledge here.
+ * A hash from a pre-cadence writer (no expected_refresh_s) falls back to the
+ * legacy fixed window below. */
+#define CF_LIMITS_GRACE_S 60
 #define CF_LIMITS_STALE_S (60 * 60)
 
 /* Published status, as written by publisher/claude-pub.sh. `blocked` means the
@@ -93,7 +96,20 @@ typedef struct {
     float seven_pct;
     long long five_reset;    /* unix s; 0 when unknown */
     long long seven_reset;
-    long long updated_at;    /* unix s of last publish (drives "as of") */
+    long long updated_at;    /* unix s of last OBSERVATION (drives "as of") */
+    long long expect_s;      /* writer's cadence; 0 -> legacy fixed window */
+
+    /* Model-scoped weekly window (currently Fable) — only oauth writers can
+     * supply it, so it carries its OWN stamp and cadence: a file/statusline
+     * write refreshes the headline fields above and cannot touch these, and a
+     * shared stamp would freeze the scoped gauge invisibly. */
+    bool scoped_valid;           /* model + pct both present */
+    char scoped_model[CF_MODEL_MAX]; /* display string; render, never match  */
+    float scoped_pct;            /* clamped to [0,100] */
+    long long scoped_reset;      /* unix s; 0 when unknown */
+    bool scoped_active;          /* this window is the binding constraint */
+    long long scoped_updated_at; /* unix s; 0 -> stampless, always stale */
+    long long scoped_expect_s;
 } cf_limits_t;
 
 /* Extract and validate <host> and <sid> from a `claude:session:<host>:<sid>`
@@ -133,9 +149,15 @@ void cf_sessions_refresh(cf_session_t *arr, int n, long long now);
 bool cf_limits_from_fields(const char *const *fields, const char *const *values,
                            int nfields, cf_limits_t *out);
 
-/* True when the snapshot is valid but its last publish is at least
- * CF_LIMITS_STALE_S old. Negative ages (clock skew) are never stale. */
+/* True when the headline snapshot is valid but its own stamp is older than
+ * the writer's cadence + CF_LIMITS_GRACE_S (legacy CF_LIMITS_STALE_S when no
+ * cadence was published). Negative ages (clock skew) are never stale. */
 bool cf_limits_stale(const cf_limits_t *l, long long now);
+
+/* Same rule for the scoped set against ITS stamp and cadence. A scoped set
+ * with no stamp at all is always stale — it must never borrow headline
+ * freshness. False when there is no scoped set. */
+bool cf_limits_scoped_stale(const cf_limits_t *l, long long now);
 
 /* Parse one claude:recent JSON record. Requires host+project strings passing
  * the same trust rules as rows (host token contract); title optional. */

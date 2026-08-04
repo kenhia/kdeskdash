@@ -200,7 +200,8 @@ bool cf_limits_from_fields(const char *const *fields, const char *const *values,
 
     cf_limits_t l;
     memset(&l, 0, sizeof(l));
-    bool have_five = false, have_seven = false;
+    bool have_five = false, have_seven = false, have_scoped = false;
+    long long active = 0;
 
     for (int i = 0; i < nfields; i++) {
         const char *f = fields[i];
@@ -217,20 +218,56 @@ bool cf_limits_from_fields(const char *const *fields, const char *const *values,
             parse_ll(v, &l.seven_reset);
         else if (strcmp(f, "updated_at") == 0)
             parse_ll(v, &l.updated_at);
+        else if (strcmp(f, "expected_refresh_s") == 0)
+            parse_ll(v, &l.expect_s);
+        else if (strcmp(f, "scoped_model") == 0)
+            snprintf(l.scoped_model, sizeof(l.scoped_model), "%s", v);
+        else if (strcmp(f, "scoped_pct") == 0)
+            have_scoped = parse_pct(v, &l.scoped_pct);
+        else if (strcmp(f, "scoped_resets_at") == 0)
+            parse_ll(v, &l.scoped_reset);
+        else if (strcmp(f, "scoped_active") == 0) {
+            if (parse_ll(v, &active))
+                l.scoped_active = active != 0;
+        } else if (strcmp(f, "scoped_updated_at") == 0)
+            parse_ll(v, &l.scoped_updated_at);
+        else if (strcmp(f, "scoped_expected_refresh_s") == 0)
+            parse_ll(v, &l.scoped_expect_s);
     }
 
     if (!have_five || !have_seven)
         return false;
+
+    /* Half a scoped set (pct without a label, or the reverse) renders as no
+     * scoped set at all rather than an unlabelled gauge. */
+    l.scoped_valid = have_scoped && l.scoped_model[0] != '\0';
 
     l.valid = true;
     *out = l;
     return true;
 }
 
+/* Grey once a stamp is older than its writer's cadence + grace; a hash from a
+ * pre-cadence writer falls back to the legacy fixed window. */
+static bool stamp_stale(long long stamp, long long expect_s, long long now) {
+    long long window = (expect_s > 0) ? expect_s + CF_LIMITS_GRACE_S
+                                      : CF_LIMITS_STALE_S;
+    return now - stamp > window;
+}
+
 bool cf_limits_stale(const cf_limits_t *l, long long now) {
     if (!l || !l->valid)
         return false;
-    return now - l->updated_at >= CF_LIMITS_STALE_S;
+    return stamp_stale(l->updated_at, l->expect_s, now);
+}
+
+bool cf_limits_scoped_stale(const cf_limits_t *l, long long now) {
+    if (!l || !l->scoped_valid)
+        return false;
+    /* No stamp of its own means it must never borrow headline freshness. */
+    if (l->scoped_updated_at <= 0)
+        return true;
+    return stamp_stale(l->scoped_updated_at, l->scoped_expect_s, now);
 }
 
 /* ---------- recent records ---------- */
