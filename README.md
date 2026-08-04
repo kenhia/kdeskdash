@@ -300,6 +300,7 @@ kdeskdash/
 ├── tests/                          # host unit tests (registry, gol, stopwatch, iconset, …)
 ├── lib/lvgl/                       # LVGL v9.2.2 (submodule)
 ├── stl/                            # 3D-printable case: main body + left/right end caps
+│                                   #   (right side also comes in a pen-holder variant)
 └── docs/                           # brainstorms, plans, solutions
     ├── hardware.md                 #   BOM + print settings
     ├── assembly.md                 #   step-by-step build, with photos
