@@ -15,6 +15,10 @@ The three printed parts and the hardware, decanted from the much larger packs
 the [BOM](hardware.md#bill-of-materials) buys you — six M3 × 8 socket-head cap
 screws and six M3 heat-set inserts is the whole fastener count.
 
+Three parts, but four STLs: the right side comes in a plain version and a
+[pen-holder version](hardware.md#printing-the-case), and you print one of them.
+The photos here show the plain one.
+
 The main body is standing on its left end here. The channel running its length
 is where the monitor slides in; the honeycomb you can see through the opening is
 the vent wall behind the Pi.
@@ -147,7 +151,8 @@ still look seated.
 ## 8. Close it up
 
 Secure the right side with the remaining three M3 × 8 screws — same restraint on
-torque as step 4.
+torque as step 4. This is the end that takes the pen-holder cap if you printed
+that one instead; it mounts identically.
 
 ![The finished case closed with both end caps on, a hex key resting on top](images/assembly/11-closed-up.jpg)
 

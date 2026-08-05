@@ -41,19 +41,29 @@ links, since product listings move around:
 
 ## Printing the case
 
-Three STLs in [`stl/`](../stl/):
+Four STLs in [`stl/`](../stl/) — you print three of them. The two right sides
+are alternatives; pick one.
 
 | File | What it is |
 |---|---|
 | [`deskdash_case.stl`](../stl/deskdash_case.stl) | The main case body |
-| [`lside_deskdash_case.stl`](../stl/lside_deskdash_case.stl) | Left end cap |
-| [`rside_deskdash_case.stl`](../stl/rside_deskdash_case.stl) | Right end cap |
+| [`deskdash_l_side.stl`](../stl/deskdash_l_side.stl) | Left end cap |
+| [`deskdash_r_side.stl`](../stl/deskdash_r_side.stl) | Right end cap, plain |
+| [`deskdash_r_side_pens.stl`](../stl/deskdash_r_side_pens.stl) | Right end cap **with a pen holder** — optional alternative to the plain one |
 
-**The main body is ~277 mm long, so it needs a large-format printer.** Print it
-standing on its right end; no supports are needed in that orientation. All three
-parts fit on one plate:
+The pen-holder cap takes a single pen up to about Sharpie thickness. It is
+otherwise the same part, and it adds roughly 18 mm to the depth of that end of
+the case — worth a thought if the panel is going somewhere tight.
 
-![All three case parts arranged on a Bambu H2D build plate — the main body standing on its right end, with both end caps laid flat](images/Plate-Layout-Bambu-H2D.png)
+**The main body is 276 mm long, so it needs a large-format printer.** Print it
+standing on its right end; no supports are needed in that orientation. The body
+and both caps fit on one plate:
+
+![Case parts arranged on a Bambu H2D build plate — the main body standing on its right end, with both end caps laid flat](images/Plate-Layout-Bambu-H2D.png)
+
+> The plate render predates the pen-holder cap and shows the plain right side.
+> The pen-holder version occupies more depth on the plate but still fits
+> alongside the body.
 
 > **Smaller printer?** [Open an issue](https://github.com/kenhia/kdeskdash/issues/new)
 > and I will add STLs that split the main body into three superglue-together
@@ -82,10 +92,11 @@ print that looks good enough for a project like this. Perfection is not the
 goal — but an obvious defect you have to look at every day is a different
 thing, and that is what needs resolving before ABS gets a recommendation here.
 
-Where the number comes from: ABS shrinks as it cools, and over a 277 mm part
+Where the number comes from: ABS shrinks as it cools, and over a 276 mm part
 that adds up. The first ABS body came out roughly 1.5 mm short, which is enough
 to matter on a part whose whole job is to hold a monitor in a groove. 100.545%
-is that shortfall compensated.
+is that shortfall compensated — 276 mm × 1.00545 adds back almost exactly the
+1.5 mm that went missing.
 
 The defect I most want gone is a **blind overhang** inside the case, which PLA
 bridges acceptably and ABS sags on. The intended fix is an access hole in the

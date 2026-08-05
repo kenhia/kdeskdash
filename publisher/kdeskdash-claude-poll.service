@@ -1,0 +1,13 @@
+# kdeskdash claude-feed poll — user unit for headless hosts (the kai install).
+# Refreshes claude:limits with no session running; on a host with live CLI
+# credentials this is the only writer that supplies the model-scoped (Fable)
+# weekly window and real reset stamps. Install: see publisher/README.md.
+[Unit]
+Description=kdeskdash claude-feed poll (session-free usage limits)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.claude/kdeskdash-pub/claude-pub.sh poll
+TimeoutStartSec=2min

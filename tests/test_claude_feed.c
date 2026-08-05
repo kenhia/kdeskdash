@@ -243,15 +243,83 @@ static void test_limits(void) {
     check(!cf_limits_from_fields(f4, v4, 1, &l), "missing seven_day rejects");
     check(!cf_limits_from_fields(NULL, NULL, 0, &l), "empty hash rejects");
 
-    /* Staleness: fresh within the window, stale past it, invalid never stale. */
+    /* Staleness fallback: no expected_refresh_s published (old writer) keeps
+     * the legacy fixed window. */
     const char *v5[] = {"11", "0", "5", "0", "1783035734", "kai"};
     check(cf_limits_from_fields(f, v5, 6, &l), "stale-fixture parse");
-    check(!cf_limits_stale(&l, l.updated_at + CF_LIMITS_STALE_S - 1), "fresh not stale");
-    check(cf_limits_stale(&l, l.updated_at + CF_LIMITS_STALE_S), "stale at threshold");
+    check(l.expect_s == 0, "no expected_refresh_s parsed as 0");
+    check(!cf_limits_stale(&l, l.updated_at + CF_LIMITS_STALE_S), "fresh through window");
+    check(cf_limits_stale(&l, l.updated_at + CF_LIMITS_STALE_S + 1), "stale past window");
     check(!cf_limits_stale(&l, l.updated_at - 100), "clock skew not stale");
     cf_limits_t inv;
     memset(&inv, 0, sizeof(inv));
     check(!cf_limits_stale(&inv, 1 << 30), "invalid never stale");
+}
+
+/* Per-gauge staleness: each writer publishes its own cadence, the panel greys
+ * on stamp + cadence + grace without knowing anything about sources. */
+static void test_limits_expected_refresh(void) {
+    cf_limits_t l;
+    const char *f[] = {"five_hour_pct", "seven_day_pct", "updated_at",
+                       "expected_refresh_s"};
+    const char *v[] = {"11", "5", "1783035734", "300"};
+    check(cf_limits_from_fields(f, v, 4, &l), "expect-fixture parse");
+    check(l.expect_s == 300, "expected_refresh_s parsed");
+    long long grey_at = l.updated_at + 300 + CF_LIMITS_GRACE_S;
+    check(!cf_limits_stale(&l, grey_at), "fresh through cadence + grace");
+    check(cf_limits_stale(&l, grey_at + 1), "stale past cadence + grace");
+}
+
+/* The scoped (model-weekly) set: independent stamp, independent staleness. */
+static void test_limits_scoped(void) {
+    cf_limits_t l;
+    const char *f[] = {"five_hour_pct", "seven_day_pct", "updated_at",
+                       "expected_refresh_s", "scoped_model", "scoped_pct",
+                       "scoped_resets_at", "scoped_active",
+                       "scoped_updated_at", "scoped_expected_refresh_s"};
+    const char *v[] = {"11", "5", "1783036000", "300",
+                       "Fable", "22", "1783598400", "0", "1783035734", "300"};
+    check(cf_limits_from_fields(f, v, 10, &l), "scoped parse");
+    check(l.scoped_valid, "scoped valid");
+    check_str(l.scoped_model, "Fable", "scoped model passthrough");
+    check(l.scoped_pct == 22.0f, "scoped pct");
+    check(l.scoped_reset == 1783598400, "scoped reset");
+    check(!l.scoped_active, "scoped inactive");
+    check(l.scoped_updated_at == 1783035734, "scoped stamp independent of updated_at");
+
+    /* Headline fresh while scoped stale — the exact freeze the split stamps
+     * exist to expose: a file-source write refreshed updated_at but cannot
+     * touch the scoped set. */
+    long long now = l.scoped_updated_at + 300 + CF_LIMITS_GRACE_S + 1;
+    check(cf_limits_scoped_stale(&l, now), "scoped stale past its own cadence");
+    check(!cf_limits_stale(&l, now), "headline still fresh on its own stamp");
+    check(!cf_limits_scoped_stale(&l, l.scoped_updated_at - 100),
+          "scoped clock skew not stale");
+
+    /* Headline-only hash (no oauth writer anywhere): scoped invalid, never
+     * stale, and the panel simply doesn't render a third gauge. */
+    const char *f2[] = {"five_hour_pct", "seven_day_pct", "updated_at"};
+    const char *v2[] = {"11", "5", "1783036000"};
+    check(cf_limits_from_fields(f2, v2, 3, &l), "headline-only parse");
+    check(!l.scoped_valid, "no scoped set without scoped fields");
+    check(!cf_limits_scoped_stale(&l, 1LL << 40), "invalid scoped never stale");
+
+    /* scoped_pct without a model label (or vice versa) is half a set: reject
+     * the pair rather than render an unlabelled gauge. */
+    const char *f3[] = {"five_hour_pct", "seven_day_pct", "updated_at",
+                        "scoped_pct"};
+    const char *v3[] = {"11", "5", "1783036000", "22"};
+    check(cf_limits_from_fields(f3, v3, 4, &l) && !l.scoped_valid,
+          "pct without model is not a scoped set");
+
+    /* A scoped set that never got its own stamp (foreign writer): valid data,
+     * but grey from the start rather than borrowing headline freshness. */
+    const char *f4[] = {"five_hour_pct", "seven_day_pct", "updated_at",
+                        "scoped_model", "scoped_pct"};
+    const char *v4[] = {"11", "5", "1783036000", "Fable", "22"};
+    check(cf_limits_from_fields(f4, v4, 5, &l) && l.scoped_valid,
+          "stampless scoped set still parses");
+    check(cf_limits_scoped_stale(&l, 1783036000), "stampless scoped is stale");
 }
 
 /* ---------- recent ---------- */
@@ -308,6 +376,8 @@ int main(void) {
     test_display_status();
     test_sort();
     test_limits();
+    test_limits_expected_refresh();
+    test_limits_scoped();
     test_recent();
     test_fmt();
 

@@ -32,10 +32,13 @@ cross-compile approach and adding touch input.
   telemetry from the `rpi53` Redis).
 - **Claude** — fleet Claude Code agent activity: attention-first session rows
   (`BLOCKED ON YOU` — an agent sitting on a question — above awaiting-input, then
-  working), each labelled with Claude's own session name, plus 5-hour / 7-day
-  subscription usage
-  gauges. Fed by [publisher/claude-pub.sh](publisher/README.md) hooks + statusline on
-  each dev machine via a dedicated Redis instance
+  working), each labelled with Claude's own session name, plus subscription usage
+  gauges: 5-hour and 7-day windows, and — where a machine runs the publisher's
+  OAuth poll — the model-scoped weekly window as a third gauge. Each gauge greys
+  its percentage independently when its own data goes stale. Fed by
+  [publisher/claude-pub.sh](publisher/README.md) hooks + statusline on each dev
+  machine, and session-free by its `poll` mode (desktop-app usage file, or the
+  OAuth usage endpoint on headless hosts), via a dedicated Redis instance
   ([deploy/redis-claude.conf](deploy/redis-claude.conf), port 6380).
 - **Icons** — a Nerd Font browser: page a glyph set (Font Logos, Devicons, Codicons,
   Font Awesome, Material Design, …) in a touch grid, preview the selected glyph at several
@@ -281,9 +284,11 @@ kdeskdash/
 │   ├── redis-claude.conf           # claude-feed Redis instance (port 6380, ephemeral)
 │   └── redis-claude.service        # systemd unit for the claude-feed instance
 ├── publisher/
-│   ├── claude-pub.sh               # zero-dep hook/statusline publisher (RESP over /dev/tcp)
+│   ├── claude-pub.sh               # zero-dep hook/statusline/poll publisher (RESP over /dev/tcp)
 │   ├── settings-fragment.json      # ~/.claude/settings.json hook + statusline config
-│   └── README.md                   # per-machine install + smoke test
+│   ├── poll-hidden.vbs             # Windows shim: run `poll` from Task Scheduler windowless
+│   ├── kdeskdash-claude-poll.*     # systemd user unit pair for `poll` on headless hosts
+│   └── README.md                   # per-machine install, source decision table, key contract
 ├── scripts/
 │   ├── sync-sysroot.sh             # rsync a Pi sysroot for cross-compilation
 │   ├── deploy.sh                   # remote deploy / systemd install (takes any ssh target)
@@ -300,6 +305,7 @@ kdeskdash/
 ├── tests/                          # host unit tests (registry, gol, stopwatch, iconset, …)
 ├── lib/lvgl/                       # LVGL v9.2.2 (submodule)
 ├── stl/                            # 3D-printable case: main body + left/right end caps
+│                                   #   (right side also comes in a pen-holder variant)
 └── docs/                           # brainstorms, plans, solutions
     ├── hardware.md                 #   BOM + print settings
     ├── assembly.md                 #   step-by-step build, with photos
