@@ -3,6 +3,9 @@
 build/
 build-pi/
 build-tests/
+
+# Artifacts fetched from the package store on the way to a board (deploy.sh)
+.deploy-cache/
 *.o
 .cache/
 compile_commands.json

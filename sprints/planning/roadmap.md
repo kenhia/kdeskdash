@@ -34,6 +34,16 @@ Everything below is the open korg backlog for `kdeskdash`.
   With both halves landed, **WI 503 has only Part C left** — the Launcher /
   Stream-Deck-replacement epic, which now rolls out per-device for free.
 
+- ~~**Pi builds ship from the package store** (korg WI 1016, proposal 1025)~~ —
+  **sprint 024, shipped.** `just publish` puts a versioned artifact in the
+  homelab store; `just deploy [host] [version]` installs *that*, and naming an
+  older version is the rollback the scp flow never had. The dev box does the
+  fetching (the Pis stay unmanaged), `kdeskdash --version` proves a push landed,
+  and `just push-dev` is the labelled dev-loop exception. Record:
+  [../024-deploy-from-store.md](../024-deploy-from-store.md); how it works:
+  [../../docs/deploying.md](../../docs/deploying.md). Closed out program
+  korg:1026 ("Deploy from the store" — kdeskdash was slice 5 of 5).
+
 - **Calc post-live-test follow-ups** (korg WI 509, M). Deferred from sprint 016
   pending real desk use: trig (sin/cos/tan + inverses, deg/rad toggle), √x, 1/x,
   CE distinct from C, register persistence across restarts via Redis, register

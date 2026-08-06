@@ -74,7 +74,23 @@ static kd_mode_t *create_mode(const char *id, const kdeskdash_config_t *cfg) {
     return NULL;
 }
 
-int main(void) {
+/* Set by the build recipe (-DKD_VERSION); see scripts/version.sh. */
+#ifndef KD_VERSION
+#define KD_VERSION "unknown"
+#endif
+
+int main(int argc, char **argv) {
+    /* --version before anything else touches hardware. A deploy asks the
+     * *installed* binary on the board what it is, which is the only way to
+     * prove the push landed — a running service answers a health check just
+     * as well with yesterday's build. That means this has to work over ssh on
+     * a Pi whose panel is already owned by the running instance, so it must
+     * return before DRM master or evdev is claimed. */
+    if (argc > 1 && strcmp(argv[1], "--version") == 0) {
+        printf("kdeskdash %s\n", KD_VERSION);
+        return 0;
+    }
+
     /* Under systemd stdout is a pipe, so glibc block-buffers it: every startup
      * printf sat in a 4KB buffer until shutdown, which made `journalctl -u
      * kdeskdash` look silent on a running service. Line-buffer so diagnostics

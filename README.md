@@ -160,22 +160,32 @@ kernel flavor differs, which never reaches the linker. An existing
 `~/pi5-sysroot` from before the rename is still used as-is, so no re-sync is
 forced.
 
-### 4. Build and deploy
+### 4. Publish and deploy
+
+kdeskdash ships from the [homelab package store](docs/deploying.md): a release
+is a versioned artifact, and a deploy installs *that artifact* on a board.
 
 ```bash
-just build-pi                  # cross-compile once
-just deploy                    # ...to rpidash2 (the default)
-just deploy rpidash3           # ...to any other dashboard
+just publish                     # build + publish artifacts/kdeskdash/<version>/
+just deploy                      # install the newest published version on rpidash2
+just deploy rpidash3             # ...on any other dashboard
+just deploy rpidash2 0.24.0-1a2b3c4    # ...a specific version — this is the rollback
+just versions                    # what is published / cached / running where
 ```
 
-Both recipes go through `scripts/deploy.sh`, which stops the service, installs
-the binary to `/usr/local/bin/kdeskdash`, and restarts it. The equivalent CMake
-targets still work for a single fixed target:
+Set `KDESKDASH_STORE_URL` and `KDESKDASH_STORE_HOST` in `.env` first (see
+[docs/deploying.md](docs/deploying.md)). The fetch happens on the dev box, not
+the board — the Pis stay unmanaged, and the artifact reaches them over the same
+ssh that was always the deploy path.
+
+For the dev loop — where the panel is the only place a change can be seen —
+`just push-dev [host]` cross-compiles and pushes this tree straight to a board.
+It is not a deploy: the build is stamped `-dirty`, so `just versions` reports a
+board running something that is not in the store.
 
 ```bash
-cmake -B build-pi -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake
-cmake --build build-pi --target kdeskdash -j"$(nproc)"
-cmake --build build-pi --target deploy -DKDESKDASH_TARGET=ken@rpidash3
+just build-pi                    # cross-compile only
+just push-dev rpidash3           # ...and put it on a panel to look at
 ```
 
 ## Run (on the Pi)
@@ -251,7 +261,9 @@ just install-service rpidash3   # any other dashboard
 ssh ken@rpidash3 'sudo systemctl start kdeskdash'
 ```
 
-That installs the unit and the device's committed config from
+The unit comes out of a published artifact (the newest, or a version named as a
+second argument), so the unit a build was released with is the unit that build
+runs under. That installs it and the device's committed config from
 [deploy/hosts/](deploy/hosts/) — `<host>.env` → `/etc/kdeskdash/kdeskdash.env` —
 but only if that file is absent, so hand edits on the panel are never clobbered.
 [deploy/kdeskdash.env.example](deploy/kdeskdash.env.example) stays the
@@ -264,14 +276,16 @@ mode 0600 and never committed — see [deploy/hosts/README.md](deploy/hosts/READ
 Without it the panel still boots; Remote reports "view only" and Dev shows no
 host data.
 
-`just deploy [host]` stops the service, installs the binary to
-`/usr/local/bin/kdeskdash`, and starts it.
+`just deploy [host] [version]` stops the service, installs the fetched binary to
+`/usr/local/bin/kdeskdash`, asks it its version to prove the push landed, and
+starts it.
 
 ## Project layout
 
 ```
 kdeskdash/
-├── CMakeLists.txt                  # LVGL + libdrm + hiredis + pthread; deploy/install-service
+├── CMakeLists.txt                  # LVGL + libdrm + hiredis + pthread; version stamp
+├── VERSION                         # base version; minor tracks the sprint number
 ├── lv_conf.h                       # LVGL config: DRM + EVDEV + Montserrat fonts
 ├── cmake/aarch64-toolchain.cmake   # aarch64 cross-compile toolchain (one build, every Pi)
 ├── deploy/
@@ -291,7 +305,9 @@ kdeskdash/
 │   └── README.md                   # per-machine install, source decision table, key contract
 ├── scripts/
 │   ├── sync-sysroot.sh             # rsync a Pi sysroot for cross-compilation
-│   ├── deploy.sh                   # remote deploy / systemd install (takes any ssh target)
+│   ├── version.sh                  # the one place a version string is derived
+│   ├── publish.sh                  # release: build + kpkg into the package store
+│   ├── deploy.sh                   # fetch a published version + install it on a board
 │   └── kddss                       # trigger + fetch a device screenshot as PNG
 ├── src/
 │   ├── main.c                      # entry: DRM + evdev bring-up, main loop, teardown
