@@ -53,7 +53,11 @@ fetch_artifact() {
 
     local v="$want"
     if [ -z "$v" ]; then
-        v=$(curl -fsS "$base/latest") || die "no published versions at $base (has anything been published?)"
+        # No `latest` is not the same as nothing published: publishing off main
+        # deliberately leaves the pointer alone, so a branch-only artifact tree
+        # has versions and no newest. Name one.
+        v=$(curl -fsS "$base/latest") ||
+            die "no \`latest\` pointer at $base — nothing has been published from main yet. Name a version (just versions)."
         v=$(printf '%s' "$v" | tr -d '[:space:]')
     fi
 

@@ -87,10 +87,32 @@ not in the store instead of quietly implying it is.
 
 ## Verification
 
-<!-- filled in after the live run -->
+Live, against the real store and rpidash2:
+
+- **Publish** — `just publish` twice, `0.24.0-9f8acf9` and `0.24.0-185fe20`
+  (3.9MB each). Off `main`, so `latest` was correctly left unset; `kpkg list`
+  shows `(latest: ?)`.
+- **Deploy** — both versions installed on rpidash2, service back to `active`,
+  `kdeskdash --version` answering from `/usr/local/bin/kdeskdash`.
+- **Rollback** — `just deploy rpidash2 0.24.0-9f8acf9` after the newer one, then
+  forward again. The second and third deploys reused the verified local cache
+  rather than re-fetching. This is the capability the scp flow never had.
+- **Failure paths** — an unpublished version fails at the fetch with a sentence,
+  not a curl error; with no `latest` (branch-only publishes) `just deploy`
+  declines and says to name a version; `just versions` reports store / cached /
+  per-board, with rpidash3 as unreachable.
+
+**rpidash3 is still on its pre-024 binary** — it was off-network the whole
+sprint (work desk). It needs one `just deploy rpidash3 <version>` when it is
+next reachable; nothing about that is expected to be interesting, but until then
+the fleet is one board converted and one not.
 
 ## Follow-ups
 
+- **Publish from `main` once this merges** — branch publishes deliberately do
+  not move `latest`, so `just deploy` with no version has nothing to resolve
+  until the first post-merge `just publish`.
+- **rpidash3 needs its first store deploy** (see above).
 - Show the version on-panel (menu footer or Dev mode) — the board can already
   answer over ssh, but not to someone standing in front of it.
 - `just versions` hardcodes the two known boards; the fleet roster living in one
