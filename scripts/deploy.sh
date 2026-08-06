@@ -42,6 +42,14 @@ die() {
     exit 1
 }
 
+# die, but drop a half-fetched cache directory first. Not a trap: fetch_artifact
+# runs inside a command substitution, so an EXIT trap would fire on every normal
+# return of that subshell too.
+fetch_failed() {
+    rm -rf "$1"
+    die "$2"
+}
+
 # Resolve `latest` (or take the version given), fetch the artifact into
 # .deploy-cache/<version>/, verify every file against SHA256SUMS, and echo the
 # directory. A cached copy that still verifies is reused — the store is
@@ -71,16 +79,22 @@ fetch_artifact() {
     echo "fetching kdeskdash $v from the store" >&2
     rm -rf "$dir"
     mkdir -p "$dir"
+    # Every failure from here on takes the directory with it. Leaving a partial
+    # one behind is harmless to a later deploy (it will not verify, so it gets
+    # re-fetched) but `versions` lists the cache by directory name, and a cache
+    # that names a version it does not have is the kind of small lie the whole
+    # store conversion exists to remove.
     curl -fsS -o "$dir/SHA256SUMS" "$base/$v/SHA256SUMS" ||
-        die "no artifact for version '$v' in the store (try: just versions)"
+        fetch_failed "$dir" "no artifact for version '$v' in the store (try: just versions)"
     # Drive the download off SHA256SUMS rather than a hardcoded file list, so an
     # older version that shipped a different set of files still fetches whole.
     local sum name
     while read -r sum name; do
         [ -n "${sum:-}" ] || continue
-        curl -fsS -o "$dir/$name" "$base/$v/$name" || die "fetch failed: $name"
+        curl -fsS -o "$dir/$name" "$base/$v/$name" || fetch_failed "$dir" "fetch failed: $name"
     done < "$dir/SHA256SUMS"
-    (cd "$dir" && sha256sum -c --quiet SHA256SUMS) || die "checksum mismatch in $v — refusing to deploy it"
+    (cd "$dir" && sha256sum -c --quiet SHA256SUMS) ||
+        fetch_failed "$dir" "checksum mismatch in $v — refusing to deploy it"
 
     printf '%s\n' "$dir"
 }
