@@ -32,6 +32,10 @@ binary or a future embedded target inherits.
   `.deploy-cache/`, verifies `SHA256SUMS`, pushes, and asserts the installed
   binary's version. `install-service` now takes its unit from the artifact.
   `versions` reports published / cached / running. `push-dev` is the dev loop.
+- **[.sprint-deploy](../.sprint-deploy) + the
+  [`deploy-panels` skill](../.claude/skills/deploy-panels/SKILL.md)** — the
+  declaration that makes `/sprint-ship` Phase 7 publish from merged `main` and
+  roll the boards, instead of the deploy being a thing someone remembers to run.
 - **[docs/deploying.md](../docs/deploying.md)** — the kdeskdash-specific half of
   the doctrine; README's build-and-deploy section rewritten around it.
 - **Retired**: the `deploy` / `install-service` CMake custom targets and the
@@ -64,6 +68,22 @@ not die of `SIGTERM`, blocked in DRM init. The probe now runs under
 `timeout -k 2 10`. Worth generalizing: a version probe is only diagnostic if the
 thing that cannot answer *fails*, and a binary that ignores unknown arguments
 does the opposite of failing.
+
+**The deploy declaration ships in this slice, not as a follow-up.** The overseer
+comment on korg:1025 caught this mid-sprint: korg, klams, kaed and kwebi all
+carry a root `.sprint-deploy`, kfdc's slice shipped without one, and that cost
+kfdc a hand-run deploy plus its own work item afterwards (kfdc #1035). The skill
+states plainly what it can and cannot assert, because with these targets that is
+not boilerplate — see below.
+
+**An unreachable board is a normal outcome, not a failed deploy.** rpidash3 sits
+at the work desk and is often simply off; the boards share no state, no schema
+and nothing that couples them, so a half-deployed fleet is stable for days. A
+deploy skill that treats that as breakage would train everyone to ignore it, so
+`deploy-panels` says to record the pending board and move on. Verification says
+what it covers too: a rendered frame via `kddss` (the control-Redis round trip
+proves the running app is *drawing*, which `systemctl is-active` does not) for
+reachable boards, and nothing whatsoever asserted about one that was not reached.
 
 **CMake never derives the version.** The recipe passes it in. A cached CMake
 variable freezes at whatever it was configured with, and a stamp that lies about
@@ -109,10 +129,11 @@ the fleet is one board converted and one not.
 
 ## Follow-ups
 
-- **Publish from `main` once this merges** — branch publishes deliberately do
-  not move `latest`, so `just deploy` with no version has nothing to resolve
-  until the first post-merge `just publish`.
-- **rpidash3 needs its first store deploy** (see above).
+- **The first publish from `main` happens in sprint-ship Phase 7**, via
+  `deploy-panels`. Until then `latest` is unset by design (branch publishes do
+  not move it), so `just deploy` with no version has nothing to resolve.
+- **rpidash3 needs its first store deploy** (see above) — Phase 7 will attempt
+  it and is expected to report it as unreachable.
 - Show the version on-panel (menu footer or Dev mode) — the board can already
   answer over ssh, but not to someone standing in front of it.
 - `just versions` hardcodes the two known boards; the fleet roster living in one

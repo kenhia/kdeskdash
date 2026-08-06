@@ -286,6 +286,8 @@ starts it.
 kdeskdash/
 ├── CMakeLists.txt                  # LVGL + libdrm + hiredis + pthread; version stamp
 ├── VERSION                         # base version; minor tracks the sprint number
+├── .sprint-deploy                  # declares the deploy skill /sprint-ship runs
+├── .claude/skills/deploy-panels/   #   ...that skill: publish from main, roll the boards
 ├── lv_conf.h                       # LVGL config: DRM + EVDEV + Montserrat fonts
 ├── cmake/aarch64-toolchain.cmake   # aarch64 cross-compile toolchain (one build, every Pi)
 ├── deploy/
