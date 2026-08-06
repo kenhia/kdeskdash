@@ -127,13 +127,36 @@ sprint (work desk). It needs one `just deploy rpidash3 <version>` when it is
 next reachable; nothing about that is expected to be interesting, but until then
 the fleet is one board converted and one not.
 
+## Deployed 2026-08-06
+
+First run of the `deploy-panels` skill, in sprint-ship Phase 7 — so the artifact
+was published from the merged squash commit, not from the branch.
+
+- **Published** `0.24.0-6f819b7` (3.9MB). Publishing from `main` moved
+  `latest` for the first time, which is the property the branch publishes
+  deliberately withheld.
+- **rpidash2** — installed, `kdeskdash 0.24.0-6f819b7` asserted exactly against
+  the published version, unit `active`, and `kddss` returned a rendered frame
+  (Claude mode drawing agents + usage gauges).
+- **rpidash3 — NOT deployed, pending.** Off-network for the whole sprint. The
+  attempt failed at ssh *after* fetching and verifying the artifact, so nothing
+  was half-installed. It still runs its pre-024 binary, and expect the ~10 s
+  "too old to say" probe pause on its first store deploy. **Nothing is asserted
+  about that board.** Rollback target for rpidash2 if needed:
+  `just deploy rpidash2 0.24.0-185fe20`.
+
 ## Follow-ups
 
 - **The first publish from `main` happens in sprint-ship Phase 7**, via
   `deploy-panels`. Until then `latest` is unset by design (branch publishes do
   not move it), so `just deploy` with no version has nothing to resolve.
-- **rpidash3 needs its first store deploy** (see above) — Phase 7 will attempt
-  it and is expected to report it as unreachable.
+- **rpidash3 needs its first store deploy** — Phase 7 attempted it and it was
+  offline, as expected. One `just deploy rpidash3 <version>` when it is next up.
+- **A failed fetch leaves an empty `.deploy-cache/<version>/` behind**, which
+  then shows in `just versions` as if that version were cached. Found by this
+  sprint's own negative test (`0.99.0-nope`). Cosmetic, but a cache listing that
+  names a version it does not have is exactly the kind of small lie this sprint
+  spent its effort removing. One-line fix: clean the directory before `die`.
 - Show the version on-panel (menu footer or Dev mode) — the board can already
   answer over ssh, but not to someone standing in front of it.
 - `just versions` hardcodes the two known boards; the fleet roster living in one
