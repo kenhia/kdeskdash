@@ -100,6 +100,15 @@ After installing, `deploy` asks the binary on disk what it is and fails loudly
 unless it matches the version that was fetched. The checksum proved the transfer;
 that proves the label.
 
+**The probe runs under `timeout -k`, and that is load-bearing.** A binary from
+before sprint 024 has no `--version`: it ignores the unknown argument and
+*starts the dashboard*. So the probe that exists to detect a failed install is
+exactly the case that would hang on one — and leave a second instance fighting
+for the panel. It will not die of `SIGTERM` while blocked in DRM init either,
+hence the `-k` `SIGKILL`. On a board that has never had a 024 build, expect
+`just versions` to pause ten seconds and then report it as too old to say; that
+is the transition, once per board.
+
 ## `push-dev` — the labelled exception
 
 kdeskdash cannot run on the dev box at all: no DRM panel, no touch. The board is

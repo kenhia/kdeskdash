@@ -81,6 +81,17 @@ fetch_artifact() {
     printf '%s\n' "$dir"
 }
 
+# Ask the binary installed on a board what it is. Echoes its answer, or nothing.
+#
+# The `timeout -k` is load-bearing, not caution. A pre-sprint-024 binary has no
+# --version: it ignores the unknown argument and *starts the dashboard*, so the
+# probe that exists to detect a failed install is exactly the case that would
+# hang on one — and leave a second instance running on the panel. It also will
+# not die of SIGTERM while blocked in DRM init, hence the -k SIGKILL.
+probe_version() {
+    ssh -n "$1" "timeout -k 2 10 $BIN --version </dev/null 2>/dev/null" 2>/dev/null || true
+}
+
 # Install a binary (and optionally a font) on a board. Shared by `deploy` and
 # `push-dev` so the dev-loop path cannot drift from the real one.
 push_binary() {
@@ -129,7 +140,7 @@ case "$cmd" in
         # installed binary what it is compares the version that was fetched
         # against the version that is now on disk, and the checksum above
         # already proved the fetch was the version it claimed.
-        got=$(ssh "$target" "$BIN --version" 2>/dev/null || true)
+        got=$(probe_version "$target")
         if [ "$got" != "kdeskdash $v" ]; then
             die "installed binary reports '${got:-nothing}', expected 'kdeskdash $v' — deploy did NOT take"
         fi
@@ -153,7 +164,8 @@ case "$cmd" in
         binary=${2:?missing binary path}
         ttf=${3:-}
         push_binary "$target" "$binary" "$ttf"
-        got=$(ssh "$target" "$BIN --version" 2>/dev/null || echo "unknown")
+        got=$(probe_version "$target")
+        got=${got:-unknown}
         ssh "$target" 'sudo systemctl start kdeskdash 2>/dev/null || true'
         echo "pushed dev build to $target:$BIN ($got)"
         echo "note: not a published version — \`just publish\` + \`just deploy\` is what ships"
@@ -214,8 +226,8 @@ case "$cmd" in
         # shellcheck disable=SC2012  # names only; no odd filenames in a version dir
         ls -1t "$cache" 2>/dev/null | sed 's/^/  /' || echo "  (none)"
         for target in "$@"; do
-            printf '%s: ' "$target"
-            ssh -n "$target" "$BIN --version" 2>/dev/null || echo "unreachable or not installed"
+            got=$(probe_version "$target")
+            printf '%s: %s\n' "$target" "${got:-unreachable, not installed, or too old to say}"
         done
         ;;
 

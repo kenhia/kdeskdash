@@ -55,6 +55,16 @@ is on disk; the checksum already proved the fetch was what it claimed. This is
 kfdc sprint 005's `readlink /proc/<pid>/cwd` lesson in the form a single static
 binary can carry.
 
+**The version probe has to be bounded, and finding out why cost a stray
+process.** The first probe against rpidash2 hung: a pre-024 binary has no
+`--version`, ignores the unknown argument, and *starts the dashboard* — so the
+check that exists to catch a failed install is precisely the case that hangs on
+one, leaving a second instance fighting the service for the panel. It also would
+not die of `SIGTERM`, blocked in DRM init. The probe now runs under
+`timeout -k 2 10`. Worth generalizing: a version probe is only diagnostic if the
+thing that cannot answer *fails*, and a binary that ignores unknown arguments
+does the opposite of failing.
+
 **CMake never derives the version.** The recipe passes it in. A cached CMake
 variable freezes at whatever it was configured with, and a stamp that lies about
 the commit is worse than no stamp — a hand-configured build stamps `unknown`,
