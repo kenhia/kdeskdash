@@ -63,20 +63,31 @@ There are two distinct CMake build trees. Keep them separate — do not run test
 ```bash
 just check                    # CI gate: build the host tree + run every unit test
 just test golz                # run ONE test by name (ctest -R test_golz)
-just deploy [host]            # cross-compile, scp, restart the service (default rpidash2)
+just publish                  # release: build + publish a version to the package store
+just deploy [host] [version]  # install a published version (default rpidash2, newest)
+just push-dev [host]          # dev loop ONLY: push this tree to a board, bypassing the store
+just versions                 # what is published / cached here / running on each board
 just sync-sysroot [host]      # one-time / after Pi apt changes: rsync a Pi sysroot to ~/pi-sysroot
 just install-service [host]   # one-time per device: systemd unit + that host's env file
 just golz-mc --help           # headless GoLZ balance sweep (Monte Carlo over the pure core)
 ```
 
-The underlying commands, when you need them directly:
+The underlying commands, when you need them directly — note `-DKD_VERSION`: the
+recipe passes the version stamp in (`scripts/version.sh`), CMake never derives
+it, and a build configured without it stamps `unknown`, which `deploy` refuses.
 
 ```bash
-cmake -B build && cmake --build build -j"$(nproc)"
+cmake -B build -DKD_VERSION="$(scripts/version.sh)" && cmake --build build -j"$(nproc)"
 ctest --test-dir build --output-on-failure
-cmake -B build-pi -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake
+cmake -B build-pi -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake -DKD_VERSION="$(scripts/version.sh)"
 cmake --build build-pi --target kdeskdash -j"$(nproc)"
 ```
+
+**Deploys go through the store** (sprint 024): a release is a versioned artifact
+in the homelab package store, a deploy installs *that*, and naming an older
+version is the rollback. The dev box does the fetching because the Pis stay
+unmanaged. `docs/deploying.md` here; doctrine is k-homelab `docs/deploying.md`.
+Store config (`KDESKDASH_STORE_URL`, `KDESKDASH_STORE_HOST`) lives in `.env`.
 
 Adding a new source file to `kdeskdash` means editing `add_executable(kdeskdash ...)` in
 `CMakeLists.txt`. Adding a test means a new `add_executable` + `add_test` block inside the

@@ -88,6 +88,14 @@ target_link_libraries(kdeskdash
 
 target_compile_options(kdeskdash PRIVATE -Wall -Wextra -Wno-unused-parameter)
 
+# Version stamp, printed by `kdeskdash --version`. The recipe that builds
+# passes it (`-DKD_VERSION="$(scripts/version.sh)"`); CMake never derives it,
+# so a stale configure cache cannot make the binary claim the wrong commit.
+# `unknown` is what a hand-run `cmake -B build` without the flag produces —
+# a build that names no commit, and one `just deploy` refuses to install.
+set(KD_VERSION "unknown" CACHE STRING "Version string stamped into the binary")
+target_compile_definitions(kdeskdash PRIVATE KD_VERSION="${KD_VERSION}")
+
 # Cross-linking against a Trixie sysroot (glibc 2.38) from an older dev host:
 # shared libs like libdrm reference GLIBC_2.38 symbols the host stub libc
 # doesn't define. Allow them at link time; they resolve at runtime on the Pi.
@@ -95,30 +103,15 @@ if(CMAKE_CROSSCOMPILING)
     target_link_options(kdeskdash PRIVATE -Wl,--allow-shlib-undefined)
 endif()
 
-# Deploy to a Pi: cmake --build build-pi --target deploy
-# Stops the service (or a manually-run instance), copies the binary, restarts it.
+# The `deploy` / `install-service` CMake custom targets (and the
+# KDESKDASH_TARGET cache variable that aimed them) were retired in sprint 024.
+# They copied the binary straight out of this build tree to a board, which is
+# precisely the shipping habit k-homelab docs/deploying.md exists to end: no
+# history, and no previous build to fall back to when one is bad.
 #
-# `just deploy <host>` / `just install-service <host>` are the multi-Pi front
-# door and call scripts/deploy.sh directly. These targets stay for back-compat
-# with the single-target KDESKDASH_TARGET cache variable; both routes run the
-# same script.
-set(KDESKDASH_TARGET "ken@rpidash2" CACHE STRING "ssh target for deploy")
-# Strip any user@ prefix to get the bare host, which names the per-host env file.
-string(REGEX REPLACE "^[^@]*@" "" KDESKDASH_HOST "${KDESKDASH_TARGET}")
-add_custom_target(deploy
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/deploy.sh deploy ${KDESKDASH_TARGET} ${CMAKE_BINARY_DIR}/kdeskdash ${CMAKE_SOURCE_DIR}/fonts/ttf/SymbolsNerdFont-Regular.ttf
-    DEPENDS kdeskdash
-    COMMENT "Deploying kdeskdash to ${KDESKDASH_TARGET}"
-)
-
-# One-time service setup: cmake --build build-pi --target install-service
-# Installs the systemd unit and that host's env file (only if absent), reloads,
-# and enables the service. Safe to re-run; it will not overwrite an edited env
-# file. Hosts with no deploy/hosts/<host>.env fall back to the example.
-add_custom_target(install-service
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/deploy.sh install-service ${KDESKDASH_TARGET} ${CMAKE_SOURCE_DIR}/deploy/kdeskdash.service ${CMAKE_SOURCE_DIR}/deploy/hosts/${KDESKDASH_HOST}.env
-    COMMENT "Installing kdeskdash systemd service on ${KDESKDASH_TARGET}"
-)
+# CMake now only builds. Shipping is `just publish` (a versioned artifact in
+# the package store) and `just deploy <host> [version]` (installs *that*
+# artifact), with `just push-dev <host>` as the labelled dev-loop exception.
 
 # Host-only unit tests for pure logic (no LVGL/DRM). Run with: ctest --test-dir build
 # Skipped when cross-compiling, since ctest executes the binaries on the build host.
