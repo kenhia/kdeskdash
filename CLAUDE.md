@@ -104,12 +104,17 @@ Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMak
 
 - **Pure cores** (`src/gol.c`, `src/golz.c`, `src/stopwatch.c`, `src/calc.c`, `src/palette.c`, `src/registry.c`,
   `src/modeset.c`, `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/claude_feed.c`,
-  `src/telemetry_host.c`, `src/bmp_write.c`, `src/modes/dev_hostlist.c`,
+  `src/telemetry_host.c`, `src/bmp_write.c`, `src/clock_core.c`, `src/modes/dev_hostlist.c`,
   `src/modes/dev_view.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
   explicit `uint32_t *state` seam). Each has a `tests/test_*.c`.
 - **Modes** (`src/modes/*.c`) — each implements the `kd_mode_t` lifecycle from `src/mode.h`:
   `activate` / `deactivate` / `tick`, owning one LVGL screen and its private `state`. A mode
   does no ongoing work while deactivated. `*_mode_create(id, title)` builds and returns one.
+- **Shared widgets** (`src/clock_widget.c` so far) — LVGL glue that is *not* a mode: takes a
+  parent container, sizes itself to it, renders a pure core. The dual clock is one widget used
+  by the Launcher's side pane and (WI #1136) the `clock` mode rebuild. Reach for this shape
+  when two modes want the same thing on screen — not by generalizing an existing full-screen
+  mode, which is how you get a widget shaped like whichever mode happened to be first.
 - **Shell** (`src/shell.c`, `src/shell.h`) — owns the set of modes, the active mode, and
   gesture navigation: swipe left/right cycles content modes (wrapping), swipe down opens the
   Menu. It does **not** own mode storage; `main.c` keeps registered modes alive for the
@@ -141,17 +146,27 @@ stalls boot or another path). The generic client + backoff lives in `src/redis.c
    metrics for Dev mode. Defaults to host `rpi53`.
 3. **Claude feed** (`src/claude_redis.c`, `KDESKDASH_CLAUDE_REDIS_*`) — fleet Claude Code
    agent activity + usage limits, fed by `publisher/claude-pub.sh` hooks. Port 6380.
-4. **kvscf feed** (`src/kvscf_redis.c`) — the `foreground` ("Remote") mode: reads
-   `kvscf:instances:*` and **publishes** `kvscf:focus:<host>`. Its own handle *and* its own
+4. **kvscf feed** (`src/kvscf_redis.c`) — one handle, **two** readers: the `foreground`
+   ("Remote") mode reads `kvscf:instances:*` / `kvscf:edge:*` / `kvscf:apps:*`, and `launcher`
+   reads `kvscf:launcher:*`. Both **publish** to `kvscf:focus:<host>` (`{id}`, `{app}` or
+   `{button}` — kvscf's precedence is `button` > `app` > `id`). Its own handle *and* its own
    endpoint config (`KDESKDASH_KVSCF_REDIS_*`), each field falling back independently to the
    Claude feed's — on rpidash2 both genuinely live on the same 6380 instance, but a panel can
-   read the shared fleet Claude feed while driving a different kvscf. This is the only mode
-   that **writes/acts on another machine** (foregrounds a window), gated by `KVSCF_TOKEN`
-   (byte-exact, trimmed, never logged; per-kvscf-instance, so it lives in each device's
-   `secrets.env`). PUBLISH rides the ordinary command connection — kdeskdash never SUBSCRIBEs.
+   read the shared fleet Claude feed while driving a different kvscf. These are the only modes
+   that **write/act on another machine**, gated by `KVSCF_TOKEN` (byte-exact, trimmed, never
+   logged; per-kvscf-instance, so it lives in each device's `secrets.env`). PUBLISH rides the
+   ordinary command connection — kdeskdash never SUBSCRIBEs.
 
 Feeds are initialised **only for modes the modeset registered**, so a panel without Dev never
-dials the telemetry endpoint at all.
+dials the telemetry endpoint at all. A handle shared by two modes is initialised when *either*
+is registered — see the kvscf gate in `main.c`.
+
+**A feed key's TTL is not a policy for every consumer.** The kvscf keys carry a 10s TTL, which
+is right for a live window list (absent genuinely means "nothing to focus") and wrong for the
+launcher's button layout (the machine publishing it sleeps and locks all day). `launcher`
+therefore caches the last-good config and dims it rather than blanking, and
+`kvscf_parse_launcher` only writes its `out` once a payload is known-good so there is no
+window in which a half-parsed feed can erase a working layout.
 
 ### Key patterns (documented in `docs/solutions/best-practices/`)
 
@@ -168,6 +183,15 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
 - **Adaptive feedback loop sets equilibrium** (`adaptive-feedback-loop-sets-equilibrium.md`)
   — see also the memory note: GoLZ's win ratio is pinned by the ±gens_to_win rule, not the
   machete params.
+- **Draw only glyphs the font has** (`draw-only-glyphs-the-font-has.md`) — the vendored
+  `SymbolsNerdFont-Regular.ttf` has **zero** emoji *and* zero Latin, Montserrat has no emoji
+  (nor U+00B7), and `lv_font_t.fallback` cannot bridge the gap because TinyTTF reports every
+  glyph as present. Filter text down to what the font actually has before drawing it — this
+  applies to your own chrome, not just strings off the wire.
+- **Grid children need cells immediately** (`lvgl-grid-children-need-cells-immediately.md`) —
+  LVGL lays *hidden* children out too, so a pooled grid child with no cell, or a grid with no
+  track descriptors, segfaults on the first layout pass. Install a placeholder 1×1 track set
+  at build time, and keep the descriptor arrays in state (LVGL stores the pointer).
 - **Sandboxing needs a second device** (`systemd-sandboxing-needs-a-second-device.md`) —
   `install-service` never overwrites a device's env file but *does* overwrite the unit, so a
   fleet drifts one device at a time. `PrivateTmp=yes` had been hiding device screenshots

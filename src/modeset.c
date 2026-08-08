@@ -29,6 +29,7 @@ static const struct {
     {"fun", "palette"},
     {"ops", "claude"},
     {"ops", "foreground"},
+    {"ops", "launcher"},
     {"ops", "clock"},
     {"ops", "dev"},
     {"ops", "calc"},

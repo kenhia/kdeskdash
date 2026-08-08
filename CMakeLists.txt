@@ -40,6 +40,8 @@ add_executable(kdeskdash
     src/modeset.c
     src/calc.c
     src/palette.c
+    src/clock_core.c
+    src/clock_widget.c
     src/gol.c
     src/gol_settings.c
     src/golz.c
@@ -66,6 +68,7 @@ add_executable(kdeskdash
     src/modes/claude.c
     src/modes/icons.c
     src/modes/foreground.c
+    src/modes/launcher.c
     src/modes/calc.c
     src/modes/palette.c
     src/modes/menu.c
@@ -167,6 +170,13 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_compile_options(test_modeset PRIVATE -Wall -Wextra)
     add_test(NAME test_modeset COMMAND test_modeset)
 
+    # Pure core behind the shared dual-clock widget: face formatting across DST
+    # and the date line, and the type-scale thresholds (no LVGL).
+    add_executable(test_clock_core tests/test_clock_core.c src/clock_core.c)
+    target_include_directories(test_clock_core PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_clock_core PRIVATE -Wall -Wextra)
+    add_test(NAME test_clock_core COMMAND test_clock_core)
+
     add_executable(test_stopwatch tests/test_stopwatch.c src/stopwatch.c)
     target_include_directories(test_stopwatch PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_stopwatch PRIVATE -Wall -Wextra)
@@ -180,11 +190,14 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(NAME test_iconset COMMAND test_iconset)
 
     # Pure foreground-mode (kvscf) core: JSON parse, ci-label sort, paging, app
-    # colours, focus payload, token trim (cJSON + libm like dev_telemetry).
+    # colours, focus payload, token trim (cJSON + libm like dev_telemetry) —
+    # plus the launcher grid, press payload and no-tofu label filter, which is
+    # why the named palette is linked in (buttons may be authored by colour name).
     add_executable(test_kvscf_feed
         tests/test_kvscf_feed.c
         src/kvscf_feed.c
         src/telemetry_host.c
+        src/palette.c
         lib/cjson/cJSON.c
     )
     target_include_directories(test_kvscf_feed PRIVATE

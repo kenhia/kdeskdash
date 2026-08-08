@@ -58,6 +58,23 @@ cross-compile approach and adding touch input.
   (`{id}` for windows, `{app}` for apps) are authenticated with a per-instance
   `KVSCF_TOKEN`. See
   [sprints/011-remote-foreground-mode](sprints/011-remote-foreground-mode/requirements.md).
+- **Launcher** — the Stream Deck replacement: a touch grid of buttons published by
+  [`kvscf`](https://github.com/kenhia/kvscf) on `kvscf:launcher:<host>`, with a local + UTC
+  clock beside it. **Tapping a button opens its URL in the Edge window that button
+  prefers** — the part a Stream Deck cannot do — by publishing `{button:<key>}` to
+  `kvscf:focus:<host>`, the same authenticated channel Remote uses. The grid is 70% of the
+  panel; on 1920×440 the published 9×3 works out to ~149×146 px cells, **~21.6 mm — larger
+  than a Stream Deck key (19 mm)** — and the clock pane fills the other 30%, replacing the
+  two of Ken's 32 keys that were displaying exactly those two times.
+
+  The mode is entirely feed-driven: it renders whatever grid the feed describes, **including
+  the grid dimensions**, and never learns where a button goes (on a work machine those URLs
+  are an employer's business, and they stay there). When the publishing machine sleeps or
+  locks, the last-good layout **stays on screen, greyed, with a `kvscf offline` note** rather
+  than blanking — the 10s key TTL is right for a live window list and wrong for a button
+  layout. Labels are filtered to what the panel can actually draw, so an emoji the font
+  lacks disappears instead of rendering as a box. See
+  [sprints/025-launcher-mode.md](sprints/025-launcher-mode.md).
 - **Calc** — a desk calculator built for the wide panel: big result + hex/binary readouts
   and always-live unit conversions (in↔mm exact; px↔mm via the ruler-measured 7.69 px/mm
   panel calibration) on the left, six store/recall registers (R0–R5) in the middle, and a
@@ -84,7 +101,7 @@ KDESKDASH_MODES="fun:game_of_life,golz,icons,palette;ops:claude,foreground,clock
 
 Each section is `name:id,id,…`; sections are separated by `;`. Valid ids are the
 mode ids above (`game_of_life`, `golz`, `clock`, `dev`, `claude`, `icons`,
-`foreground`, `calc`, `palette`) and the section names are `fun` and `ops`, the
+`foreground`, `launcher`, `calc`, `palette`) and the section names are `fun` and `ops`, the
 two the Menu draws. **A section's list order is both the swipe-cycle order and
 the Menu tile order** — the two can no longer disagree.
 
@@ -216,7 +233,7 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_MODES`      | _(unset → all modes)_ | Per-device mode set: `fun:<ids>;ops:<ids>`. See [Per-device mode sets](#per-device-mode-sets). |
 | `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
 | `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
-| `KVSCF_TOKEN`          | _(unset)_            | `Remote`-mode shared secret authenticating window-focus commands to that device's `kvscf` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → the window list still shows but tapping cannot focus ("view only"). The kvscf feed reuses the Claude-feed endpoint (`KDESKDASH_CLAUDE_REDIS_*`, port 6380). **Secret** — install via `/etc/kdeskdash/secrets.env`, never a committed host file. |
+| `KVSCF_TOKEN`          | _(unset)_            | Shared secret authenticating the commands `Remote` and `Launcher` send to that device's `kvscf` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → both modes still render but tapping cannot act ("view only"). The kvscf feed reuses the Claude-feed endpoint (`KDESKDASH_CLAUDE_REDIS_*`, port 6380). **Secret** — install via `/etc/kdeskdash/secrets.env`, never a committed host file. |
 
 ## Redis (optional)
 
@@ -317,8 +334,9 @@ kdeskdash/
 │   ├── shell.{c,h}                 # mode shell: registration, gestures, lifecycle
 │   ├── redis.{c,h}                 # optional Redis client (control/persistence/injection)
 │   ├── modeset.{c,h}               # pure core: KDESKDASH_MODES grammar + the mode roster
-│   ├── gol.{c,h} / stopwatch.{c,h} / iconset.{c,h} / kvscf_feed.{c,h} / calc.{c,h} / palette.{c,h} # pure, host-tested mode cores
-│   └── modes/                      # game_of_life, clock, menu, dev, claude, icons, foreground, calc, palette
+│   ├── gol.{c,h} / stopwatch.{c,h} / iconset.{c,h} / kvscf_feed.{c,h} / calc.{c,h} / palette.{c,h} / clock_core.{c,h} # pure, host-tested mode cores
+│   ├── clock_widget.{c,h}          # shared dual-clock widget (Launcher pane; clock mode next)
+│   └── modes/                      # game_of_life, clock, menu, dev, claude, icons, foreground, launcher, calc, palette
 ├── fonts/ttf/                      # vendored SymbolsNerdFont-Regular.ttf (icons mode, runtime TinyTTF)
 ├── tests/                          # host unit tests (registry, gol, stopwatch, iconset, …)
 ├── lib/lvgl/                       # LVGL v9.2.2 (submodule)

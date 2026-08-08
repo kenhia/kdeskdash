@@ -41,6 +41,7 @@
     X(ROCKET_RED,    0xef5350, "Remote: Apps rail") \
     X(STAR_GOLD,     0xd9a441, "Remote: favorite star") \
     X(HOST_GREY,     0x969696, "Remote: host names") \
+    X(UTC_FROST,     0xcfe0f5, "clock widget: the UTC face") \
     X(ZOMBIE_RUST,   0xc0392b, "GoLZ: menu tile, zombie red") \
     /* --- dev charts --- */ \
     X(CPU_SKY,       0x4dabf7, "dev chart: CPU") \

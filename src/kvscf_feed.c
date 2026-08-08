@@ -10,6 +10,7 @@
 #include <strings.h> /* strcasecmp */
 
 #include "cJSON.h"
+#include "palette.h"        /* named colours a launcher button may be authored in */
 #include "telemetry_host.h" /* telemetry_host_token_ok — the host charset contract */
 
 static void copy_field(char *dst, size_t dstsz, const char *src) {
@@ -367,6 +368,281 @@ size_t kvscf_launch_payload(const char *token, const char *app_key, char *buf,
         return 0;
     }
     return (size_t)n;
+}
+
+/* ---- Launcher buttons ------------------------------------------------- */
+
+/* An optional integer field. Absent/non-numeric yields `dflt`, which is how
+ * w/h default to 1 while row/col stay mandatory (their default is out of
+ * range, so an absent one is skipped rather than silently placed at 0,0). */
+static int get_int(const cJSON *obj, const char *key, int dflt) {
+    const cJSON *it = cJSON_GetObjectItemCaseSensitive(obj, key);
+    return cJSON_IsNumber(it) ? (int)it->valuedouble : dflt;
+}
+
+bool kvscf_parse_launcher(const char *json, size_t len, kvscf_launcher_t *out) {
+    if (!json || len == 0 || !out)
+        return false;
+
+    cJSON *root = cJSON_ParseWithLength(json, len);
+    if (!root)
+        return false;
+    if (!cJSON_IsObject(root)) {
+        cJSON_Delete(root);
+        return false;
+    }
+
+    const cJSON *hostj = cJSON_GetObjectItemCaseSensitive(root, "host");
+    if (!cJSON_IsString(hostj) || !hostj->valuestring ||
+        !telemetry_host_token_ok(hostj->valuestring, strlen(hostj->valuestring))) {
+        cJSON_Delete(root);
+        return false;
+    }
+
+    /* The grid is published, never assumed — no grid means no way to place a
+     * button, so the whole payload is unusable and the caller keeps its cache. */
+    const cJSON *gridj = cJSON_GetObjectItemCaseSensitive(root, "grid");
+    int rows = cJSON_IsObject(gridj) ? get_int(gridj, "rows", 0) : 0;
+    int cols = cJSON_IsObject(gridj) ? get_int(gridj, "cols", 0) : 0;
+    if (rows < 1 || rows > KV_GRID_ROWS_MAX || cols < 1 || cols > KV_GRID_COLS_MAX) {
+        cJSON_Delete(root);
+        return false;
+    }
+
+    /* Past this point the payload is committed: write `out` and never fail. */
+    memset(out, 0, sizeof(*out));
+    copy_field(out->host, sizeof(out->host), hostj->valuestring);
+    out->rows = rows;
+    out->cols = cols;
+    const cJSON *tsj = cJSON_GetObjectItemCaseSensitive(root, "ts");
+    if (cJSON_IsNumber(tsj))
+        out->ts = (long long)tsj->valuedouble;
+
+    /* Cell occupancy, so an overlap can be refused earlier-wins the same way
+     * the publisher already does. Sized off the ceilings, indexed by the
+     * *published* grid. */
+    bool occ[KV_GRID_ROWS_MAX * KV_GRID_COLS_MAX];
+    memset(occ, 0, sizeof(occ));
+
+    const cJSON *btns = cJSON_GetObjectItemCaseSensitive(root, "buttons");
+    if (cJSON_IsArray(btns)) {
+        const cJSON *el = NULL;
+        cJSON_ArrayForEach(el, btns) {
+            if (out->count >= KV_BUTTONS_MAX) {
+                out->skipped++;
+                continue;
+            }
+            if (!cJSON_IsObject(el)) {
+                out->skipped++;
+                continue;
+            }
+
+            const cJSON *keyj = cJSON_GetObjectItemCaseSensitive(el, "key");
+            const cJSON *labelj = cJSON_GetObjectItemCaseSensitive(el, "label");
+            if (!cJSON_IsString(keyj) || !keyj->valuestring || !keyj->valuestring[0] ||
+                !cJSON_IsString(labelj) || !labelj->valuestring ||
+                !labelj->valuestring[0]) {
+                out->skipped++;
+                continue;
+            }
+            /* Reject rather than truncate: a clipped key presses the wrong
+             * button. The label may clip — that is only cosmetic. */
+            if (strlen(keyj->valuestring) >= KV_BTNKEY_MAX) {
+                out->skipped++;
+                continue;
+            }
+
+            int row = get_int(el, "row", -1);
+            int col = get_int(el, "col", -1);
+            int w = get_int(el, "w", 1);
+            int h = get_int(el, "h", 1);
+            if (row < 0 || col < 0 || w < 1 || h < 1 || w > KV_SPAN_MAX ||
+                h > KV_SPAN_MAX || row + h > rows || col + w > cols) {
+                out->skipped++;
+                continue;
+            }
+
+            bool clash = false;
+            for (int r = row; r < row + h && !clash; r++)
+                for (int c = col; c < col + w; c++)
+                    if (occ[r * cols + c]) {
+                        clash = true;
+                        break;
+                    }
+            if (clash) {
+                out->skipped++;
+                continue;
+            }
+            for (int r = row; r < row + h; r++)
+                for (int c = col; c < col + w; c++)
+                    occ[r * cols + c] = true;
+
+            kvscf_button_t *b = &out->buttons[out->count++];
+            memset(b, 0, sizeof(*b));
+            copy_field(b->key, sizeof(b->key), keyj->valuestring);
+            copy_field(b->label, sizeof(b->label), labelj->valuestring);
+            get_str(el, "color", b->color, sizeof(b->color));
+            b->row = row;
+            b->col = col;
+            b->w = w;
+            b->h = h;
+        }
+    }
+
+    cJSON_Delete(root);
+    return true;
+}
+
+size_t kvscf_press_payload(const char *token, const char *button_key, char *buf,
+                           size_t bufsz) {
+    if (!buf || bufsz == 0)
+        return 0;
+    buf[0] = '\0';
+    if (!token || !token[0] || !button_key || !button_key[0])
+        return 0; /* R8: never a payload without a token */
+    int n = snprintf(buf, bufsz, "{\"token\":\"%s\",\"button\":\"%s\"}", token,
+                     button_key);
+    if (n < 0 || (size_t)n >= bufsz) {
+        buf[0] = '\0';
+        return 0;
+    }
+    return (size_t)n;
+}
+
+static int hex_nibble(char c) {
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+bool kvscf_button_rgb(const char *color, uint32_t *out_rgb) {
+    if (!color || !out_rgb)
+        return false;
+    const char *s = color[0] == '#' ? color + 1 : color;
+    if (strlen(s) == 6) {
+        uint32_t v = 0;
+        int i = 0;
+        for (; i < 6; i++) {
+            int nib = hex_nibble(s[i]);
+            if (nib < 0)
+                break;
+            v = (v << 4) | (uint32_t)nib;
+        }
+        if (i == 6) {
+            *out_rgb = v;
+            return true;
+        }
+    }
+    /* Not hex — try the repo's named palette (case-insensitive). */
+    int idx = kd_pal_find(color);
+    if (idx < 0)
+        return false;
+    *out_rgb = kd_pal_rgb(idx);
+    return true;
+}
+
+/* ---- Label filtering (no tofu) ---------------------------------------- */
+
+/* Decode one UTF-8 codepoint at `p` (bounded by `end`). Returns the byte length
+ * consumed and writes the codepoint, or 0 for an invalid/truncated sequence —
+ * strict enough to reject overlongs and surrogates, since a label arrives over
+ * the wire from another machine. */
+static size_t utf8_decode(const unsigned char *p, const unsigned char *end,
+                          uint32_t *cp) {
+    if (p >= end)
+        return 0;
+    unsigned char c = p[0];
+    size_t n;
+    uint32_t v;
+    if (c < 0x80) {
+        *cp = c;
+        return 1;
+    } else if ((c & 0xE0) == 0xC0) {
+        n = 2;
+        v = c & 0x1Fu;
+    } else if ((c & 0xF0) == 0xE0) {
+        n = 3;
+        v = c & 0x0Fu;
+    } else if ((c & 0xF8) == 0xF0) {
+        n = 4;
+        v = c & 0x07u;
+    } else {
+        return 0;
+    }
+    if ((size_t)(end - p) < n)
+        return 0;
+    for (size_t i = 1; i < n; i++) {
+        if ((p[i] & 0xC0) != 0x80)
+            return 0;
+        v = (v << 6) | (uint32_t)(p[i] & 0x3F);
+    }
+    if ((n == 2 && v < 0x80) || (n == 3 && v < 0x800) || (n == 4 && v < 0x10000))
+        return 0; /* overlong */
+    if (v > 0x10FFFF || (v >= 0xD800 && v <= 0xDFFF))
+        return 0;
+    *cp = v;
+    return n;
+}
+
+/* Codepoints no monochrome bitmap/outline renderer here can ever draw usefully,
+ * dropped before the predicate even sees them. */
+static bool always_drop(uint32_t cp) {
+    return cp == 0x200D ||                    /* zero-width joiner        */
+           cp == 0xFE0E || cp == 0xFE0F ||    /* variation selectors 15/16 */
+           (cp >= 0x1F3FB && cp <= 0x1F3FF);  /* skin tone modifiers      */
+}
+
+size_t kvscf_label_filter(const char *in, char *out, size_t outsz,
+                          bool (*renderable)(uint32_t cp, void *ctx), void *ctx) {
+    if (!out || outsz == 0)
+        return 0;
+    out[0] = '\0';
+    if (!in)
+        return 0;
+
+    const unsigned char *p = (const unsigned char *)in;
+    const unsigned char *end = p + strlen(in);
+    size_t w = 0;
+    bool pending_space = false; /* emit at most one space, and none leading */
+
+    while (p < end) {
+        uint32_t cp = 0;
+        size_t n = utf8_decode(p, end, &cp);
+        if (n == 0) {
+            p++; /* invalid byte: drop it, keep scanning */
+            continue;
+        }
+        const unsigned char *seq = p;
+        p += n;
+
+        if (always_drop(cp))
+            continue;
+        if (renderable && !renderable(cp, ctx))
+            continue;
+
+        /* Collapse the gaps a dropped codepoint leaves behind. */
+        if (cp == ' ' || cp == '\t' || cp == '\n' || cp == '\r') {
+            pending_space = (w > 0);
+            continue;
+        }
+        if (pending_space) {
+            if (w + 1 >= outsz)
+                break;
+            out[w++] = ' ';
+            pending_space = false;
+        }
+        if (w + n >= outsz)
+            break; /* never split a multi-byte sequence */
+        memcpy(out + w, seq, n);
+        w += n;
+    }
+
+    out[w] = '\0';
+    return w;
 }
 
 int kvscf_page_count(int n, int per_page) {

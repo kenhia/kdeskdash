@@ -38,6 +38,11 @@
 #define LV_FONT_MONTSERRAT_48  1
 #define LV_FONT_DEFAULT &lv_font_montserrat_20
 
+/* Layouts. Both default on, but the Launcher's button grid is the first place
+ * that depends on GRID, so say so rather than inherit it. */
+#define LV_USE_FLEX 1
+#define LV_USE_GRID 1
+
 /* Widgets */
 #define LV_USE_BUTTON 1
 #define LV_USE_LABEL  1

@@ -23,6 +23,7 @@
 #include "modes/game_of_life.h"
 #include "modes/golz.h"
 #include "modes/icons.h"
+#include "modes/launcher.h"
 #include "modes/menu.h"
 #include "modes/palette.h"
 #include "modeset.h"
@@ -67,6 +68,8 @@ static kd_mode_t *create_mode(const char *id, const kdeskdash_config_t *cfg) {
     if (strcmp(id, "foreground") == 0)
         return foreground_mode_create("foreground", "Remote",
                                       cfg->icons_ttf_path);
+    if (strcmp(id, "launcher") == 0)
+        return launcher_mode_create("launcher", "Launcher");
     if (strcmp(id, "calc") == 0)
         return calc_mode_create("calc", "Calc");
     if (strcmp(id, "palette") == 0)
@@ -180,12 +183,13 @@ int main(int argc, char **argv) {
         claude_redis_init(cfg.claude_redis_host, cfg.claude_redis_port,
                           cfg.claude_redis_auth);
 
-    /* kvscf window feed (foreground mode): its own endpoint, defaulting to the
-     * claude-feed values because on rpidash2 both live on the same 6380
-     * instance — but a second panel reads that same fleet claude feed while
-     * driving a different kvscf. Own handle either way, for failure isolation.
-     * The focus token comes from KVSCF_TOKEN (empty -> focusing disabled). */
-    if (modeset_enabled(&modes, "foreground"))
+    /* kvscf feed (foreground + launcher modes — one handle, two readers): its
+     * own endpoint, defaulting to the claude-feed values because on rpidash2
+     * both live on the same 6380 instance — but a second panel reads that same
+     * fleet claude feed while driving a different kvscf. Own handle either way,
+     * for failure isolation. The token comes from KVSCF_TOKEN (empty -> the
+     * modes render read-only and refuse to send commands). */
+    if (modeset_enabled(&modes, "foreground") || modeset_enabled(&modes, "launcher"))
         kvscf_redis_init(cfg.kvscf_redis_host, cfg.kvscf_redis_port,
                          cfg.kvscf_redis_auth, cfg.kvscf_token);
 
