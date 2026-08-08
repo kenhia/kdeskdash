@@ -145,14 +145,39 @@ was published from the merged squash commit, not from the branch.
   about that board.** Rollback target for rpidash2 if needed:
   `just deploy rpidash2 0.24.0-185fe20`.
 
+## Deployed 2026-08-08 — rpidash3, fleet uniform
+
+rpidash3 came back on-network once the case-print fit testing finished (WI
+#1036). No new publish: the only commit past `0.24.0-6f819b7` is the
+`.deploy-cache` fix below, which touches `scripts/deploy.sh` — host-side, not
+shipped in the artifact — so installing the *same* published version is what
+makes the fleet uniform rather than splitting it again.
+
+- **rpidash3** — `just deploy rpidash3 0.24.0-6f819b7`, installed from the
+  verified local cache (no re-fetch). `kdeskdash 0.24.0-6f819b7` asserted
+  exactly, unit `active` on a fresh PID, and `kddss` returned a rendered frame
+  (Clock mode, local + UTC + stopwatch, times correct).
+- **The unit did not drift.** `deploy/kdeskdash.service` is byte-identical
+  (md5 `6987f09…`) across the committed copy, rpidash2, and rpidash3, and
+  `/etc/kdeskdash/kdeskdash.env` was already the sprint-019 mode set — so no
+  `install-service` was owed on this board.
+- **The pre-024 probe hazard fired exactly as documented and was harmless**: a
+  `just versions` *before* the deploy started a second instance on rpidash3 that
+  lost DRM master and logged `drmModeAtomicCommit: Permission denied`. The
+  `timeout -k 2 10` bound reaped it; the service's own process was untouched.
+  Confirmation that the bound is load-bearing, not belt-and-braces.
+
+Both boards now run `0.24.0-6f819b7`. Every deploy in the fleet is store-served.
+
 ## Follow-ups
 
 - **The first publish from `main` happens in sprint-ship Phase 7**, via
   `deploy-panels`. Until then `latest` is unset by design (branch publishes do
   not move it), so `just deploy` with no version has nothing to resolve.
-- **rpidash3 needs its first store deploy** — Phase 7 attempted it and it was
-  offline, as expected. One `just deploy rpidash3 <version>` when it is next up.
-- **A failed fetch leaves an empty `.deploy-cache/<version>/` behind**, which
+- ~~**rpidash3 needs its first store deploy**~~ — done 2026-08-08, see above.
+  Phase 7 attempted it and it was offline, as expected.
+- ~~**A failed fetch leaves an empty `.deploy-cache/<version>/` behind**~~ —
+  fixed in `746da99` (#30). It
   then shows in `just versions` as if that version were cached. Found by this
   sprint's own negative test (`0.99.0-nope`). Cosmetic, but a cache listing that
   names a version it does not have is exactly the kind of small lie this sprint
