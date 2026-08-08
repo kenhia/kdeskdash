@@ -157,3 +157,26 @@ was touched — adding `launcher` to rpidash3 is slice 5's line to write.
   turn out to lean on emoji; the filter means they are legible either way.
 - The Launcher is not on any panel yet — it is in the roster and buildable, but
   both hosts pin `KDESKDASH_MODES`, so nothing changed on either desk.
+
+## Deployed 2026-08-08
+
+Published from merged `main` (`4049571`) and installed on the whole fleet.
+
+- **Artifact:** `0.25.0-4049571` (store `latest`). `VERSION` moved to `0.25.0`,
+  the minor tracking the sprint number as usual.
+- **Rollback target:** `0.24.0-6f819b7` — `just deploy <host> 0.24.0-6f819b7`.
+- **rpidash2** (Pi 5, dev desk) — `kdeskdash 0.25.0-4049571`, unit active,
+  frame captured (Claude mode).
+- **rpidash3** (Pi 4, work desk) — `kdeskdash 0.25.0-4049571`, unit active,
+  frame captured. Reachable this time, so the fleet is uniform rather than
+  split.
+
+The unit file did not change this sprint, so no `install-service` was needed,
+and no device env file was touched.
+
+**Verified live, sprint-specifically:** the new binary is running on both
+boards *and* the Launcher is correctly **inert** on both. rpidash3's Menu frame
+shows its six tiles (Icons, Palette | Remote, Clock, Dev, Calc) with no Launcher
+tile — which is the intended outcome, since adding `launcher` to the roster must
+not change a panel whose `KDESKDASH_MODES` does not name it. Turning it on for
+the work desk is slice 5's one-word edit.
