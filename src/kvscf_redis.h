@@ -44,9 +44,24 @@ int kvscf_redis_refresh_edge(kvscf_edge_t *out, int max);
  * order into `out`. Returns the count written. */
 int kvscf_redis_refresh_apps(kvscf_appitem_t *out, int max);
 
+/* Refresh the launcher button grid: SCAN kvscf:launcher:*, GET + parse the
+ * first key (by sorted key order) that yields a usable config, into `out`.
+ *
+ * Returns true only when `out` was overwritten. On false — endpoint down, key
+ * expired, payload unusable — `out` is untouched, which is the whole point: the
+ * caller keeps showing its last-good grid, dimmed. The 10s TTL is right for a
+ * live window list but wrong for a button layout, because the machine
+ * publishing it sleeps and locks all day. */
+bool kvscf_redis_refresh_launcher(kvscf_launcher_t *out);
+
 /* Publish a launch-or-focus command for `app_key` (focus if running, else
  * launch). Same guards as kvscf_redis_focus; keyed by app instead of HWND. */
 bool kvscf_redis_launch(const char *host, const char *app_key);
+
+/* Publish a launcher button press: `{token, button}` on kvscf:focus:<host>.
+ * Same guards as kvscf_redis_focus. Fire-and-forget — kvscf sends no ack, so
+ * a true return means "sent", not "the window came forward". */
+bool kvscf_redis_press(const char *host, const char *button_key);
 
 /* Publish a focus command for `host` (the window's publisher host) and window
  * `id`. Returns true if a command was sent. No-op returning false when the

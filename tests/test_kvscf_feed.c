@@ -323,6 +323,236 @@ static void test_trim(void) {
     check((long)kvscf_trim_trailing(c), 5, "no-op clean");
 }
 
+/* ---- Launcher buttons (sprint 025) ------------------------------------ */
+
+/* Shape taken verbatim from the frozen contract (kvscf docs
+ * kdeskdash-vscode-mode.md §6). */
+static const char *LAUNCHER =
+    "{\"host\":\"kwork\",\"ts\":1784416199,"
+    "\"grid\":{\"rows\":3,\"cols\":9},"
+    "\"buttons\":["
+    "{\"key\":\"ado-pipelines\",\"label\":\"Pipelines\",\"color\":\"#2ec4c4\","
+    "\"row\":0,\"col\":0,\"w\":2,\"h\":1},"
+    "{\"key\":\"ado-wits\",\"label\":\"Work Items\",\"color\":\"#2ec4c4\","
+    "\"row\":0,\"col\":2,\"w\":1,\"h\":1}]}";
+
+static void test_launcher_parse(void) {
+    kvscf_launcher_t L;
+    check(kvscf_parse_launcher(LAUNCHER, strlen(LAUNCHER), &L), 1, "parsed");
+    check_str(L.host, "kwork", "host from root");
+    check(L.ts, 1784416199, "ts parsed");
+    check(L.rows, 3, "grid rows as published");
+    check(L.cols, 9, "grid cols as published");
+    check(L.count, 2, "two buttons");
+    check(L.skipped, 0, "nothing skipped");
+    check_str(L.buttons[0].key, "ado-pipelines", "key copied");
+    check_str(L.buttons[0].label, "Pipelines", "label copied");
+    check_str(L.buttons[0].color, "#2ec4c4", "color copied verbatim");
+    check(L.buttons[0].w, 2, "w span");
+    check(L.buttons[1].col, 2, "col");
+    check(L.buttons[1].h, 1, "h span");
+}
+
+/* The grid is on the wire so neither side assumes it: a payload without a
+ * usable one is rejected whole, leaving the caller's last-good config intact. */
+static void test_launcher_grid_required(void) {
+    kvscf_launcher_t L;
+    memset(&L, 0, sizeof(L));
+    L.cols = 9; /* sentinel: must survive a rejected parse */
+
+    const char *no_grid = "{\"host\":\"kwork\",\"buttons\":[]}";
+    check(kvscf_parse_launcher(no_grid, strlen(no_grid), &L), 0, "no grid -> reject");
+    check(L.cols, 9, "rejected parse leaves out untouched");
+
+    const char *zero = "{\"host\":\"kwork\",\"grid\":{\"rows\":0,\"cols\":9}}";
+    check(kvscf_parse_launcher(zero, strlen(zero), &L), 0, "zero rows -> reject");
+
+    const char *huge = "{\"host\":\"kwork\",\"grid\":{\"rows\":3,\"cols\":99}}";
+    check(kvscf_parse_launcher(huge, strlen(huge), &L), 0, "cols past ceiling -> reject");
+
+    const char *bad_host = "{\"host\":\"kwork;rm\",\"grid\":{\"rows\":3,\"cols\":9}}";
+    check(kvscf_parse_launcher(bad_host, strlen(bad_host), &L), 0, "bad host -> reject");
+
+    check(kvscf_parse_launcher("not json", 8, &L), 0, "garbage -> reject");
+
+    /* An empty but well-formed grid IS usable — it means "no buttons yet". */
+    const char *empty = "{\"host\":\"kwork\",\"grid\":{\"rows\":3,\"cols\":9},\"buttons\":[]}";
+    check(kvscf_parse_launcher(empty, strlen(empty), &L), 1, "empty button list ok");
+    check(L.count, 0, "no buttons");
+    check(L.cols, 9, "grid overwritten on success");
+}
+
+/* A typo can never blank a panel: bad placements are skipped and counted, the
+ * good ones still render. */
+static void test_launcher_skips_bad_buttons(void) {
+    const char *json =
+        "{\"host\":\"kwork\",\"grid\":{\"rows\":3,\"cols\":4},\"buttons\":["
+        "{\"key\":\"ok\",\"label\":\"Ok\",\"row\":0,\"col\":0},"        /* keep      */
+        "{\"key\":\"oob\",\"label\":\"X\",\"row\":3,\"col\":0},"         /* off grid  */
+        "{\"key\":\"wide\",\"label\":\"X\",\"row\":1,\"col\":3,\"w\":2},"/* overhangs */
+        "{\"key\":\"big\",\"label\":\"X\",\"row\":1,\"col\":0,\"w\":4}," /* w > span  */
+        "{\"key\":\"neg\",\"label\":\"X\",\"row\":-1,\"col\":0},"        /* negative  */
+        "{\"label\":\"X\",\"row\":2,\"col\":0},"                         /* no key    */
+        "{\"key\":\"nolabel\",\"row\":2,\"col\":1},"                     /* no label  */
+        "{\"key\":\"clash\",\"label\":\"X\",\"row\":0,\"col\":0},"       /* overlap   */
+        "\"not an object\","
+        "{\"key\":\"last\",\"label\":\"Last\",\"row\":2,\"col\":3}]}";
+    kvscf_launcher_t L;
+    check(kvscf_parse_launcher(json, strlen(json), &L), 1, "parsed despite junk");
+    check(L.count, 2, "two survivors");
+    check(L.skipped, 8, "eight skipped and counted");
+    check_str(L.buttons[0].key, "ok", "first survivor");
+    check_str(L.buttons[1].key, "last", "second survivor");
+    /* Earlier wins the contested cell, matching the publisher. */
+    check_str(L.buttons[0].label, "Ok", "earlier button kept the cell");
+}
+
+/* Absent w/h default to 1; a multi-cell button claims every cell it covers. */
+static void test_launcher_span_occupancy(void) {
+    const char *json =
+        "{\"host\":\"kwork\",\"grid\":{\"rows\":3,\"cols\":4},\"buttons\":["
+        "{\"key\":\"big\",\"label\":\"Big\",\"row\":0,\"col\":0,\"w\":2,\"h\":2},"
+        "{\"key\":\"inside\",\"label\":\"X\",\"row\":1,\"col\":1},"  /* inside big  */
+        "{\"key\":\"free\",\"label\":\"Free\",\"row\":1,\"col\":2}]}";
+    kvscf_launcher_t L;
+    check(kvscf_parse_launcher(json, strlen(json), &L), 1, "parsed");
+    check(L.count, 2, "the covered cell was refused");
+    check(L.skipped, 1, "one skipped");
+    check(L.buttons[1].w, 1, "absent w defaults to 1");
+    check(L.buttons[1].h, 1, "absent h defaults to 1");
+}
+
+/* Risk from sprint 008: a key that does not fit must be REJECTED, never
+ * truncated — a truncated key presses the wrong button. Labels may truncate. */
+static void test_launcher_oversize_fields(void) {
+    char json[512];
+    char key[KV_BTNKEY_MAX + 8];
+    memset(key, 'k', sizeof(key) - 1);
+    key[sizeof(key) - 1] = '\0';
+    snprintf(json, sizeof(json),
+             "{\"host\":\"kwork\",\"grid\":{\"rows\":1,\"cols\":2},\"buttons\":["
+             "{\"key\":\"%s\",\"label\":\"X\",\"row\":0,\"col\":0}]}", key);
+    kvscf_launcher_t L;
+    check(kvscf_parse_launcher(json, strlen(json), &L), 1, "envelope still ok");
+    check(L.count, 0, "over-long key rejected, not truncated");
+    check(L.skipped, 1, "counted as skipped");
+
+    /* The longest key that DOES fit must round-trip byte-exact. */
+    memset(key, 'k', KV_BTNKEY_MAX - 1);
+    key[KV_BTNKEY_MAX - 1] = '\0';
+    snprintf(json, sizeof(json),
+             "{\"host\":\"kwork\",\"grid\":{\"rows\":1,\"cols\":2},\"buttons\":["
+             "{\"key\":\"%s\",\"label\":\"X\",\"row\":0,\"col\":0}]}", key);
+    check(kvscf_parse_launcher(json, strlen(json), &L), 1, "parsed");
+    check(L.count, 1, "max-length key accepted");
+    check_str(L.buttons[0].key, key, "max-length key round-trips exactly");
+}
+
+static void test_launcher_cap(void) {
+    /* A 6x12 grid is the ceiling; every cell filled is exactly KV_BUTTONS_MAX. */
+    char json[8192];
+    int n = snprintf(json, sizeof(json),
+                     "{\"host\":\"kwork\",\"grid\":{\"rows\":%d,\"cols\":%d},"
+                     "\"buttons\":[", KV_GRID_ROWS_MAX, KV_GRID_COLS_MAX);
+    for (int r = 0; r < KV_GRID_ROWS_MAX; r++)
+        for (int c = 0; c < KV_GRID_COLS_MAX; c++)
+            n += snprintf(json + n, sizeof(json) - (size_t)n,
+                          "%s{\"key\":\"b%d_%d\",\"label\":\"B\",\"row\":%d,"
+                          "\"col\":%d}", (r || c) ? "," : "", r, c, r, c);
+    snprintf(json + n, sizeof(json) - (size_t)n, "]}");
+
+    kvscf_launcher_t L;
+    check(kvscf_parse_launcher(json, strlen(json), &L), 1, "full grid parses");
+    check(L.count, KV_BUTTONS_MAX, "every cell filled");
+    check(L.skipped, 0, "nothing skipped at the ceiling");
+}
+
+static void test_press_payload(void) {
+    char buf[256];
+    size_t n = kvscf_press_payload("kvscf-abc", "ado-pipelines", buf, sizeof(buf));
+    check((long)n, (long)strlen(buf), "press length matches");
+    check_str(buf, "{\"token\":\"kvscf-abc\",\"button\":\"ado-pipelines\"}",
+              "press payload shape");
+    /* R8 again: never a command without a token. */
+    check(kvscf_press_payload("", "k", buf, sizeof(buf)), 0, "no token -> 0");
+    check_str(buf, "", "empty buf on no token");
+    check(kvscf_press_payload("t", "", buf, sizeof(buf)), 0, "no key -> 0");
+    char small[8];
+    check(kvscf_press_payload("kvscf-abc", "ado-pipelines", small, sizeof(small)),
+          0, "too small -> 0");
+    check_str(small, "", "empty on overflow");
+}
+
+static void test_button_rgb(void) {
+    uint32_t rgb = 0;
+    check(kvscf_button_rgb("#2ec4c4", &rgb), 1, "hex with hash");
+    check((long)rgb, 0x2ec4c4, "hex value");
+    check(kvscf_button_rgb("2EC4C4", &rgb), 1, "hex without hash, upper");
+    check((long)rgb, 0x2ec4c4, "case-insensitive hex");
+    /* Palette names are the repo's colour vocabulary — accept them by name. */
+    check(kvscf_button_rgb("edge_teal", &rgb), 1, "palette name");
+    check((long)rgb, 0x2ec4c4, "palette value");
+    check(kvscf_button_rgb("CLAUDE_CORAL", &rgb), 1, "palette name upper");
+    check((long)rgb, 0xcf6b4a, "palette value upper");
+    /* Unknown/empty is "use the default", never a reason to drop the button. */
+    check(kvscf_button_rgb("", &rgb), 0, "empty -> default");
+    check(kvscf_button_rgb("#12345", &rgb), 0, "short hex -> default");
+    check(kvscf_button_rgb("#gggggg", &rgb), 0, "non-hex -> default");
+    check(kvscf_button_rgb("chartreuse", &rgb), 0, "unknown name -> default");
+    check(kvscf_button_rgb(NULL, &rgb), 0, "NULL -> default");
+}
+
+/* Stub predicate: ASCII renders, everything else does not — which is exactly
+ * the posture of Montserrat + a symbols-only Nerd Font. */
+static bool ascii_only(uint32_t cp, void *ctx) {
+    (void)ctx;
+    return cp < 0x80;
+}
+
+static void test_label_filter(void) {
+    char out[64];
+
+    /* U+1F980 CRAB, then a space, then text. */
+    kvscf_label_filter("\xF0\x9F\xA6\x80 Rust Docs", out, sizeof(out), ascii_only, NULL);
+    check_str(out, "Rust Docs", "unrenderable leader dropped and trimmed");
+
+    /* U+1F6E0 U+FE0F — base emoji plus a variation selector. */
+    kvscf_label_filter("Build \xF0\x9F\x9B\xA0\xEF\xB8\x8F now", out, sizeof(out),
+                       ascii_only, NULL);
+    check_str(out, "Build now", "emoji + VS16 dropped, spaces collapsed");
+
+    /* Always-drop set applies even with no predicate: ZWJ, VS15/16, skin tone. */
+    kvscf_label_filter("a\xE2\x80\x8D\xEF\xB8\x8E\xF0\x9F\x8F\xBD" "b", out,
+                       sizeof(out), NULL, NULL);
+    check_str(out, "ab", "ZWJ/VS15/skin-tone always dropped");
+
+    /* A renderable non-ASCII codepoint survives when the predicate allows it. */
+    kvscf_label_filter("caf\xC3\xA9", out, sizeof(out), NULL, NULL);
+    check_str(out, "caf\xC3\xA9", "no predicate -> non-ASCII kept");
+    kvscf_label_filter("caf\xC3\xA9", out, sizeof(out), ascii_only, NULL);
+    check_str(out, "caf", "predicate drops the accented e");
+
+    /* Nothing renderable at all leaves an empty string, not a box. */
+    kvscf_label_filter("\xF0\x9F\xA6\x80", out, sizeof(out), ascii_only, NULL);
+    check_str(out, "", "all-emoji label empties out");
+
+    /* Plain text is untouched. */
+    kvscf_label_filter("Work Items", out, sizeof(out), ascii_only, NULL);
+    check_str(out, "Work Items", "plain ASCII passes through");
+
+    /* Invalid UTF-8 is dropped rather than emitted. */
+    kvscf_label_filter("a\xFF\xFE" "b", out, sizeof(out), NULL, NULL);
+    check_str(out, "ab", "invalid bytes dropped");
+
+    /* Truncation never splits a multi-byte sequence. */
+    char tiny[6];
+    kvscf_label_filter("caf\xC3\xA9\xC3\xA9", tiny, sizeof(tiny), NULL, NULL);
+    check_str(tiny, "caf\xC3\xA9", "stops on a codepoint boundary");
+
+    check(kvscf_label_filter(NULL, out, sizeof(out), NULL, NULL), 0, "NULL in -> 0");
+    check_str(out, "", "NULL in empties out");
+}
+
 int main(void) {
     test_parse();
     test_display_host();
@@ -342,6 +572,15 @@ int main(void) {
     test_paging();
     test_focus_payload();
     test_trim();
+    test_launcher_parse();
+    test_launcher_grid_required();
+    test_launcher_skips_bad_buttons();
+    test_launcher_span_occupancy();
+    test_launcher_oversize_fields();
+    test_launcher_cap();
+    test_press_payload();
+    test_button_rgb();
+    test_label_filter();
 
     if (failures) {
         fprintf(stderr, "%d test(s) failed\n", failures);

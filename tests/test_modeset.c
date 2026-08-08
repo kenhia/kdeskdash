@@ -53,21 +53,22 @@ static void check_section(const modeset_t *ms, int s, const char *name,
 
 /* ---- the built-in default -------------------------------------------- */
 
-static const char *DEFAULT_ORDER[] = {"game_of_life", "golz",       "icons",
-                                      "palette",      "claude",     "foreground",
-                                      "clock",        "dev",        "calc"};
+static const char *DEFAULT_ORDER[] = {
+    "game_of_life", "golz",  "icons", "palette",  "claude",
+    "foreground",   "launcher", "clock", "dev",   "calc"};
 static const char *DEFAULT_FUN[] = {"game_of_life", "golz", "icons", "palette"};
-static const char *DEFAULT_OPS[] = {"claude", "foreground", "clock", "dev",
-                                    "calc"};
+static const char *DEFAULT_OPS[] = {"claude", "foreground", "launcher",
+                                    "clock",  "dev",        "calc"};
+#define DEFAULT_N ((int)(sizeof(DEFAULT_ORDER) / sizeof(DEFAULT_ORDER[0])))
 
 static void test_default(void) {
     modeset_t ms;
     modeset_default(&ms);
 
-    check_order(&ms, DEFAULT_ORDER, 9, "default");
+    check_order(&ms, DEFAULT_ORDER, DEFAULT_N, "default");
     check(modeset_section_count(&ms) == 2, "default has two sections");
     check_section(&ms, 0, "fun", DEFAULT_FUN, 4, "default");
-    check_section(&ms, 1, "ops", DEFAULT_OPS, 5, "default");
+    check_section(&ms, 1, "ops", DEFAULT_OPS, 6, "default");
 
     /* Every id in the roster is enabled by default, and nothing else is. */
     check(modeset_enabled(&ms, "palette"), "default enables palette");
@@ -78,7 +79,7 @@ static void test_default(void) {
     /* The roster doubles as the known-id list. */
     check(modeset_id_known("game_of_life"), "game_of_life is a known id");
     check(modeset_id_known("calc"), "calc is a known id");
-    check(!modeset_id_known("launcher"), "launcher is not a known id yet");
+    check(modeset_id_known("launcher"), "launcher is a known id (sprint 025)");
     check(!modeset_id_known(""), "empty string is not a known id");
     check(!modeset_id_known(NULL), "NULL is not a known id");
 }
@@ -88,13 +89,13 @@ static void test_unset_is_default(void) {
     modeset_t ms;
 
     check(!modeset_parse(&ms, NULL), "NULL spec reports 'used the default'");
-    check_order(&ms, DEFAULT_ORDER, 9, "NULL spec");
+    check_order(&ms, DEFAULT_ORDER, DEFAULT_N, "NULL spec");
 
     check(!modeset_parse(&ms, ""), "empty spec reports 'used the default'");
-    check_order(&ms, DEFAULT_ORDER, 9, "empty spec");
+    check_order(&ms, DEFAULT_ORDER, DEFAULT_N, "empty spec");
 
     check(!modeset_parse(&ms, "   \t "), "blank spec reports 'used the default'");
-    check_order(&ms, DEFAULT_ORDER, 9, "blank spec");
+    check_order(&ms, DEFAULT_ORDER, DEFAULT_N, "blank spec");
 }
 
 /* ---- the grammar ------------------------------------------------------ */
@@ -239,13 +240,13 @@ static void test_empty_result_falls_back(void) {
     fprintf(stderr, "-- expect warnings about an unusable spec --\n");
     check(!modeset_parse(&ms, "fun:nosuchmode,alsobad"),
           "all-bad spec falls back to default");
-    check_order(&ms, DEFAULT_ORDER, 9, "all-bad spec");
+    check_order(&ms, DEFAULT_ORDER, DEFAULT_N, "all-bad spec");
 
     check(!modeset_parse(&ms, ";;;"), "separator soup falls back to default");
-    check_order(&ms, DEFAULT_ORDER, 9, "separator soup");
+    check_order(&ms, DEFAULT_ORDER, DEFAULT_N, "separator soup");
 
     check(!modeset_parse(&ms, "garbage"), "bare garbage falls back to default");
-    check_order(&ms, DEFAULT_ORDER, 9, "bare garbage");
+    check_order(&ms, DEFAULT_ORDER, DEFAULT_N, "bare garbage");
 }
 
 /* ---- bounds ----------------------------------------------------------- */
@@ -276,7 +277,7 @@ static void test_query_bounds(void) {
     modeset_default(&ms);
 
     check(modeset_at(&ms, -1) == NULL, "at(-1) is NULL");
-    check(modeset_at(&ms, 9) == NULL, "at(count) is NULL");
+    check(modeset_at(&ms, DEFAULT_N) == NULL, "at(count) is NULL");
     check(modeset_section_name(&ms, -1) == NULL, "section_name(-1) is NULL");
     check(modeset_section_name(&ms, 2) == NULL, "section_name(count) is NULL");
     check(modeset_section_size(&ms, 99) == 0, "section_size out of range is 0");

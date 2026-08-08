@@ -16,6 +16,7 @@
 #define KV_SCAN_MATCH "kvscf:instances:*"
 #define KV_EDGE_MATCH "kvscf:edge:*"
 #define KV_APPS_MATCH "kvscf:apps:*"
+#define KV_LAUNCHER_MATCH "kvscf:launcher:*"
 #define KV_SCAN_COUNT 64
 #define KV_MAX_HOSTS  8      /* distinct publisher hosts (only cleo today) */
 /* Command payload: token + the largest possible id (a folder URI for a closed
@@ -175,6 +176,43 @@ int kvscf_redis_refresh_apps(kvscf_appitem_t *out, int max) {
     return count;
 }
 
+static int cmp_key(const void *a, const void *b) {
+    return strcmp((const char *)a, (const char *)b);
+}
+
+bool kvscf_redis_refresh_launcher(kvscf_launcher_t *out) {
+    if (!out)
+        return false;
+    if (!redis_client_ensure(&g_kv)) {
+        g_reachable = false;
+        return false;
+    }
+    char keys[KV_MAX_HOSTS][KV_KEY_MAX];
+    int nkeys = scan_keys(KV_LAUNCHER_MATCH, keys, KV_MAX_HOSTS);
+    if (nkeys <= 0)
+        return false;
+    /* One panel is paired with one publishing host, but SCAN order is not
+     * stable, so sort: whichever host is chosen, it is the same one every
+     * poll rather than flapping between two grids. */
+    qsort(keys, (size_t)nkeys, KV_KEY_MAX, cmp_key);
+
+    for (int i = 0; i < nkeys; i++) {
+        redisReply *g = redisCommand(g_kv.ctx, "GET %s", keys[i]);
+        if (!g) {
+            g_reachable = false;
+            return false;
+        }
+        bool ok = false;
+        if (g->type == REDIS_REPLY_STRING && g->len > 0 &&
+            (size_t)g->len <= KV_VALUE_MAX)
+            ok = kvscf_parse_launcher(g->str, (size_t)g->len, out);
+        freeReplyObject(g);
+        if (ok)
+            return true;
+    }
+    return false;
+}
+
 /* Publish a focus command with the given RESP-safe JSON `payload` to
  * kvscf:focus:<host>. Shared by the id-based focus and the key-based launch. */
 static bool publish_focus(const char *host, const char *payload) {
@@ -203,6 +241,17 @@ bool kvscf_redis_launch(const char *host, const char *app_key) {
         return false;
     char payload[KV_PAYLOAD_MAX];
     if (kvscf_launch_payload(g_token, app_key, payload, sizeof(payload)) == 0)
+        return false;
+    return publish_focus(host, payload);
+}
+
+bool kvscf_redis_press(const char *host, const char *button_key) {
+    if (g_token[0] == '\0')
+        return false;
+    if (!host || !telemetry_host_token_ok(host, strlen(host)))
+        return false;
+    char payload[KV_PAYLOAD_MAX];
+    if (kvscf_press_payload(g_token, button_key, payload, sizeof(payload)) == 0)
         return false;
     return publish_focus(host, payload);
 }
