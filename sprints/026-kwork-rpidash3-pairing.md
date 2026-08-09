@@ -136,8 +136,15 @@ failure #1144 warns about.
 ## Follow-ups
 
 - **Configure cleo's launcher buttons**, or accept an empty grid on the dev desk.
-- **krot**: register the three live secrets — locations and fingerprints, never
-  values. #1144 is the natural home.
+- **Secret registry: not krot, not yet.** Both this sprint and #1144 carried
+  "register these in krot" from the day they were filed. Ken, 2026-08-09: krot
+  has **zero actual runtime**, so it is not somewhere a secret can be
+  registered. Dropped rather than restated a third time — it returns when krot
+  is runnable, as its own work item covering the whole fleet. Until then the
+  three live secrets are hand-managed and their locations are documented where
+  someone rotating them will actually look:
+  [deploy/hosts/README.md](../deploy/hosts/README.md) and
+  [the pairing runbook](../docs/kwork-rpidash3-pairing.md).
 - **`kvscf-local` has no consumer left** now that kwork runs the full build. Not
   this sprint's call; note that it still earns its keep as a lint target
   (`cargo clippy -p kvscf-local` sees publisher-only dead fields a workspace
