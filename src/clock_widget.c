@@ -68,6 +68,40 @@ static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font,
     return l;
 }
 
+/* Pin a ":SS" label to the width of its widest possible rendering.
+ *
+ * Montserrat is proportional — '1' is materially narrower than '0' — so a
+ * ticking seconds field changes width every second. It shares a content-sized
+ * flex row with the big HH:MM, and that row is centered, so half of every
+ * seconds-width change is handed straight to HH:MM as horizontal movement.
+ * Measured on the panel at tier L: the HH:MM left edge visited four distinct
+ * positions spanning 5 px, once a second, forever. Small, but the eye locks
+ * onto periodic motion and it reads as the clock twitching.
+ *
+ * Fixing the box rather than the font is WI #1149's third option: the seconds
+ * digits still shuffle inside their own box (left-aligned, so they grow to the
+ * right into empty space), but the row's width — and therefore HH:MM — no
+ * longer depends on what second it is. Killing the intra-label shuffle too
+ * would take genuinely monospaced digits, which Montserrat does not have and
+ * which no font in this build does. */
+static void pin_digit_pair_width(lv_obj_t *label, const lv_font_t *font) {
+    /* Widest digit, found rather than assumed: '0' is the usual answer but it
+     * is a per-font fact, and guessing wrong silently reintroduces the wander
+     * for exactly the digits that are worst. */
+    char     widest[4] = ":00";
+    uint16_t best = 0;
+    for (char d = '0'; d <= '9'; d++) {
+        uint16_t adv = lv_font_get_glyph_width(font, (uint32_t)d, 0);
+        if (adv > best) {
+            best = adv;
+            widest[1] = widest[2] = d;
+        }
+    }
+    int32_t ls = lv_obj_get_style_text_letter_space(label, LV_PART_MAIN);
+    lv_obj_set_width(label, lv_text_get_width(widest, 3, font, ls));
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_LEFT, 0);
+}
+
 /* A transparent, non-scrolling, gesture-transparent flex box — the widget lives
  * inside the swipe-navigated shell, so nothing it builds may swallow a swipe. */
 static lv_obj_t *make_box(lv_obj_t *parent, lv_flex_flow_t flow,
@@ -118,6 +152,7 @@ kd_clock_widget_t *kd_clock_widget_create(lv_obj_t *parent) {
     lv_obj_t *row = make_box(local_box, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_END);
     w->local_hm = make_label(row, f.hm, PAL(MOON_INK), "--:--");
     w->local_sec = make_label(row, f.sec, PAL(STEEL_MIST), ":--");
+    pin_digit_pair_width(w->local_sec, f.sec);
     if (f.show_dates)
         w->local_date = make_label(local_box, f.caption, PAL(STEEL_MIST), "");
 
