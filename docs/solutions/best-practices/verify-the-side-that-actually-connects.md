@@ -92,3 +92,37 @@ into a loud one.
 Verify it by removing the file and watching the unit fail, the same way sprint
 010's sandboxing lesson was learned: a safety property that has only ever been
 committed is a safety property nobody has tested.
+
+## Postscript: the same mistake, one layer up, in the runbook
+
+The rollout failed anyway, and for a variant of the same error — this time in
+this repo's own documentation rather than the work item's.
+
+kvscf's handoff said "**both secrets** resolve `HKCU\Software\kenhia\kvscf`
+first, then env". True, and precise: `KVSCF_TOKEN` and `KVSCF_REDIS_PASSWORD`
+read the registry. The other three settings — `KVSCF_REDIS_HOST`,
+`KVSCF_REDIS_PORT`, `KVSCF_HOST_NAME` — are `std::env::var` only. The runbook
+generalized "both secrets" into "config", published a five-row table headed
+*prefer the registry*, and it was followed exactly.
+
+The result was worse than three ignored settings, because the two that *were*
+read still worked: kvscf fell back to `DEFAULT_HOST` (rpidash2's IP, compiled
+in) and offered it the password it had loaded from the registry. rpidash2's
+instance has no `requirepass`, so Redis rejected the AUTH and the channel never
+came up — publishing nothing, to the wrong board, with a reconnect loop as the
+only symptom.
+
+Two things to take from it:
+
+**A config surface is not uniform until you have checked each key.** "Settings
+come from X" is the same shape of claim as "both sides support X" — a summary
+that reads as a rule. Both were accurate about the cases their author had in
+mind and silent about the rest.
+
+**Print the resolved endpoint, and read it.** kvscf logs
+`remote channel up — redis://<host>:<port> auth=<bool>` at startup. That one
+line contained the whole diagnosis from the first second, and neither the
+address nor the flag was checked until the pairing was already declared broken.
+When a component has a compiled-in default that is *another live host*, a
+misconfiguration does not look like an error — it looks like talking
+confidently to the wrong machine.

@@ -144,17 +144,34 @@ are separate binaries with different names, and the failure mode of getting this
 wrong is quiet (windows enumerate fine locally, the panel just stays empty
 forever).
 
-Config resolves from `HKCU\Software\kenhia\kvscf` first, then env / `.env`.
-**Prefer the registry**: a pinned launch from `C:\tools\bin` has no cwd or
-exe-dir `.env`, and that failure is silent — the channel simply never comes up.
+**The five settings do not share one source, and assuming they do breaks the
+pairing silently.** Only the two *secrets* read the registry; the other three are
+`std::env::var` only, and a registry value for them is ignored whatever its type
+(`REG_SZ` or `REG_DWORD` — neither is read). Check `Config::load` in kvscf's
+`crates/kvscf-app/src/remote.rs` rather than trusting this table if it ever
+looks wrong.
 
-| Value | Setting | Notes |
-|---|---|---|
-| `KVSCF_TOKEN` | `kvscf-<64hex>` | **Mandatory** — no token, no channel. kwork's own, distinct from cleo's. |
-| `KVSCF_REDIS_PASSWORD` | the `requirepass` from step 1 | Optional in kvscf: absent means *no AUTH*, not *no channel*. Required here. |
-| `KVSCF_REDIS_HOST` | rpidash3's LAN address | Not the tailnet one — kwork is not on the tailnet. |
-| `KVSCF_REDIS_PORT` | `6380` | The feed instance, not the control one. |
-| `KVSCF_HOST_NAME` | `kwork` | Set it explicitly rather than letting it derive from the computer name, so the key is predictable. |
+| Value | Where it must go | Setting | Notes |
+|---|---|---|---|
+| `KVSCF_TOKEN` | **registry**, then env | `kvscf-<64hex>` | **Mandatory** — no token, no channel. kwork's own, distinct from cleo's. |
+| `KVSCF_REDIS_PASSWORD` | **registry**, then env | the `requirepass` from step 1 | Optional in kvscf: absent means *no AUTH*, not *no channel*. Required here. |
+| `KVSCF_REDIS_HOST` | **env / `.env` only** | rpidash3's LAN address | Not the tailnet one — kwork is not on the tailnet. |
+| `KVSCF_REDIS_PORT` | **env / `.env` only** | `6380` | The feed instance, not the control one. |
+| `KVSCF_HOST_NAME` | **env / `.env` only** | `kwork` | Set it explicitly rather than letting it derive from the computer name, so the key is predictable. |
+
+Put the three env-only values in a `.env` **beside `kvscf.exe`** — `Config::load`
+reads `dotenvy::from_path(<exe dir>/.env)`, and its own comment says that file
+exists "for host/port overrides". A user-level `setx` works equally well.
+
+```ini
+KVSCF_REDIS_HOST=192.168.1.73
+KVSCF_REDIS_PORT=6380
+KVSCF_HOST_NAME=kwork
+```
+
+Leave the token and password in `HKCU\Software\kenhia\kvscf`: it takes
+precedence, and a pinned launch from `C:\tools\bin` has no *cwd* `.env` to fall
+back to.
 
 Startup line to look for:
 
@@ -162,9 +179,16 @@ Startup line to look for:
 kvscf: remote channel up — redis://<rpidash3-lan>:6380 auth=true (publish …, focus …)
 ```
 
-`auth=` is printed deliberately. An endpoint with a `requirepass` that kvscf has
-no password for fails as an ordinary reconnect loop — indistinguishable from an
-unreachable host unless you can see whether AUTH was even attempted.
+Read **both halves** of it. `auth=` is printed deliberately, because an endpoint
+with a `requirepass` that kvscf has no password for fails as an ordinary
+reconnect loop, indistinguishable from an unreachable host. The *address* is
+worth the same attention: if the three env-only values never landed, kvscf falls
+back to `DEFAULT_HOST`/`DEFAULT_PORT`, which are **rpidash2's** `192.168.1.144`
+and `6380` — so the line reads `redis://192.168.1.144:6380` and kwork is aiming
+at the wrong board entirely. That was the first rollout's failure: the registry
+held all five, kvscf read two of them, and the password it *did* read was then
+offered to rpidash2's passwordless instance, which rejects AUTH outright. Both
+feeds dead on rpidash3, nothing in the log but a reconnect loop.
 
 ## Verification
 
@@ -173,7 +197,10 @@ Do all four. The first three can each pass while the pairing is still broken.
 1. **Transport** — on rpidash3: `redis-cli -p 6380 -a "$PW" --no-auth-warning
    keys 'kvscf:*'` lists `kvscf:launcher:kwork` and friends. If it is empty,
    kvscf on kwork is not publishing: wrong build, missing token, or wrong
-   endpoint.
+   endpoint. Check rpidash2's `6380` too (`redis-cli -p 6380 --scan --pattern
+   'kvscf:*'` — no password there) — a `kvscf:*:kwork` key sitting on *that*
+   board means the env-only settings never landed and kwork is talking to the
+   compiled-in default.
 2. **The panel reads it** — the Launcher grid draws kwork's buttons, and Remote
    shows kwork's windows rather than cleo's.
 3. **The token round-trips** — tap a launcher button and confirm the URL opens
