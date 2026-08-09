@@ -222,7 +222,17 @@ static void refresh(lk_state_t *st) {
         return;
     }
 
-    /* No config yet: nothing to cache, so say what we are waiting for. */
+    /* No config yet: nothing to cache, so say what we are waiting for.
+     *
+     * The grid stays hidden here, and with it out of the flex row the clock
+     * pane slides from its usual right-hand 30% over to the left. That reads
+     * like a layout bug and is **not** one to fix: Ken uses the pane's position
+     * as an at-a-glance "the publisher has not attached yet" signal, readable
+     * across the room in a way a small grey banner is not. Restoring the 70/30
+     * split in this state would take the signal away and leave the panel
+     * looking identical whether or not it is receiving anything.
+     *
+     * If this ever does need to change, replace the signal before removing it. */
     if (!st->have_cfg) {
         lv_label_set_text(st->banner, kvscf_redis_reachable()
                                           ? "no launcher configured"

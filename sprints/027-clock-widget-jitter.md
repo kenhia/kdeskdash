@@ -127,10 +127,16 @@ which is the seconds digits growing and shrinking *inside* their pinned box —
 the intended behaviour, and the evidence that the box is doing the work rather
 than the text having stopped changing.
 
-**One observation, pre-existing and not from this sprint.** rpidash3 came back
-showing Launcher's `no launcher configured` empty state with the clock pane on
-the *left* rather than its usual right-hand 30%. That is the no-config layout,
-not a regression: the panel restarted during the deploy, kwork was asleep, and
-`launcher` had no cached config to dim. It only appears in the window between a
-restart and the publisher's first key. Worth a look if it bothers anyone — the
-70/30 split evidently does not hold when the grid pane has nothing in it.
+**One observation, pre-existing — and it turns out to be a feature.** rpidash3
+came back showing Launcher's `no launcher configured` empty state with the clock
+pane on the *left* rather than its usual right-hand 30%: with the grid hidden,
+it is no longer being pushed right by anything. I flagged it as a possible
+layout bug.
+
+It is not. Ken has already learned to read it as **"kwork hasn't attached
+yet"** — a whole-pane position change is legible across the room in a way the
+small grey banner underneath it is not. So the accident is load-bearing, and
+the danger is that it looks exactly like something a future tidy-up would
+quietly correct. `launcher.c`'s empty-state branch now says so at the point
+where someone would make that change, with the rule attached: replace the
+signal before removing it.
