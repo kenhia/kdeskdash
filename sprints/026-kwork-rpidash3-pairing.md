@@ -148,3 +148,45 @@ failure #1144 warns about.
   this sprint's call; note that it still earns its keep as a lint target
   (`cargo clippy -p kvscf-local` sees publisher-only dead fields a workspace
   build structurally cannot).
+
+## Deployed 2026-08-09
+
+Published from merged `main` (`508d5e4`) and installed on the whole fleet.
+Both boards were reachable, so the fleet is uniform.
+
+- **Artifact:** `0.26.0-508d5e4` (store `latest`). `VERSION` moved to `0.26.0`,
+  the minor tracking the sprint number as usual — even though the binary is
+  functionally unchanged, so that a board's reported version names the commit
+  that carries this sprint's config.
+- **Rollback target:** `0.25.0-4049571` — `just deploy <host> 0.25.0-4049571`.
+  Note that rolling the *binary* back does not undo the pairing; that has its
+  own rollback in [the runbook](../docs/kwork-rpidash3-pairing.md), and the two
+  are deliberately independent.
+- **rpidash2** (Pi 5, dev desk) — `kdeskdash 0.26.0-508d5e4`, unit active.
+- **rpidash3** (Pi 4, work desk) — `kdeskdash 0.26.0-508d5e4`, unit active.
+
+Restart was confirmed rather than inferred: `--version` reads the binary on
+disk, not the running process, so both boards were checked for a new `MainPID`
+and an `ExecMainStartTimestamp` matching the install.
+
+**Verified live, sprint-specifically.** Sprint 025 signed off by confirming
+rpidash3's Menu showed **six** tiles with **no** Launcher — the intended
+outcome then, since adding a mode to the roster must not change a panel whose
+`KDESKDASH_MODES` does not name it. This sprint is the mirror image, and that is
+the check:
+
+- **rpidash3** — seven tiles, `Launcher` **first** in Ops (Icons, Palette |
+  Launcher, Remote, Clock, Dev, Calc), matching the order in
+  `deploy/hosts/rpidash3.env`.
+- **rpidash2** — ten tiles, `Launcher` between Claude and Remote, matching
+  `deploy/hosts/rpidash2.env`.
+
+`redis-kvscf` on rpidash3 was checked after the deploy and is still active and
+still bound to loopback plus `192.168.1.73` only — a kdeskdash deploy touches
+neither the instance nor the device env, and now that has been observed rather
+than assumed.
+
+The unit file did not change this sprint, so no `install-service` was needed for
+*the unit* — but both device env files did change, so both were reinstalled
+during implementation (`install-service` never overwrites an installed env file;
+each device's was backed up to `/root/kdeskdash.env.pre026` first).
