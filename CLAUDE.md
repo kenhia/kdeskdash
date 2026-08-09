@@ -152,7 +152,12 @@ stalls boot or another path). The generic client + backoff lives in `src/redis.c
    `{button}` — kvscf's precedence is `button` > `app` > `id`). Its own handle *and* its own
    endpoint config (`KDESKDASH_KVSCF_REDIS_*`), each field falling back independently to the
    Claude feed's — on rpidash2 both genuinely live on the same 6380 instance, but a panel can
-   read the shared fleet Claude feed while driving a different kvscf. These are the only modes
+   read the shared fleet Claude feed while driving a different kvscf. rpidash3 is that panel
+   (sprint 026): it reads rpidash2's fleet feed and drives kwork's kvscf over a *second,
+   password-protected* instance on rpidash3 itself (`deploy/redis-kvscf.conf`), which is why
+   both gates are live there and why they fail in opposite ways — a bad
+   `KDESKDASH_KVSCF_REDISCLI_AUTH` looks like an unreachable endpoint, a bad `KVSCF_TOKEN`
+   looks like nothing at all. See `docs/kwork-rpidash3-pairing.md`. These are the only modes
    that **write/act on another machine**, gated by `KVSCF_TOKEN` (byte-exact, trimmed, never
    logged; per-kvscf-instance, so it lives in each device's `secrets.env`). PUBLISH rides the
    ordinary command connection — kdeskdash never SUBSCRIBEs.
@@ -198,6 +203,14 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
   since sprint 010 and only surfaced when rpidash3 became the first host to run the committed
   unit. Re-run `install-service` everywhere after touching `deploy/kdeskdash.service`, and
   prefer `StateDirectory` for anything the outside world must read.
+- **Verify the side that actually connects** (`verify-the-side-that-actually-connects.md`) —
+  a plan asserting "both sides already support X" is a claim about two specific binaries;
+  enumerate them and read the source. Sprint 026's said so about kdeskdash's reader and
+  rpi53's server, neither of which was in the path — the program that had to authenticate was
+  kvscf, which could not. Corollaries: transport auth (`*_REDISCLI_AUTH`) and application
+  auth (`KVSCF_TOKEN`) fail in *opposite* ways, so "data is flowing" tests only one of them;
+  and a conf whose insecure default must never start should `include` an uncommitted file, so
+  a missing secret fails closed and loudly.
 
 ### Conventions
 

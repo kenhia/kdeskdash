@@ -74,7 +74,9 @@ cross-compile approach and adding touch input.
   than blanking — the 10s key TTL is right for a live window list and wrong for a button
   layout. Labels are filtered to what the panel can actually draw, so an emoji the font
   lacks disappears instead of rendering as a box. See
-  [sprints/025-launcher-mode.md](sprints/025-launcher-mode.md).
+  [sprints/025-launcher-mode.md](sprints/025-launcher-mode.md), and
+  [docs/kwork-rpidash3-pairing.md](docs/kwork-rpidash3-pairing.md) for the work-desk
+  pairing that put it in front of the Stream Deck it replaced.
 - **Calc** — a desk calculator built for the wide panel: big result + hex/binary readouts
   and always-live unit conversions (in↔mm exact; px↔mm via the ruler-measured 7.69 px/mm
   panel calibration) on the left, six store/recall registers (R0–R5) in the middle, and a
@@ -227,13 +229,13 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_CLAUDE_REDIS_HOST` | `127.0.0.1`   | Claude-feed Redis host (agent activity + usage limits; a second, LAN-reachable instance on the Pi itself). Used by `claude` mode. |
 | `KDESKDASH_CLAUDE_REDIS_PORT` | `6380`        | Claude-feed Redis port |
 | `KDESKDASH_CLAUDE_REDISCLI_AUTH` | _(unset)_  | Claude-feed Redis password, if any (AUTH) |
-| `KDESKDASH_KVSCF_REDIS_HOST` | _(claude-feed host)_ | kvscf instance the `Remote` mode reads and publishes to. Unset reuses the Claude-feed value, which is right when both live on the same Redis; set it when a panel reads the fleet Claude feed but drives a *different* kvscf. |
+| `KDESKDASH_KVSCF_REDIS_HOST` | _(claude-feed host)_ | kvscf instance the `Remote` and `Launcher` modes read and publish to. Unset reuses the Claude-feed value, which is right when both live on the same Redis; set it when a panel reads the fleet Claude feed but drives a *different* kvscf — rpidash3 points these at its own second instance on 6380, which kwork publishes to. |
 | `KDESKDASH_KVSCF_REDIS_PORT` | _(claude-feed port)_ | As above. Each of the three falls back independently — set only the host and you inherit the Claude-feed port and auth. |
-| `KDESKDASH_KVSCF_REDISCLI_AUTH` | _(claude-feed auth)_ | As above. |
+| `KDESKDASH_KVSCF_REDISCLI_AUTH` | _(claude-feed auth)_ | As above — the **transport** gate, distinct from `KVSCF_TOKEN`'s application one. **Secret** where it is needed (rpidash3): install via `/etc/kdeskdash/secrets.env`. Wrong or missing looks like an unreachable endpoint, not a permissions error. |
 | `KDESKDASH_MODES`      | _(unset → all modes)_ | Per-device mode set: `fun:<ids>;ops:<ids>`. See [Per-device mode sets](#per-device-mode-sets). |
 | `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
 | `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
-| `KVSCF_TOKEN`          | _(unset)_            | Shared secret authenticating the commands `Remote` and `Launcher` send to that device's `kvscf` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → both modes still render but tapping cannot act ("view only"). The kvscf feed reuses the Claude-feed endpoint (`KDESKDASH_CLAUDE_REDIS_*`, port 6380). **Secret** — install via `/etc/kdeskdash/secrets.env`, never a committed host file. |
+| `KVSCF_TOKEN`          | _(unset)_            | Shared secret authenticating the commands `Remote` and `Launcher` send to that device's `kvscf` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → both modes still render but tapping cannot act ("view only"). Per kvscf instance, so each panel gets its own. **Secret** — install via `/etc/kdeskdash/secrets.env`, never a committed host file. |
 
 ## Redis (optional)
 
@@ -314,8 +316,10 @@ kdeskdash/
 │   │   ├── rpidash2.env            #   Pi 5, dev desk
 │   │   ├── rpidash3.env            #   Pi 4, work desk
 │   │   └── README.md               #   install flow + the hand-installed secrets.env
-│   ├── redis-claude.conf           # claude-feed Redis instance (port 6380, ephemeral)
-│   └── redis-claude.service        # systemd unit for the claude-feed instance
+│   ├── redis-claude.conf           # claude-feed Redis instance (rpidash2:6380, ephemeral, open)
+│   ├── redis-claude.service        # systemd unit for the claude-feed instance
+│   ├── redis-kvscf.conf            # kvscf-feed Redis instance (rpidash3:6380, ephemeral, AUTH + LAN bind)
+│   └── redis-kvscf.service         # systemd unit for the kvscf-feed instance
 ├── publisher/
 │   ├── claude-pub.sh               # zero-dep hook/statusline/poll publisher (RESP over /dev/tcp)
 │   ├── settings-fragment.json      # ~/.claude/settings.json hook + statusline config
