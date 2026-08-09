@@ -203,6 +203,12 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
   since sprint 010 and only surfaced when rpidash3 became the first host to run the committed
   unit. Re-run `install-service` everywhere after touching `deploy/kdeskdash.service`, and
   prefer `StateDirectory` for anything the outside world must read.
+- **Proportional digits move their neighbours** (`proportional-digits-move-their-neighbours.md`)
+  — no font in this build has tabular digits, so a label whose text ticks changes width, and
+  in a centered `LV_SIZE_CONTENT` flex row it hands half of that change to its *sibling* as
+  movement. Pin the volatile label to its widest rendering and align the text toward the
+  stable element. `lv_obj_align` has the same failure one anchor away (clock mode's stopwatch
+  still does, at 10 Hz). Check every live readout for which edge the digits push.
 - **Verify the side that actually connects** (`verify-the-side-that-actually-connects.md`) —
   a plan asserting "both sides already support X" is a claim about two specific binaries;
   enumerate them and read the source. Sprint 026's said so about kdeskdash's reader and

@@ -79,6 +79,20 @@ reported it, not because it was missed.
 `clock_widget` is shared, so this lands in the `clock` mode rebuild (#1136) for
 free when that happens.
 
+## Found while shipping: the stopwatch has the same bug, faster
+
+`clock` mode positions its stopwatch readout with
+`lv_obj_align(st->sw_label, LV_ALIGN_RIGHT_MID, -60, -50)`. No flex involved,
+same family of failure: the **right** edge is pinned, so as the digits change
+width they push the **left** edge around — and that readout updates at 10 Hz,
+ten times the rate that was distracting enough to file #1149.
+
+Not fixed here — it is outside this WI's scope, and #1136 rebuilds `clock` mode
+on `clock_widget` anyway, which is the natural moment. Recorded in
+[docs/solutions/best-practices/proportional-digits-move-their-neighbours.md](../docs/solutions/best-practices/proportional-digits-move-their-neighbours.md)
+along with the general check: when a readout changes on a timer, ask which edge
+is pinned and which one the digits push.
+
 ## Verified on hardware
 
 Iterated on rpidash2 via `just push-dev`, reviewed live by Ken, and measured as
