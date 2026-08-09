@@ -98,3 +98,39 @@ is pinned and which one the digits push.
 Iterated on rpidash2 via `just push-dev`, reviewed live by Ken, and measured as
 above. The board must be returned to a published version at ship time — see the
 deploy note below.
+
+## Deployed 2026-08-09
+
+Published from merged `main` (`b316406`) and installed on the whole fleet. Both
+boards reachable.
+
+- **Artifact:** `0.27.0-b316406` (store `latest`). `VERSION` → `0.27.0`, the
+  minor tracking the sprint number as usual.
+- **Rollback target:** `0.26.0-508d5e4` — `just deploy <host> 0.26.0-508d5e4`.
+- **rpidash2** (Pi 5, dev desk) — `kdeskdash 0.27.0-b316406`, unit active. This
+  board had been sitting on the `0.26.0-39221a3-dirty` push-dev build since the
+  prototype; the deploy is what returned it to a published version.
+- **rpidash3** (Pi 4, work desk) — `kdeskdash 0.27.0-b316406`, unit active.
+
+**Re-measured against the shipped artifact, not the dev build.** The numbers
+above came from a `push-dev` binary, which is not what ships, so the check was
+run again on the published one:
+
+| | HH:MM left edge |
+|---|---|
+| `0.27.0-b316406`, 10 frames within one minute | **1557 px on every frame — 0 px, one distinct position** |
+
+(The absolute value differs from the prototype run only because the time itself
+differed — `02:20` and `21:36` are not the same width. Stability is the claim,
+not the coordinate.) The right edge still ranges 1715–1727 across those frames,
+which is the seconds digits growing and shrinking *inside* their pinned box —
+the intended behaviour, and the evidence that the box is doing the work rather
+than the text having stopped changing.
+
+**One observation, pre-existing and not from this sprint.** rpidash3 came back
+showing Launcher's `no launcher configured` empty state with the clock pane on
+the *left* rather than its usual right-hand 30%. That is the no-config layout,
+not a regression: the panel restarted during the deploy, kwork was asleep, and
+`launcher` had no cached config to dim. It only appears in the window between a
+restart and the publisher's first key. Worth a look if it bothers anyone — the
+70/30 split evidently does not hold when the grid pane has nothing in it.
