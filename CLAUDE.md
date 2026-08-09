@@ -203,6 +203,14 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
   since sprint 010 and only surfaced when rpidash3 became the first host to run the committed
   unit. Re-run `install-service` everywhere after touching `deploy/kdeskdash.service`, and
   prefer `StateDirectory` for anything the outside world must read.
+- **Verify the side that actually connects** (`verify-the-side-that-actually-connects.md`) —
+  a plan asserting "both sides already support X" is a claim about two specific binaries;
+  enumerate them and read the source. Sprint 026's said so about kdeskdash's reader and
+  rpi53's server, neither of which was in the path — the program that had to authenticate was
+  kvscf, which could not. Corollaries: transport auth (`*_REDISCLI_AUTH`) and application
+  auth (`KVSCF_TOKEN`) fail in *opposite* ways, so "data is flowing" tests only one of them;
+  and a conf whose insecure default must never start should `include` an uncommitted file, so
+  a missing secret fails closed and loudly.
 
 ### Conventions
 
