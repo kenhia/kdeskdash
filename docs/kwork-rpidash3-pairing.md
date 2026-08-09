@@ -173,13 +173,32 @@ Leave the token and password in `HKCU\Software\kenhia\kvscf`: it takes
 precedence, and a pinned launch from `C:\tools\bin` has no *cwd* `.env` to fall
 back to.
 
-Startup line to look for:
+**`HKCU`, not `HKLM` — check which hive `regedit` opened on.** kvscf reads
+`HKEY_CURRENT_USER` only. Values under `HKLM\Software\kenhia\kvscf` are invisible
+to it, so the token resolves to `None`, `Config::load()` returns `None`, and the
+remote channel **never starts at all** — no threads, no socket, and (release
+build, see below) not one word of output. That was the first rollout's actual
+failure. `HKLM\Software` is also readable by every local user by default, so a
+secret parked there is exposed machine-wide and wants rotating, not just moving.
+
+Startup line to look for — **but a release build cannot print it.**
+`crates/kvscf/src/main.rs` sets `windows_subsystem = "windows"` for
+`not(debug_assertions)`, so there is no console and `eprintln!` goes nowhere.
+The publisher also swallows connection errors (`Err(_) => sleep; continue`), so
+a release build is *completely silent* about every failure in this section. To
+see anything, relaunch with inherited redirected handles:
+
+```powershell
+Start-Process -FilePath "<exe>" -RedirectStandardError "$env:TEMP\kvscf-err.txt"
+```
 
 ```
 kvscf: remote channel up — redis://<rpidash3-lan>:6380 auth=true (publish …, focus …)
 ```
 
-Read **both halves** of it. `auth=` is printed deliberately, because an endpoint
+Note it prints immediately after the threads spawn, *before and independent of*
+any connection — it means "a token was found", not "it is working". Read
+**both halves** of it. `auth=` is printed deliberately, because an endpoint
 with a `requirepass` that kvscf has no password for fails as an ordinary
 reconnect loop, indistinguishable from an unreachable host. The *address* is
 worth the same attention: if the three env-only values never landed, kvscf falls

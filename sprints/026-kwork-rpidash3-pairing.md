@@ -135,19 +135,61 @@ failure #1144 warns about.
 
 ## Follow-ups
 
-- **kwork itself** — the one part no machine here can reach. Install the full
-  `kvscf` build (kwork has been on `kvscf-local`, which has the comms module
-  compiled out and cannot publish), set the five registry values, unplug the
-  Stream Deck. Runbook §3.
-- **Relaunch kvscf on cleo** to finish the rotation, then verify a tap actually
-  foregrounds a window — the feeds cannot tell you.
 - **Configure cleo's launcher buttons**, or accept an empty grid on the dev desk.
-- **krot**: register the rpidash3 Redis password and both tokens — locations and
-  fingerprints, never values. #1144 is the natural home.
-- **`kvscf-local` has no consumer left** once kwork moves to the full build. Not
+- **krot**: register the three live secrets — locations and fingerprints, never
+  values. #1144 is the natural home.
+- **`kvscf-local` has no consumer left** now that kwork runs the full build. Not
   this sprint's call; note that it still earns its keep as a lint target
   (`cargo clippy -p kvscf-local` sees publisher-only dead fields a workspace
   build structurally cannot).
+
+## Completed 2026-08-09 — and the rollout is where the sprint actually went wrong
+
+kwork is configured and the Stream Deck is out. Ken confirmed **Remote and
+Launcher both live** on rpidash3 ← kwork, which is this WI's done-condition.
+Program korg:1143 is complete.
+
+The engineering above landed clean and was verified before it shipped. The
+rollout then failed twice, both times on documentation — worth recording,
+because the code was never the problem.
+
+**Failure 1: `HKLM` instead of `HKCU`.** `regedit` opened on the wrong hive and
+all five values went to `HKLM\Software\kenhia\kvscf`. kvscf reads `HKCU` only,
+so the token resolved to `None`, `Config::load()` returned `None`, and the
+channel never started — no threads, no socket, nothing published anywhere.
+
+I had diagnosed this as kvscf falling back to `DEFAULT_HOST` (rpidash2's
+compiled-in IP) and getting its AUTH rejected there. Both explanations predict
+exactly the observed evidence — zero `kvscf:*` keys on rpidash3, zero
+`*:kwork` keys on rpidash2 — so the wire could not distinguish them, and the
+wrong one cost a round trip. The lesson is not "guess better": it is that a
+`Config::load()` returning `None` and a config pointing at the wrong host are
+indistinguishable from outside the process, which is what makes §4 of the
+runbook worth its length.
+
+**Failure 2: the runbook, twice over.** It said all five settings resolve from
+the registry — only the two secrets do — and it told Ken to verify against a
+startup line that a **release build cannot print** (`windows_subsystem =
+"windows"`, so `eprintln!` has nowhere to go; the publisher swallows connection
+errors besides). Both are corrected, and the second is the more insidious: a
+verification step that cannot run reads, to whoever follows it, as a step that
+failed.
+
+**A second rotation followed.** Both work-desk secrets reached a session
+transcript during debugging *and* had been sitting in `HKLM\Software`, which
+grants Read to every local user — a wider exposure than the transcript.
+The Redis `requirepass` and kwork's `KVSCF_TOKEN` were both rotated, generated
+on-device and never printed. The reconnect was proven rather than assumed: a
+probe feed published under the new credentials rendered on the panel, which is
+the only check that separates "kdeskdash reconnected" from "kdeskdash is
+silently offline", since a wrong transport password looks exactly like an
+unreachable endpoint.
+
+That the same class of mistake — a documented rule that is accurate about the
+cases its author had in mind and silent about the rest — appeared in the work
+item, then in this repo's runbook, then in my own diagnosis, is why
+`docs/solutions/best-practices/verify-the-side-that-actually-connects.md` ends
+with a postscript instead of a tidy conclusion.
 
 ## Deployed 2026-08-09
 
