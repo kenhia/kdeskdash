@@ -81,7 +81,7 @@ The underlying commands, when you need them directly:
 
 ```bash
 cmake -B build && cmake --build build -j"$(nproc)"
-ctest --test-dir build --output-on-failure
+ctest --test-dir build --output-on-failure --no-tests=error
 cmake -B build-pi -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake
 cmake --build build-pi --target kdeskdash -j"$(nproc)"
 ```

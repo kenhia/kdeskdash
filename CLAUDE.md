@@ -89,7 +89,7 @@ it, and a build configured without it stamps `unknown`, which `deploy` refuses.
 
 ```bash
 cmake -B build -DKD_VERSION="$(scripts/version.sh)" && cmake --build build -j"$(nproc)"
-ctest --test-dir build --output-on-failure
+ctest --test-dir build --output-on-failure --no-tests=error
 cmake -B build-pi -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake -DKD_VERSION="$(scripts/version.sh)"
 cmake --build build-pi --target kdeskdash -j"$(nproc)"
 ```
