@@ -12,12 +12,14 @@ build:
     cmake --build build -j"$(nproc)"
 
 # CI gate: build the host tree and run every unit test
+# --no-tests=error: bare ctest prints "No tests were found!!!" and exits 0, so a
+# refactor that stopped registering tests would leave this gate green.
 check: build
-    ctest --test-dir build --output-on-failure
+    ctest --test-dir build --output-on-failure --no-tests=error
 
 # Run one test by name, e.g. `just test golz`
 test name: build
-    ctest --test-dir build -R test_{{ name }} --output-on-failure
+    ctest --test-dir build -R test_{{ name }} --output-on-failure --no-tests=error
 
 # Cross-compile the aarch64 binary for the Pis (generic aarch64 — one build, every board)
 build-pi:

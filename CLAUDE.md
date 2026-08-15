@@ -1,9 +1,9 @@
-<!-- kproject:begin — managed by kprojects/install.sh; do not edit inside this block -->
+<!-- kproject:begin — managed by kprojects; do not edit inside this block -->
 ## kproject conventions
 
 This project uses the kproject minimal harness
-(`~/src/ai-agents/kprojects`). Keep context small; prefer doing over
-ceremony.
+(<https://github.com/kenhia/kprojects>). Keep context small; prefer doing
+over ceremony.
 
 ### Layout
 
@@ -26,14 +26,25 @@ ceremony.
 
 - One sprint ≈ one PR. Sprint proposals and work items are managed in
   `korg`; durable cross-project knowledge goes in `klams`.
+- Mark each work item resolved as its work completes — don't batch the
+  resolutions into sprint-ship. A proposal's progress should be readable
+  while the sprint is running, which is the only time it is useful.
 - If the korg or klams MCP tools are unavailable in your session, say so
   up front — don't silently work around missing infrastructure.
 - TDD preferred: write the failing test first when practical.
 
 ### Tooling preferences
 
-- Python managed by `uv`; lint/format with `ruff`; typecheck with `ty`
-  (astral toolchain)
+- C/C++ built with `cmake`: configure out-of-source, build with
+  `cmake --build`, test with `ctest`
+- `ctest` prints "No tests were found!!!" and **exits 0** when nothing is
+  registered — pass `--no-tests=error` (CMake ≥ 3.20) or the gate passes
+  loudest when there is least to check (same trap as `gofmt -l`)
+- The configure flags are the project's own. If the repo documents a
+  tests-only or native-CI mode, the gate uses that — a gate needing a
+  cross-compiler, a sysroot or hardware is a gate nobody runs
+- No formatter in the gate: `clang-format` asserts nothing without a
+  committed `.clang-format`. Add `just fmt` once the repo has one
 - License is MIT unless specifically directed otherwise
 <!-- kproject:end -->
 
