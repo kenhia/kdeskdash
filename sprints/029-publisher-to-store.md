@@ -66,5 +66,17 @@ a branch build may exist in the store to prove the path).
 ## Follow-ups
 
 - k-homelab #1324 consumes the bundle and retires both interim mechanisms.
-- After merge, run `just publish-publisher` from `main` once so `latest`
-  points at a main-sha version before #1324 starts pulling it.
+
+## Deployed 2026-08-16
+
+Shipped as PR #36, squash `0d6a98d`.
+
+- **Publisher bundle**: `kdeskdash-publisher 1.0.0-0d6a98d` published from
+  main; `latest` created and verified over the store URL (it did not exist
+  before — the branch proof was `--no-latest` on purpose). This is the version
+  k-homelab #1324 consumes. Rollback target: none needed — first `latest`.
+- **Panels**: `kdeskdash 0.27.0-0d6a98d` published (no binary-facing change
+  this sprint — same code as `0.27.0-b316406`, new stamp) and installed on
+  **both** boards; `just versions` reports the fleet uniform on it, both units
+  active, and `kddss` returned a rendered frame from each. Rollback target:
+  `0.27.0-b316406`.
