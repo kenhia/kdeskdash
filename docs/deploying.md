@@ -122,3 +122,38 @@ tree builds a `-dirty` version, so `just versions` reports a board running
 something that is not in the store rather than quietly implying it is.
 
 Anything that stays on a panel should be published and deployed.
+
+## The publisher bundle — a second artifact, on its own clock
+
+The claude-feed publisher (`publisher/claude-pub.sh` + the two poll units) runs
+on *feed hosts* (kai, kubs0, cleo), not on the panels, and k-homelab's recipes
+are what install it there. It used to cross that machine boundary two interim
+ways — a copy vendored into k-homelab (which went eleven days stale, k-homelab
+#1313) and staging from kai's checkout (staleness traded for a checkout
+dependency). Cross-machine consumption goes through the store, so:
+
+```sh
+just publish-publisher      # → artifacts/kdeskdash-publisher/<version>/
+```
+
+`artifacts/kdeskdash-publisher/<version>/`, flat, plus `SHA256SUMS`:
+`claude-pub.sh`, `kdeskdash-claude-poll.service`, `kdeskdash-claude-poll.timer`,
+and a generated `VERSION` holding the full version string so an installed copy
+can say what it is without the store path that delivered it.
+
+**The version is not the dashboard's.** The publisher changes on its own clock,
+so its version is `<publisher/VERSION>-<short sha of the last commit touching
+the payload>` (e.g. `1.0.0-47f7c49`). Scoping the sha to the payload files —
+rather than HEAD — means the version moves exactly when the shipped content
+does: a publisher change can never leave `latest` silently stale, and
+republishing an *unchanged* publisher reproduces a version the store already
+has, which `kpkg` refuses. That refusal is the correct answer ("already
+published"), not a bug to work around. Bump the `publisher/VERSION` base when
+the publisher's contract meaningfully changes; forgetting to is harmless,
+because the sha moves regardless.
+
+The off-`main` rule is the dashboard's: a branch publish never moves `latest`.
+
+Nothing here touches the panels. The consuming side — installing from the
+store, retiring the vendored copy and the checkout staging — is k-homelab's
+(its WI #1324).

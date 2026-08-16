@@ -75,6 +75,7 @@ There are two distinct CMake build trees. Keep them separate — do not run test
 just check                    # CI gate: build the host tree + run every unit test
 just test golz                # run ONE test by name (ctest -R test_golz)
 just publish                  # release: build + publish a version to the package store
+just publish-publisher        # publish the claude-feed publisher bundle (its own version clock)
 just deploy [host] [version]  # install a published version (default rpidash2, newest)
 just push-dev [host]          # dev loop ONLY: push this tree to a board, bypassing the store
 just versions                 # what is published / cached here / running on each board

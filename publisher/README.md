@@ -11,6 +11,13 @@ Contract and rationale: `sprints/007-claude-mode/plan.md`; the generalized
 one-key-many-writers pattern:
 `docs/solutions/best-practices/independent-writers-need-independent-stamps.md`.
 
+Managed Linux hosts don't install from this directory: `just
+publish-publisher` puts a versioned bundle (this script + the two poll units)
+in the homelab package store as `artifacts/kdeskdash-publisher/<version>/`,
+and k-homelab's recipes install from *that* (see `docs/deploying.md`, "The
+publisher bundle"). The manual steps below remain the path for unmanaged
+machines (cleo).
+
 ## Install (per machine, once)
 
 1. Copy `claude-pub.sh` to `~/.claude/kdeskdash-pub/claude-pub.sh` and make it
