@@ -135,8 +135,48 @@ four payload files pass `SHA256SUMS`, the published `claude-pub.sh` carries
 `KDD_HEARTBEAT_MIN_S`, and it is byte-identical to `publisher/claude-pub.sh` on
 merged main.
 
-**Live nowhere yet, by design.** Nothing consumes the new bundle until
-k-homelab #1362 (proposal korg:1368) bumps `kdeskdash_publisher_version` and
-re-applies `claude-hooks` on kai and kubs0. cleo's hand install is still
-pending. Until then the behaviour on the panel is unchanged — a still-greying
-row is expected, not a regression.
+**kai and kubs0 are not live yet, by design.** Nothing consumes the new bundle
+there until k-homelab #1362 (proposal korg:1368) bumps
+`kdeskdash_publisher_version` and re-applies `claude-hooks`. Until then a
+greying row from those two hosts is expected, not a regression.
+
+## cleo hand install, 2026-08-16
+
+cleo is unmanaged (Windows, outside the `claude-hooks` audit loop), so it is
+installed by hand — but from the **same store bundle** the managed hosts will
+consume, not from the repo, so it is on the same versioning story.
+
+- Installed `claude-pub.sh` + `VERSION` from
+  `artifacts/kdeskdash-publisher/1.0.0-4984a84/`, fetched-then-verified against
+  `SHA256SUMS`. Previous copy kept as `claude-pub.sh.bak.pre-030`.
+- `~/.claude/settings.json`: PreToolUse/PostToolUse matcher `AskUserQuestion`
+  -> `*`. Backed up first.
+- Left alone: `poll-hidden.vbs` (cleo-only, not in the bundle), and the hook
+  commands' `C:/PROGRA~1/Git/bin/bash.exe` prefix — cleo's `bash` on PATH is
+  WSL, and that short path is what keeps the hooks off it.
+
+**Checked for drift before overwriting**: the installed copy was byte-identical
+to the pre-030 bundle `1.0.0-0d6a98d`, so there were no local Windows patches to
+preserve. Worth doing rather than assuming — an unmanaged host is exactly where
+a hand fix would be hiding.
+
+**settings.json was edited surgically, not rewritten.** Writing an app-owned
+JSON config from PowerShell on this box is the failure that wiped every MCP
+server from `~/.claude.json` (kaed korg #931): PS 5.1's `-Encoding UTF8` means
+*with* BOM, and `JSON.parse` rejects it. A two-line targeted replace touches no
+encoding at all. Verified the way that incident says to — at the **byte** level
+and from an **ssh session**, not by re-reading through the tool that wrote it,
+because PowerShell strips a BOM transparently on input and the writer is the one
+reader guaranteed not to notice: `first3=123,10,32` (`{`, LF, space — a BOM
+would be `239,187,191`), 0 CR bytes, parses, and the diff against the backup is
+exactly the two matcher lines.
+
+**Verified live, which is the real check.** Claude Code hot-reloads
+`settings.json`, so cleo's running sessions began heartbeating immediately
+— no restart needed. On the feed a session 17.5 minutes into its turn
+(`started_ts` 1053s old) carried a `ts` only 67s old with `status working`
+intact, and a `.hb` stamp to prove that freshness came from the keepalive rather
+than a prompt. That is precisely the row that used to grey.
+
+So cleo is the early evidence for #1362: the change is running in production on
+one host before it touches the managed two.
