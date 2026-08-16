@@ -31,6 +31,12 @@ build-pi:
 publish:
     scripts/publish.sh
 
+# Publish the claude-feed publisher bundle (script + poll units) to the store:
+# artifacts/kdeskdash-publisher/<version>/ — consumed by k-homelab's recipes,
+# versioned on the publisher's own clock (see docs/deploying.md).
+publish-publisher:
+    scripts/publish-publisher.sh
+
 # Install a published version on a Pi (default: the newest published).
 # Naming an older version IS the rollback — there is no second verb.
 deploy host="rpidash2" version="":
