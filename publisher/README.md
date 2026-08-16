@@ -218,11 +218,12 @@ dashboard can land in either order.
 
 ## Blocked-on-you (AskUserQuestion)
 
-`PreToolUse` and `PostToolUse`, both matched on `AskUserQuestion`, publish
-`status blocked` / `status working`: an agent sitting on a question dialog is
-hard-blocked on Ken, and would otherwise still read WORKING on the dashboard.
-The matcher is re-checked inside the script, so a broader matcher configured
-elsewhere cannot mislabel a session.
+`PreToolUse` and `PostToolUse` fire for **every** tool (see the keepalive
+below); on `AskUserQuestion` they publish `status blocked` / `status working`,
+because an agent sitting on a question dialog is hard-blocked on Ken and would
+otherwise still read WORKING on the dashboard. The script branches on
+`tool_name` itself rather than trusting the matcher, so neither behaviour
+depends on how the events happen to be registered.
 
 Verified against Claude Code 2.1.211 (2026-07-19): `AskUserQuestion` does fire
 both hooks, `PreToolUse` before the dialog is presented. The `Notification` hook
@@ -243,6 +244,63 @@ it, with the idle→stale ladder as a backstop.
 record whose `status` it does not recognise, so a publisher emitting `blocked` at
 a Pi still running an older binary makes those rows *vanish* rather than degrade.
 Deploy the dashboard to `rpidash2` first, then merge these hooks on the machines.
+
+## Keeping a working session alive
+
+The dashboard greys a `working` row to IDLE once its `ts` is `CF_IDLE_S` old
+(15 minutes, `src/claude_feed.h`), and to STALE at 40. That is right for a
+parked session and wrong for a busy one: between `UserPromptSubmit` and `Stop`
+a long turn emits no lifecycle event at all, so a session that works for forty
+minutes goes grey while it is still cranking (korg #1360).
+
+`PreToolUse`/`PostToolUse` on every tool close that gap. Any tool that is not
+`AskUserQuestion` takes a fast path near the top of `hook_mode` which refreshes
+`ts`, re-arms the TTL, and exits before the transcript enrichment.
+
+**It writes `ts` and nothing else — never `status`.** A backgrounded Bash call
+or a subagent can fire tool hooks while the main agent sits on an
+`AskUserQuestion`; a keepalive that wrote `status working` would silently
+downgrade a `BLOCKED ON YOU` row to WORKING. Writing only `ts` means it can
+make a row fresher but can never change what the row claims. The dashboard is
+fine with a bare `ts` update: `cf_session_from_fields` wants `status` and `ts`
+in the *hash*, not in any single write.
+
+**Throttled to `KDD_HEARTBEAT_MIN_S` (120s)** by a per-session `<sid>.hb` stamp
+in the state dir, the same shape as the statusline's `limits.stamp`. Seven
+writes cover a 15-minute window, so one dropped heartbeat can never grey a row.
+Without the throttle this would publish on every tool call.
+
+**Cost.** The events are unmatched now, so the script runs once per tool call in
+every session on the machine. Throttled out that is a bash start plus three
+`sed`s — the fast path is ordered ahead of `cwd`/`project`/`transcript_path`
+for exactly this reason. Most noticeable on cleo, where Git Bash process
+creation is slow.
+
+**What it does not fix.** No hook fires *during* a tool, so a single very long
+tool call — a 25-minute build under `Bash` — still crosses `CF_IDLE_S` and
+greys. Closing that would take a background timer, deliberately out of scope:
+the keepalive is a balance, not a step toward a daemon.
+
+**`ts` now means "last sign of life", not "last lifecycle event",** and the
+row's age readout on the panel changes meaning with it. For a glance device
+that is the more useful reading, but it is a real change to what the number
+says.
+
+**No ordering constraint**, unlike the `blocked` status above: the keepalive
+adds no new field and no new status value, so an older dashboard reads it
+correctly. The two halves of the rollout are order-independent too — an
+unmatched hook against an old script hits the `AskUserQuestion` re-check and
+exits (wasted forks, no wrong data), and a new script under an
+`AskUserQuestion` matcher simply never reaches the keepalive.
+
+## Where the hook registration lives
+
+`settings-fragment.json` here is the reference for **unmanaged** hosts (cleo),
+installed by hand. On kai and kubs0 the entries are owned by k-homelab's
+`claude-hooks` recipe, which reports drift against its own copy of the event
+table in `recipes/claude-hooks/settings_merge.py` — so a hand edit to
+`settings.json` there is reverted by the next apply, and a matcher change has
+to land in both places (korg #1362).
 
 ## SessionEnd is synchronous by design
 

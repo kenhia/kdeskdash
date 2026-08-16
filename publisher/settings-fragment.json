@@ -1,6 +1,8 @@
 {
   "//": "kdeskdash claude-feed publisher — merge into user-level ~/.claude/settings.json.",
+  "//managed": "UNMANAGED HOSTS ONLY (cleo). On kai and kubs0 this file is not the source of truth: k-homelab's claude-hooks recipe owns these entries and reports drift against them, so edit recipes/claude-hooks/settings_merge.py there and keep this fragment in step.",
   "//path": "Use the machine's absolute path to claude-pub.sh; forward slashes work in Git Bash on Windows (e.g. C:/Users/kenhi/.claude/kdeskdash-pub/claude-pub.sh).",
+  "//tooluse": "PreToolUse/PostToolUse carry no matcher on purpose: they fire for every tool so a long working turn keeps its ts fresh (the panel greys a row at 15m). The script branches on tool_name itself — AskUserQuestion drives the blocked status, everything else is a throttled ts-only keepalive.",
   "statusLine": {
     "type": "command",
     "command": "/home/ken/.claude/kdeskdash-pub/claude-pub.sh statusline"
@@ -16,11 +18,11 @@
       { "hooks": [ { "type": "command", "command": "/home/ken/.claude/kdeskdash-pub/claude-pub.sh hook", "async": true, "timeout": 5 } ] }
     ],
     "PreToolUse": [
-      { "matcher": "AskUserQuestion",
+      { "matcher": "*",
         "hooks": [ { "type": "command", "command": "/home/ken/.claude/kdeskdash-pub/claude-pub.sh hook", "async": true, "timeout": 5 } ] }
     ],
     "PostToolUse": [
-      { "matcher": "AskUserQuestion",
+      { "matcher": "*",
         "hooks": [ { "type": "command", "command": "/home/ken/.claude/kdeskdash-pub/claude-pub.sh hook", "async": true, "timeout": 5 } ] }
     ],
     "SessionEnd": [

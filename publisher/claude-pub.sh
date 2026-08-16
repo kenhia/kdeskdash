@@ -6,7 +6,10 @@
 # No redis-cli, no jq — runs identically on Linux and Git Bash on Windows.
 #
 # Modes (first arg):
-#   hook        stdin = hook event JSON (SessionStart/UserPromptSubmit/Stop/SessionEnd)
+#   hook        stdin = hook event JSON (SessionStart/UserPromptSubmit/Stop/
+#               SessionEnd, plus PreToolUse/PostToolUse on EVERY tool: the
+#               AskUserQuestion pair drives `blocked`, and every other tool is
+#               a throttled ts-only keepalive)
 #   statusline  stdin = statusline JSON; prints a one-line statusline to stdout
 #   poll        no stdin; refreshes claude:limits with NO session running
 #
@@ -32,6 +35,7 @@ KDD_REDIS_PORT="${KDD_REDIS_PORT:-6380}"
 KDD_TTL_S=7200
 KDD_RECENT_KEEP=19      # LTRIM 0 19 -> 20 entries
 KDD_LIMITS_MIN_S=5      # statusline publish throttle
+KDD_HEARTBEAT_MIN_S=120 # tool-use keepalive throttle (panel greys at 15m)
 KDD_POLL_MAX_AGE_S=900  # plan-usage-history sample older than this = app closed
 
 # What the panel should expect between writes from each mode, published as
@@ -161,16 +165,56 @@ title_from_transcript() {
           -e 's/\\"/"/g' -e 's/\\\\/\\/g' -e 's/\\\//\//g'
 }
 
+# Keepalive for a session that is working but not emitting lifecycle events.
+# Between UserPromptSubmit and Stop a long turn publishes nothing at all, so
+# `ts` sits at prompt-submit time and the panel greys the row to IDLE at
+# CF_IDLE_S (15m, src/claude_feed.h) while the agent is still cranking.
+#
+# Refreshes `ts` ONLY, never `status`. A backgrounded tool call or a subagent
+# must not be able to downgrade a `blocked` row — an agent sitting on an
+# AskUserQuestion — to `working`; this write can make a row fresher, but it can
+# never change what the row claims. cf_session_from_fields wants status+ts in
+# the HASH, not in the write, so a bare ts update against a live key parses.
+#
+# Throttled per session, same shape as limits.stamp: at a 2-minute cadence
+# against a 15-minute threshold, seven writes cover a window and a single
+# dropped one can never grey a row.
+heartbeat() {
+  local sid="$1" key="$2" hb
+  hb=$(cat "${STATE_DIR}/${sid}.hb" 2>/dev/null | tr -cd '0-9')
+  [ -n "$hb" ] && [ $((NOW - hb)) -lt "$KDD_HEARTBEAT_MIN_S" ] && return 0
+  printf '%s' "$NOW" > "${STATE_DIR}/${sid}.hb" 2>/dev/null
+  resp HSET "$key" ts "$NOW"
+  resp EXPIRE "$key" "$KDD_TTL_S"   # never leave a TTL-less key behind
+  send
+}
+
 hook_mode() {
   local json event sid key cwd project reason started dur title rec tpath mid sname
   json=$(cat)
   event=$(jstr "$json" hook_event_name)
   sid=$(token "$(jstr "$json" session_id)")
   [ -n "$sid" ] || exit 0
+  key="claude:session:${HOST}:${sid}"
+
+  # Keepalive fast path, taken before any further parsing. PreToolUse and
+  # PostToolUse are matched on every tool now, which makes this the hottest
+  # path in the script — once per tool call in every session on the box — so it
+  # pays for only the three fields it actually needs and skips the transcript
+  # enrichment below entirely. AskUserQuestion is the exception and falls
+  # through to the blocked/working logic.
+  case "$event" in
+    PreToolUse|PostToolUse)
+      if [ "$(jstr "$json" tool_name)" != AskUserQuestion ]; then
+        heartbeat "$sid" "$key"
+        exit 0
+      fi
+      ;;
+  esac
+
   cwd=$(jstr "$json" cwd)
   project=$(project_of "$cwd")
   tpath=$(jstr "$json" transcript_path)
-  key="claude:session:${HOST}:${sid}"
 
   case "$event" in
     SessionStart)
@@ -187,14 +231,13 @@ hook_mode() {
       resp EXPIRE "$key" "$KDD_TTL_S"
       ;;
     PreToolUse|PostToolUse)
-      # AskUserQuestion means the agent is hard-blocked on the user: PreToolUse
-      # fires before the dialog is shown, PostToolUse once it is answered. The
-      # settings.json matcher already scopes these to AskUserQuestion; re-check
-      # here so a broader matcher elsewhere can never mislabel a session.
+      # Only AskUserQuestion reaches here — the fast path above routed every
+      # other tool to the keepalive. It means the agent is hard-blocked on the
+      # user: PreToolUse fires before the dialog is shown, PostToolUse once it
+      # is answered.
       #
       # The payload also carries the question text and the user's answer. Read
       # nothing but tool_name — prompt content never reaches Redis (R20).
-      [ "$(jstr "$json" tool_name)" = AskUserQuestion ] || exit 0
       local qst=blocked
       [ "$event" = PostToolUse ] && qst=working
       resp HSET "$key" host "$HOST" project "$project" cwd "$cwd" \
@@ -213,7 +256,8 @@ hook_mode() {
         resp LPUSH claude:recent "$rec"
         resp LTRIM claude:recent 0 "$KDD_RECENT_KEEP"
       fi
-      rm -f "${STATE_DIR}/${sid}.start" "${STATE_DIR}/${sid}.title" 2>/dev/null
+      rm -f "${STATE_DIR}/${sid}.start" "${STATE_DIR}/${sid}.title" \
+            "${STATE_DIR}/${sid}.hb" 2>/dev/null
       find "$STATE_DIR" -type f -mtime +2 -delete 2>/dev/null
       send_sync   # the CLI is exiting; a backgrounded DEL would race and lose
       exit 0
