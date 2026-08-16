@@ -113,3 +113,30 @@ tool calls fire). Both need the k-homelab half applied on kai/kubs0 first.
   `just publish-publisher`, which checks `git status --porcelain` — untracked
   files included. Cleared by hand this sprint; `chore-deploy-cache-litter` on
   origin looks aimed at the recurrence.
+
+## Deployed 2026-08-16
+
+Shipped as PR #37, squash `4984a84`.
+
+- **Publisher bundle**: `kdeskdash-publisher 1.0.0-4984a84` published from main,
+  `latest` moved to it. Rollback target: `1.0.0-0d6a98d`.
+- **Panels: deliberately not published or deployed.** No C changed, so the
+  binary is byte-identical to the `0.27.0-0d6a98d` both boards already run, and
+  `just versions` stays uniform without touching them. Sprint 029 did publish a
+  same-bytes stamp, but it was proving the publish path itself; doing it here
+  would add a store version that is not a distinct build, which makes the
+  rollback history less useful rather than more. The panel's clock is allowed
+  to stand still when the panel does.
+
+**Verified** by fetching the bundle back over the store URL rather than trusting
+the publish output: `latest` (a pointer *file*, not a directory — it holds the
+version string) resolves to `1.0.0-4984a84`, the in-band `VERSION` agrees, all
+four payload files pass `SHA256SUMS`, the published `claude-pub.sh` carries
+`KDD_HEARTBEAT_MIN_S`, and it is byte-identical to `publisher/claude-pub.sh` on
+merged main.
+
+**Live nowhere yet, by design.** Nothing consumes the new bundle until
+k-homelab #1362 (proposal korg:1368) bumps `kdeskdash_publisher_version` and
+re-applies `claude-hooks` on kai and kubs0. cleo's hand install is still
+pending. Until then the behaviour on the panel is unchanged — a still-greying
+row is expected, not a regression.
