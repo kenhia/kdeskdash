@@ -11,10 +11,10 @@ the open instance on rpidash2 and rpidash2 reads it over loopback. Read this
 document only for the work desk.
 
 (That instance was the claude feed's home too, until sprint 031 moved the feed
-to the central Redis. It still carries `claude:*` through the CD-7 dual-write
-window, and after the close-out it serves `kvscf:*` alone. Nothing below
-changes: the kvscf side was always the reason for the split, and pinning it is
-now enforced by `config.c` rather than by remembering.)
+to the central Redis and the CD-7 close-out retired the old keys. It serves
+`kvscf:*` alone now. Nothing below changes: the kvscf side was always the reason
+for the split, and pinning it is now enforced by `config.c` rather than by
+remembering.)
 
 ## Topology
 

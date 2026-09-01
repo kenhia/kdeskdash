@@ -25,7 +25,10 @@ cat > "$work/kdash-pub" <<'STUB'
 #!/usr/bin/env bash
 out=$(mktemp "$KDD_CAPTURE_DIR/leg.XXXXXX")
 printf 'ARGV %s\n' "$*" > "$out"
-cat >> "$out"
+# Only `batch` reads stdin, exactly as the real CLI does. A stub that drained
+# stdin unconditionally would block forever on `hget`, whose stdin is whatever
+# the hook happened to inherit.
+case " $* " in *' batch '*) cat >> "$out" ;; esac
 STUB
 chmod +x "$work/kdash-pub"
 export KDD_PUB_BIN="$work/kdash-pub"
@@ -40,7 +43,13 @@ run() {
   local mode="$1" legs="$2" want_legs="$3" stdin="$4" i
   export KDD_CAPTURE_DIR="$work/cap"
   rm -rf "$KDD_CAPTURE_DIR"; mkdir -p "$KDD_CAPTURE_DIR"
-  printf '%s' "$stdin" | KDD_LEGS="$legs" "$script" "$mode" >/dev/null 2>&1
+  # An empty `legs` runs with KDD_LEGS unset, which is the only way to test the
+  # shipped default rather than a value this test supplied.
+  if [ -n "$legs" ]; then
+    printf '%s' "$stdin" | KDD_LEGS="$legs" "$script" "$mode" >/dev/null 2>&1
+  else
+    printf '%s' "$stdin" | "$script" "$mode" >/dev/null 2>&1
+  fi
   for i in $(seq 1 100); do
     [ "$(find "$KDD_CAPTURE_DIR" -type f | wc -l)" -ge "$want_legs" ] && break
     sleep 0.05
@@ -60,29 +69,32 @@ expect() {
 
 TAB=$'\t'
 
-# ---- 1. the two legs of the dual-write window, and their flags ----
-run hook interim,central 2 \
+# ---- 1. the SHIPPED DEFAULT is one authenticated leg on the claude stem ----
+# Until kdashdata sprint 005 this defaulted to `interim,central` and wrote both
+# homes through the CD-7 dual-write window. The interim home is retired, so a
+# publisher still writing it would be feeding a Redis nobody reads. Run with
+# KDD_LEGS unset on purpose: a default is the one thing a test that supplies the
+# value cannot check.
+run hook "" 1 \
   '{"hook_event_name":"SessionStart","session_id":"s1","cwd":"/home/ken/src/tools/kdeskdash"}'
-expect "dual-write legs carry the right stems and flags" \
-"ARGV --app kdeskdash --stem KDASH_CENTRAL_REDIS --best-effort batch
-ARGV --app kdeskdash --stem KDASH_CLAUDE_REDIS --no-auth --best-effort batch" \
+expect "the shipped default is one authenticated leg on the claude stem" \
+"ARGV --app kdeskdash --stem KDASH_CLAUDE_REDIS --best-effort batch" \
 "$(argvs)"
 
-# Both legs must receive the SAME batch — a divergence would put the two homes
-# out of step for the whole window.
-expect "both legs receive an identical batch" \
+expect "the default leg receives exactly one copy of the batch" \
 "expire${TAB}claude:session:testhost:s1${TAB}7200
-expire${TAB}claude:session:testhost:s1${TAB}7200
-hset${TAB}claude:session:testhost:s1${TAB}host${TAB}testhost${TAB}project${TAB}kdeskdash${TAB}cwd${TAB}/home/ken/src/tools/kdeskdash${TAB}status${TAB}working${TAB}ts${TAB}TS${TAB}started_ts${TAB}TS
 hset${TAB}claude:session:testhost:s1${TAB}host${TAB}testhost${TAB}project${TAB}kdeskdash${TAB}cwd${TAB}/home/ken/src/tools/kdeskdash${TAB}status${TAB}working${TAB}ts${TAB}TS${TAB}started_ts${TAB}TS" \
 "$(bodies | sed -E 's/[0-9]{10}/TS/g')"
 
-# ---- 2. the end-state leg, once the stem flips (slice 3) ----
-run hook claude 1 \
+# ---- 2. the retired leg name publishes NOWHERE, rather than guessing ----
+# `interim` used to be a real home. A stale caller (an un-upgraded unit, an old
+# env file) naming it must write nothing at all — silently falling back to a
+# live home would resurrect the dual-write this sprint exists to end.
+run hook interim 0 \
   '{"hook_event_name":"Stop","session_id":"s1","cwd":"/tmp/proj"}'
-expect "KDD_LEGS=claude is one authenticated leg on the claude stem" \
-"ARGV --app kdeskdash --stem KDASH_CLAUDE_REDIS --best-effort batch" \
-"$(argvs)"
+sleep 0.2
+expect "the retired 'interim' leg publishes nowhere" "0" \
+"$(find "$KDD_CAPTURE_DIR" -type f | wc -l)"
 
 # ---- 3. SessionEnd ships the DEL in its own batch ----
 # A hand-built recent record that failed to be JSON would otherwise take the
@@ -128,6 +140,35 @@ if [ -s "$KDD_STATE_DIR/no-kdash-pub" ]; then
   ok "a missing kdash-pub leaves a breadcrumb"
 else
   fail "a missing kdash-pub leaves a breadcrumb" "no $KDD_STATE_DIR/no-kdash-pub"
+fi
+
+# ---- 7. poll's freshness guard reads through kdash-pub, on the leg it writes -
+# The guard stops a poll writer publishing over a fresher observation from a
+# live statusline on any host. It used to be a raw /dev/tcp RESP request aimed
+# at the unauthenticated interim home; that home is gone, so it now goes through
+# the CLI's read verb (kdashdata CD-14) on the SAME stem the write will use — a
+# guard reading a different Redis than the one it overwrites is worse than none.
+appdata="$work/appdata"
+mkdir -p "$appdata/Claude"
+printf '{"samples":[{"t":%s000,"u":{"fh":7,"sd":3}}]}' "$(date +%s)" \
+  > "$appdata/Claude/plan-usage-history.json"
+export KDD_CAPTURE_DIR="$work/cap"
+rm -rf "$KDD_CAPTURE_DIR"; mkdir -p "$KDD_CAPTURE_DIR"
+APPDATA="$appdata" "$script" poll </dev/null >/dev/null 2>&1
+expect "poll guards its write with an hget on the same stem it publishes to" \
+"ARGV --app kdeskdash --stem KDASH_CLAUDE_REDIS --best-effort batch
+ARGV --app kdeskdash --stem KDASH_CLAUDE_REDIS --best-effort hget claude:limits scoped_updated_at
+ARGV --app kdeskdash --stem KDASH_CLAUDE_REDIS --best-effort hget claude:limits updated_at" \
+"$(argvs)"
+
+# ---- 8. no hand-rolled sockets remain ----
+# The whole point of routing through kdash-pub is that khlenv, AUTH and the key
+# grammar are not optional. A /dev/tcp anywhere in this script is a path around
+# all three, and it is how the last one survived a cutover.
+if grep -q 'dev/tcp' "$script" && grep -v '^[[:space:]]*#' "$script" | grep -q 'dev/tcp'; then
+  fail "no hand-rolled sockets remain" "$(grep -n 'dev/tcp' "$script" | grep -v ':[[:space:]]*#')"
+else
+  ok "no hand-rolled sockets remain"
 fi
 
 [ "$fails" -eq 0 ] || { printf '\n%d assertion(s) failed\n' "$fails"; exit 1; }

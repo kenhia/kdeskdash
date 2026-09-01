@@ -12,7 +12,7 @@ applies_when:
   - A dashboard field (model, title, usage limits) has silently stopped refreshing
 related_components:
   - claude mode
-  - claude-feed Redis (rpidash2:6380)
+  - claude-feed Redis (central, rpi53:6379 since kdashdata CD-7)
   - session hash enrichment
 tags: [claude-code, hooks, statusline, telemetry, redis, freshness, transcript]
 ---
