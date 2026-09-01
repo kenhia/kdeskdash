@@ -127,7 +127,16 @@ Anything that stays on a panel should be published and deployed.
 
 The claude-feed publisher (`publisher/claude-pub.sh` + the two poll units) runs
 on *feed hosts* (kai, kubs0, cleo), not on the panels, and k-homelab's recipes
-are what install it there. It used to cross that machine boundary two interim
+are what install it there.
+
+Since sprint 031 the bundle has a **prerequisite it does not carry**:
+`kdash-pub`, kdashdata's publisher CLI, at `/usr/local/bin/kdash-pub` (or
+`C:\tools\bin\kdash-pub.exe` on Windows). It ships as its own store artifact
+from kdashdata and is installed by knarr — a separate clock again, deliberately,
+because the binary belongs to the repo that owns it. A feed host without it
+publishes nothing and leaves a `no-kdash-pub` breadcrumb in the publisher's
+state dir. That is also why `publisher/VERSION` went to 2.0.0: this bundle can
+no longer be installed by dropping the script alone. It used to cross that machine boundary two interim
 ways — a copy vendored into k-homelab (which went eleven days stale, k-homelab
 #1313) and staging from kai's checkout (staleness traded for a checkout
 dependency). Cross-machine consumption goes through the store, so:
