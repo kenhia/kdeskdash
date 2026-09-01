@@ -219,3 +219,51 @@ address written down.
 
 That stops being true at the slice-3 stem flip, and **korg:1769** is filed for
 it (a `kdash-pub hget`), with `depends_on` from slice 3.
+
+## Deployed 2026-09-01
+
+Shipped as PR #38, squash `c3bbe7a`. Overseer cleared the ship on korg:1753
+(comment 1211) after independently re-verifying cleo from cleo.
+
+- **Panels**: `kdeskdash 0.27.0-c3bbe7a` published from main, `latest` moved,
+  and installed on **both** boards. `just versions` reports the fleet uniform
+  on it, both units active, `kddss` returned a rendered frame from each.
+  Rollback target: `0.27.0-6817457` (identical code, branch stamp) or
+  `0.27.0-0d6a98d` for pre-sprint behaviour.
+- **Publisher bundle**: `kdeskdash-publisher 2.0.0-c3bbe7a` published from
+  main, `latest` moved. Rollback target: `1.0.0-4984a84` — but note that
+  rolling back the *bundle* alone restores a script that writes only the
+  interim home, so it must not be done after the stem flips.
+- **k-homelab** (`6ae59a2`): the `claude-hooks` pin moved
+  `1.0.0-4984a84` → `2.0.0-c3bbe7a`. **This was load-bearing, not tidying.**
+  The recipe pins an explicit version rather than tracking `latest`, so
+  without the bump the next apply would have reverted kai and kubs0 to the
+  pre-cutover script and silently stopped the dual-write. The recipe README
+  also gained the unmanaged prerequisite (`kdash-pub`) and the feed's new home.
+  `bin/apply` run on both managed hosts, `bin/audit` clean on both afterwards.
+- **cleo** refreshed by hand to the same version (it is unmanaged). The bytes
+  were already identical; the point was the *stamp* — `d619f85` named a commit
+  the squash-merge erased, and "every installed stamp names a commit in
+  history" is the invariant this program has now enforced twice.
+
+Verified after the fleet machinery replaced the scripts, by naming every host:
+
+| host | publisher | sha256 | probe → interim | → central |
+|---|---|---|---|---|
+| kai | 2.0.0-c3bbe7a | `98623b90…` | ✓ | ✓ |
+| kubs0 | 2.0.0-c3bbe7a | `98623b90…` | ✓ | ✓ |
+| cleo | 2.0.0-c3bbe7a | `98623b90…` | ✓ | ✓ |
+
+And the end-to-end shot: rpidash2's `claude` mode, reading **central**,
+rendering this sprint's own session — `kai / kdeskdash / "Start sprint
+korg:1753" / Opus 5 / WORKING`. The partial-hash transient described above
+healed at the session's next turn, exactly as predicted.
+
+CD-8 re-checked after the redeploy: rpidash2 holds sockets to `127.0.0.1:6379`
+(control), `127.0.0.1:6380` (kvscf) and `rpi53:6379` (claude/telemetry), and
+`kvscf:*` exists on rpidash2:6380 and nowhere else.
+
+**Still open by design**: the dual-write window. `rpidash2:6380` continues to
+carry `claude:*` until the close-out slice (korg:1754) flips the stem, at which
+point the publisher becomes `KDD_LEGS=claude` and the interim arm comes out of
+the script. korg:1769 (a `kdash-pub` read verb) gates that flip.
