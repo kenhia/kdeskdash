@@ -142,6 +142,68 @@ This is `verify-the-side-that-actually-connects.md` again, one layer down: the
 plan verified that kvscf's *endpoint* was pinned, and the thing that had to
 authenticate was a handle nobody had listed as changing.
 
+## Rolled out and verified live
+
+Branch-proving builds, published to the store and installed from it — the same
+pattern slice 1.5 used. `latest` moves at merge.
+
+**Publishers — `kdeskdash-publisher 2.0.0-d619f85`, all three hosts, one SHA
+(`98623b90…`), verified by naming them rather than by iterating what the runner
+reached:**
+
+| host | install | probe landed on interim | on central |
+|---|---|---|---|
+| kai | `~/.claude/kdeskdash-pub/` | ✓ | ✓ |
+| kubs0 | same, SHA-checked against the store | ✓ | ✓ |
+| cleo | same, via a PowerShell fetch + SHA check | ✓ | ✓ |
+
+The previous copy is kept as `claude-pub.sh.prev` on each host, and `VERSION`
+alongside it says what is installed.
+
+Then, unprompted and better than a probe: **this very sprint's own Claude session
+started dual-writing mid-flight.** Its heartbeat wrote `ts=1788242177` to both
+homes, byte-identical, with no restart of anything.
+
+**Readers — `kdeskdash 0.27.0-6817457` on both boards.** Device env files were
+hand-edited (`install-service` never overwrites an existing one), with
+`.pre031` backups left in place. The claude password was derived from the
+telemetry one **on the device** — same rpi53 secret, so nothing crossed the wire
+or a transcript.
+
+- **rpidash2** — claude mode reads central: the USAGE gauges match what central
+  holds, and the AGENTS pane correctly showed nothing while central had no
+  session hashes and interim had three. That absence *is* the proof of which
+  home it is reading. Launcher renders a live cleo button again, over a socket
+  to `127.0.0.1:6380`.
+- **rpidash3** — repointed for hygiene; it registers no `claude` mode, so that
+  handle is never initialised there and there is no claude panel to check. Its
+  kvscf tap is the live check: the handle connects to `127.0.0.1:6380` (its own
+  password, unaffected by the auth rule change) and the panel reads "no launcher
+  configured" because kwork is asleep and the instance is genuinely empty — the
+  documented empty state, not a fault.
+
+**Both panels' `KDESKDASH_TELEMETRY_REDISCLI_AUTH` copies verified against
+rpi53** (`PING` → `PONG`, `EXISTS claude:limits` → 1) from the devices
+themselves. klams listed them as unverified since the August rotation; they are
+correct.
+
+**kai's poll timer dual-writes.** Its 22:57 firing left
+`claude:limits updated_at=1788242234` on both homes, identical.
+
+### One property of the window worth knowing before the next one
+
+A session that was **already running** when its publisher cut over produces a
+*partial* hash in the new home. The keepalive deliberately writes only `ts` — it
+can make a row fresher but must never change what it claims — so the new home's
+key has no `status` or `host`, and `cf_session_from_fields` correctly declines
+to render it. The panel under-reports until each session takes its next turn,
+at which point `UserPromptSubmit`/`Stop` writes the full field set and it heals.
+
+Not a bug and not worth engineering around (a keepalive cannot invent a status),
+but it is why the claude panel can look emptier than reality for a few minutes
+after a cutover, and it is the reason to start a window when few sessions are
+live rather than mid-afternoon.
+
 ## The one hand-rolled socket left, and why
 
 Poll mode still reads `claude:limits` over `/dev/tcp` — `kdash-pub` has seven
