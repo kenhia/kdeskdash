@@ -136,7 +136,11 @@ from kdashdata and is installed by knarr — a separate clock again, deliberatel
 because the binary belongs to the repo that owns it. A feed host without it
 publishes nothing and leaves a `no-kdash-pub` breadcrumb in the publisher's
 state dir. That is also why `publisher/VERSION` went to 2.0.0: this bundle can
-no longer be installed by dropping the script alone. It used to cross that machine boundary two interim
+no longer be installed by dropping the script alone. **2.1.0** is the CD-7
+close-out — the publisher writes one home instead of two, and its freshness
+guard reads through `kdash-pub hget` instead of a raw socket. Not an install
+change, but it is the version the k-homelab pin must reach for the dual-write
+to actually stop. It used to cross that machine boundary two interim
 ways — a copy vendored into k-homelab (which went eleven days stale, k-homelab
 #1313) and staging from kai's checkout (staleness traded for a checkout
 dependency). Cross-machine consumption goes through the store, so:

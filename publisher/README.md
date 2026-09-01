@@ -8,12 +8,12 @@ endpoint, CD-12 auth and the key grammar. No `redis-cli`, no `jq`. Works on
 Linux and on Windows under Git Bash (Claude Code runs hooks/statusline via Git
 Bash when it is installed).
 
-**Where it writes is a khlenv stem, not a hostname.** During the CD-7 relocation
-window (kdeskdash sprint 031) every write goes to *two* homes: the interim
-`rpidash2:6380` via `KDASH_CLAUDE_REDIS` (unauthenticated, `--no-auth`) and the
-central `rpi53:6379` via `KDASH_CENTRAL_REDIS` (authenticated). When slice 3
-flips the claude stem to central, `KDD_LEGS=claude` is the single end-state leg
-and the interim one comes out of the script. See `KDD_LEGS` below.
+**Where it writes is a khlenv stem, not a hostname.** One home:
+`KDASH_CLAUDE_REDIS`, which has named the central `rpi53:6379` (authenticated)
+since the CD-7 relocation closed out in kdashdata sprint 005. The dual-write
+window that carried the move — an unauthenticated `rpidash2:6380` leg alongside
+central — is retired along with the old home, and so is `--no-auth`. See
+`KDD_LEGS` below.
 
 Contract and rationale: `sprints/007-claude-mode/plan.md`; the generalized
 one-key-many-writers pattern:
@@ -56,7 +56,7 @@ Environment overrides:
 
 | var | default | what it does |
 |---|---|---|
-| `KDD_LEGS` | `interim,central` | Comma-separated homes to write. `interim` = `--stem KDASH_CLAUDE_REDIS --no-auth`; `central` = `--stem KDASH_CENTRAL_REDIS`; `claude` = `--stem KDASH_CLAUDE_REDIS` (the end state once the stem flips). An unknown name publishes nowhere rather than guessing. |
+| `KDD_LEGS` | `claude` | Comma-separated homes to write. `claude` = `--stem KDASH_CLAUDE_REDIS`; `central` = `--stem KDASH_CENTRAL_REDIS`. Both resolve to `rpi53:6379` today and are kept apart deliberately, so the claude family can move again without touching this script. The retired `interim` name is **not** an alias for anything — like any unknown name it publishes nowhere rather than guessing, which is what stops a stale caller resurrecting the dual-write. The first leg is also the one the poll guard reads. |
 | `KDD_PUB_BIN` | first of `/usr/local/bin/kdash-pub`, `/c/tools/bin/kdash-pub.exe` | The CLI to exec. Checked for executability however it is chosen, so an override naming a missing file degrades to the breadcrumb rather than failing silently. |
 | `KDD_STATE_DIR` | `~/.claude/kdeskdash-pub/state` | Throttle/title state. Exists so the batch-shape test never touches a real install's state. |
 
@@ -186,8 +186,9 @@ timer, not just an interactive shell.
 
 ## Smoke test
 
-Check both homes during the dual-write window — a write landing on one and not
-the other is exactly what the window exists to catch.
+One home since the CD-7 close-out, so this is a single check. `kdash-pub` is
+what prints the endpoint, so the smoke test cannot disagree with the publisher
+about where the feed lives.
 
 ```sh
 printf '%s' '{"hook_event_name":"SessionStart","session_id":"smoke-1","cwd":"/tmp/smoke"}' \
@@ -196,8 +197,10 @@ printf '%s' '{"hook_event_name":"SessionStart","session_id":"smoke-1","cwd":"/tm
 key=claude:session:$(hostname -s):smoke-1
 at() { redis-cli -h "${1%:*}" -p "${1##*:}" "${@:2}"; }   # kdash-pub prints host:port
 
-at "$(kdash-pub --stem KDASH_CLAUDE_REDIS --no-auth endpoint)" hgetall "$key"  # interim
-at "$(kdash-pub endpoint)" hgetall "$key"                                      # central, needs REDISCLI_AUTH
+at "$(kdash-pub --stem KDASH_CLAUDE_REDIS endpoint)" hgetall "$key"   # needs REDISCLI_AUTH
+
+# And the read the poll guard makes, without a socket of your own:
+kdash-pub --stem KDASH_CLAUDE_REDIS hget claude:limits updated_at
 
 printf '%s' '{"hook_event_name":"SessionEnd","reason":"other","session_id":"smoke-1","cwd":"/tmp/smoke"}' \
   | ~/.claude/kdeskdash-pub/claude-pub.sh hook   # cleans up + pushes a recent record

@@ -6,9 +6,9 @@
 # and the key grammar checked before anything reaches Redis. No redis-cli, no
 # jq — runs identically on Linux and Git Bash on Windows.
 #
-# CD-7 dual-write window: the `KDASH_CLAUDE_REDIS` stem still names the interim
-# home (rpidash2:6380, unauthenticated), so every write goes to BOTH that and
-# the central Redis until the stem flips. See KDD_LEGS below.
+# CD-7 is complete: `KDASH_CLAUDE_REDIS` names the central Redis (rpi53:6379,
+# authenticated), and the interim home no longer carries this feed. One leg, one
+# home. See KDD_LEGS below.
 #
 # Modes (first arg):
 #   hook        stdin = hook event JSON (SessionStart/UserPromptSubmit/Stop/
@@ -51,12 +51,14 @@ fi
 [ -x "$KDD_PUB_BIN" ] || KDD_PUB_BIN=""
 
 # Which homes this publisher writes, comma-separated (CD-7):
-#   interim  --stem KDASH_CLAUDE_REDIS --no-auth   the old home, while the stem still names it
-#   central  --stem KDASH_CENTRAL_REDIS            rpi53:6379, authenticated
-#   claude   --stem KDASH_CLAUDE_REDIS             the end state, once the stem flips
-# The default IS the dual-write window. When slice 3 (korg:1754) flips the stem,
-# this becomes `claude` and the interim leg comes out of this script entirely.
-KDD_LEGS="${KDD_LEGS:-interim,central}"
+#   claude   --stem KDASH_CLAUDE_REDIS   the feed's home; rpi53:6379 since the flip
+#   central  --stem KDASH_CENTRAL_REDIS  the same Redis under the fleet-wide stem
+# Both resolve to rpi53:6379 today and are kept apart deliberately: the claude
+# family keeps its own address so it can move again without touching this file.
+# The `interim` leg (rpidash2:6380, unauthenticated) was retired with the old
+# home in kdashdata sprint 005 — a publisher still writing it would be feeding
+# a Redis nobody reads.
+KDD_LEGS="${KDD_LEGS:-claude}"
 
 KDD_TTL_S=7200
 KDD_RECENT_KEEP=19      # LTRIM 0 19 -> 20 entries
@@ -112,16 +114,28 @@ cmd() {
   BATCH+=$'\n'
 }
 
-# Write $BATCH to one home. An unknown leg name publishes nowhere rather than
-# guessing at a home.
-send_leg() {
+# The stem naming one home, into $LEG_STEM; non-zero for a name we do not know,
+# so an unknown leg publishes nowhere rather than guessing at a home.
+#
+# One mapping, used by the write path AND by the poll guard's read below — the
+# guard exists to compare against what the write is about to overwrite, so the
+# two resolving to different Redises would make it worse than useless. Sets a
+# variable rather than printing: send_leg is on the every-tool-call path and a
+# command substitution there is a fork.
+LEG_STEM=""
+leg_stem() {
   case "$1" in
-    interim) set -- --stem KDASH_CLAUDE_REDIS --no-auth ;;
-    central) set -- --stem KDASH_CENTRAL_REDIS ;;
-    claude)  set -- --stem KDASH_CLAUDE_REDIS ;;
-    *)       return 0 ;;
+    claude)  LEG_STEM=KDASH_CLAUDE_REDIS ;;
+    central) LEG_STEM=KDASH_CENTRAL_REDIS ;;
+    *)       return 1 ;;
   esac
-  printf '%s' "$BATCH" | "$KDD_PUB_BIN" --app kdeskdash "$@" --best-effort batch
+}
+
+# Write $BATCH to one home.
+send_leg() {
+  leg_stem "$1" || return 0
+  printf '%s' "$BATCH" | "$KDD_PUB_BIN" --app kdeskdash \
+    --stem "$LEG_STEM" --best-effort batch
 }
 
 # A host with no kdash-pub publishes nothing — the failure the store install
@@ -422,37 +436,27 @@ P_T="" ; P_FH="" ; P_SD="" ; P_FHR="" ; P_SDR="" ; P_SRC=""
 # is_active flag, and how many weekly_scoped entries the reply carried.
 P_SCM="" ; P_SCP="" ; P_SCR="" ; P_SCA="" ; P_SCN=""
 
-# The one remaining hand-rolled socket, and the only read in this script.
-# kdash-pub has no read verb, so the freshness guard below still speaks RESP
-# over /dev/tcp — against the INTERIM home, which takes no AUTH and, while every
-# publisher dual-writes, carries every observation central carries. When the
-# claude stem flips (slice 3, korg:1754) this needs a real answer; a kdash-pub
-# read verb is filed for it. Failure here is benign by design: an empty read
-# means "unknown", and the guard then publishes.
-KDD_READ_HP=""
-read_endpoint() {
-  [ -n "$KDD_READ_HP" ] && return 0
-  [ -n "$KDD_PUB_BIN" ] || return 1
-  KDD_READ_HP=$("$KDD_PUB_BIN" --app kdeskdash --stem KDASH_CLAUDE_REDIS \
-                  --no-auth endpoint 2>/dev/null | head -n1 | tr -cd 'A-Za-z0-9.:_-')
-  case "$KDD_READ_HP" in *:*) return 0 ;; *) KDD_READ_HP="" ; return 1 ;; esac
-}
-
 # Stored observation time (updated_at / scoped_updated_at), so a writer can
 # refuse to publish over a fresher one. Empty when absent or unreachable.
+#
+# This was the last hand-rolled RESP request in this script — a raw /dev/tcp
+# socket aimed at the unauthenticated interim home, which was the only endpoint
+# bash could reach without re-deriving kdash-pub's auth rules. That home is gone
+# and the stem is authenticated now, so the read goes through the CLI's own read
+# verb (kdashdata CD-14).
+#
+# It reads the FIRST leg — the home the write it guards will reach — because a
+# guard comparing against a different Redis than the one it is about to
+# overwrite is worse than no guard at all.
+#
+# Failure stays benign by design: `--best-effort` maps an unreachable Redis to
+# exit 0 with no output, an absent field prints nothing either, and both mean
+# "unknown" here, on which the guard publishes.
 stored_epoch() {
-  local field="$1" host port
-  read_endpoint || return 0
-  host="${KDD_READ_HP%:*}" ; port="${KDD_READ_HP##*:}"
-  (
-    exec 3<>"/dev/tcp/${host}/${port}" || exit 0
-    printf '*3\r\n$4\r\nHGET\r\n$13\r\nclaude:limits\r\n$%s\r\n%s\r\n' \
-      "${#field}" "$field" >&3
-    read -r -t 2 hdr <&3 || exit 0
-    case "$hdr" in '$-1'*|'') exit 0 ;; esac
-    read -r -t 2 val <&3 || exit 0
-    printf '%s' "$val"
-  ) 2>/dev/null | tr -cd '0-9'
+  [ -n "$KDD_PUB_BIN" ] || return 0
+  leg_stem "${KDD_LEGS%%,*}" || return 0
+  "$KDD_PUB_BIN" --app kdeskdash --stem "$LEG_STEM" --best-effort \
+    hget claude:limits "$1" 2>/dev/null | tr -cd '0-9'
 }
 
 # ISO-8601 (with fractional seconds and offset) -> epoch seconds. GNU date only;

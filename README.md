@@ -228,7 +228,7 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_TELEMETRY_REDIS_HOST` | `rpi53`    | Telemetry source Redis host (kpidash host metrics; read-only, separate from the control Redis). Used by `dev` mode. |
 | `KDESKDASH_TELEMETRY_REDIS_PORT` | `6379`     | Telemetry source Redis port |
 | `KDESKDASH_TELEMETRY_REDISCLI_AUTH` | _(unset)_ | Telemetry source Redis password (AUTH). **Secret** — rpi53's telemetry Redis requires it, so `dev` mode shows no host data without it. Install via `/etc/kdeskdash/secrets.env`, not a committed host file. |
-| `KDESKDASH_CLAUDE_REDIS_HOST` | `127.0.0.1`   | Claude-feed Redis host (agent activity + usage limits). Used by `claude` mode. The default is the interim home; both shipped panels set `rpi53` — see sprint 031. |
+| `KDESKDASH_CLAUDE_REDIS_HOST` | `127.0.0.1`   | Claude-feed Redis host (agent activity + usage limits). Used by `claude` mode. The compiled-in default is a leftover from when the feed was loopback-local on rpidash2; the feed lives on the central Redis now (kdashdata CD-7) and both shipped panels set `rpi53` explicitly — see sprint 031. |
 | `KDESKDASH_CLAUDE_REDIS_PORT` | `6380`        | Claude-feed Redis port (both panels set `6379`) |
 | `KDESKDASH_CLAUDE_REDISCLI_AUTH` | _(unset)_  | Claude-feed Redis password (AUTH). **Required** on central, and the same string as the telemetry password — separate variable because it is a separate connection. **Secret**: install via `/etc/kdeskdash/secrets.env`. |
 | `KDESKDASH_KVSCF_REDIS_HOST` | _(claude-feed host)_ | kvscf instance the `Remote` and `Launcher` modes read and publish to. The fallback is legacy: kvscf stays with its workstation pair while the Claude feed has moved to central, so **both** panels now pin these explicitly (rpidash2 → its own `127.0.0.1:6380`, rpidash3 → its own second instance that kwork publishes to). Leaving them unset drags kvscf to central, which is the one thing the pin exists to prevent. |
@@ -318,7 +318,7 @@ kdeskdash/
 │   │   ├── rpidash2.env            #   Pi 5, dev desk
 │   │   ├── rpidash3.env            #   Pi 4, work desk
 │   │   └── README.md               #   install flow + the hand-installed secrets.env
-│   ├── redis-claude.conf           # rpidash2:6380 instance, ephemeral + open — serves kvscf now; the claude keys move out with the CD-7 close-out
+│   ├── redis-claude.conf           # rpidash2:6380 instance, ephemeral + open — serves kvscf ALONE now; the claude keys were retired from it by the CD-7 close-out (name is historical)
 │   ├── redis-claude.service        # systemd unit for that instance
 │   ├── redis-kvscf.conf            # kvscf-feed Redis instance (rpidash3:6380, ephemeral, AUTH + LAN bind)
 │   └── redis-kvscf.service         # systemd unit for the kvscf-feed instance
