@@ -273,6 +273,14 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_compile_options(test_dev_view PRIVATE -Wall -Wextra)
     add_test(NAME test_dev_view COMMAND test_dev_view)
 
+    # Endpoint fallbacks, the kvscf-vs-claude auth rule in particular. config.c
+    # is stdlib-only, so the test drives the real config_load() through setenv
+    # rather than re-stating its rules.
+    add_executable(test_config tests/test_config.c src/config.c)
+    target_include_directories(test_config PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_config PRIVATE -Wall -Wextra)
+    add_test(NAME test_config COMMAND test_config)
+
     # The one test here that is not C: what publisher/claude-pub.sh hands to
     # kdash-pub. Since the CD-7 port, one off-contract line makes a whole batch
     # publish nothing, so the format is worth pinning. It stubs kdash-pub, so it

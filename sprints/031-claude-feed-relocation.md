@@ -115,6 +115,33 @@ every tool call in every session on the box and 24 forks per hook is not free.
   `deploy/kdeskdash.env.example` (the kvscf fallback is now legacy, not a
   default) and the top-level README.
 
+## The bug the repoint surfaced: an auth fallback that outlived its reason
+
+Pinning rpidash2's kvscf endpoint to `127.0.0.1:6380` was not enough, and the
+panel said so: **`kvscf feed unavailable`**, with the keys sitting right there on
+that instance.
+
+`config.c` let each kvscf field fall back to the claude one *independently*.
+Host and port were pinned; auth was not, because `KDESKDASH_KVSCF_REDISCLI_AUTH`
+was unset — and it had always been unset, correctly, because the claude handle
+had never had a password. Giving the claude handle a password for the first time
+handed kvscf one too, and rpidash2:6380 has none configured, which makes AUTH an
+**error** rather than a no-op. The handle stopped connecting.
+
+No value of the variable could fix it: empty means unset, which means inherit.
+There was no way to say "this one takes none".
+
+The fallback now follows the **endpoint**, not the variable: the claude password
+is inherited only when the kvscf endpoint resolves to the same `host:port`,
+which is the exact condition the fallback was written for ("both live on the
+same Redis"). Once they differ, inheriting is never right. `tests/test_config.c`
+drives the real `config_load()` through `setenv` and pins all five cases,
+including rpidash3's — an explicit kvscf password still wins over everything.
+
+This is `verify-the-side-that-actually-connects.md` again, one layer down: the
+plan verified that kvscf's *endpoint* was pinned, and the thing that had to
+authenticate was a handle nobody had listed as changing.
+
 ## The one hand-rolled socket left, and why
 
 Poll mode still reads `claude:limits` over `/dev/tcp` — `kdash-pub` has seven
