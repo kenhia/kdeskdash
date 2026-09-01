@@ -140,7 +140,8 @@ including rpidash3's — an explicit kvscf password still wins over everything.
 
 This is `verify-the-side-that-actually-connects.md` again, one layer down: the
 plan verified that kvscf's *endpoint* was pinned, and the thing that had to
-authenticate was a handle nobody had listed as changing.
+authenticate was a field nobody had listed as changing. Written up as
+[a-fallback-outlives-the-sameness-that-justified-it.md](../docs/solutions/best-practices/a-fallback-outlives-the-sameness-that-justified-it.md).
 
 ## Rolled out and verified live
 
