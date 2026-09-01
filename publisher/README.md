@@ -2,10 +2,18 @@
 
 Publishes Claude Code session activity (hooks) and subscription usage limits
 (statusline + a session-free `poll` mode) from each dev machine to the
-claude-feed Redis on `rpidash2:6380`, where the dashboard's `claude` mode reads
-it. Zero dependencies: one bash script speaking RESP over `/dev/tcp` — no
-`redis-cli`, no `jq`. Works on Linux and on Windows under Git Bash (Claude Code
-runs hooks/statusline via Git Bash when it is installed).
+claude-feed Redis, where the dashboard's `claude` mode reads it. One bash script
+plus `kdash-pub` — kdashdata's publisher CLI, which brings the khlenv-resolved
+endpoint, CD-12 auth and the key grammar. No `redis-cli`, no `jq`. Works on
+Linux and on Windows under Git Bash (Claude Code runs hooks/statusline via Git
+Bash when it is installed).
+
+**Where it writes is a khlenv stem, not a hostname.** During the CD-7 relocation
+window (kdeskdash sprint 031) every write goes to *two* homes: the interim
+`rpidash2:6380` via `KDASH_CLAUDE_REDIS` (unauthenticated, `--no-auth`) and the
+central `rpi53:6379` via `KDASH_CENTRAL_REDIS` (authenticated). When slice 3
+flips the claude stem to central, `KDD_LEGS=claude` is the single end-state leg
+and the interim one comes out of the script. See `KDD_LEGS` below.
 
 Contract and rationale: `sprints/007-claude-mode/plan.md`; the generalized
 one-key-many-writers pattern:
@@ -20,6 +28,13 @@ machines (cleo).
 
 ## Install (per machine, once)
 
+0. **`kdash-pub` must already be on the machine** at its fleet path —
+   `/usr/local/bin/kdash-pub` on Linux, `C:\tools\bin\kdash-pub.exe` on Windows
+   (kdashdata CD-13; installed by `knarr deploy kdash-pub`, or kdashdata's
+   `just deploy-cleo`). Without it this script publishes nothing and drops a
+   `no-kdash-pub` breadcrumb in its state dir. `kdash-pub --version` is the
+   check; `kdash-pub --app kdeskdash endpoint` additionally proves khlenv and
+   auth work on that host.
 1. Copy `claude-pub.sh` to `~/.claude/kdeskdash-pub/claude-pub.sh` and make it
    executable (`chmod +x`; not needed on Windows).
 2. Merge `settings-fragment.json` into user-level `~/.claude/settings.json`,
@@ -37,9 +52,16 @@ Requirements: Claude Code ≥ 2.1.80 (statusline `rate_limits`), a Claude.ai
 Pro/Max login (API-key auth gets no `rate_limits`; the publisher then skips the
 limits hash and the dashboard shows "no data yet").
 
-Override the target instance per machine with `KDD_REDIS_HOST` / `KDD_REDIS_PORT`
-in the environment if it ever moves; the default is pinned to the rpidash2 IP so
-no DNS is involved.
+Environment overrides:
+
+| var | default | what it does |
+|---|---|---|
+| `KDD_LEGS` | `interim,central` | Comma-separated homes to write. `interim` = `--stem KDASH_CLAUDE_REDIS --no-auth`; `central` = `--stem KDASH_CENTRAL_REDIS`; `claude` = `--stem KDASH_CLAUDE_REDIS` (the end state once the stem flips). An unknown name publishes nowhere rather than guessing. |
+| `KDD_PUB_BIN` | first of `/usr/local/bin/kdash-pub`, `/c/tools/bin/kdash-pub.exe` | The CLI to exec. Checked for executability however it is chosen, so an override naming a missing file degrades to the breadcrumb rather than failing silently. |
+| `KDD_STATE_DIR` | `~/.claude/kdeskdash-pub/state` | Throttle/title state. Exists so the batch-shape test never touches a real install's state. |
+
+No host or port is hardcoded any more: the endpoint comes from khlenv, so moving
+a home is a store edit rather than a sweep of every publisher host.
 
 ## `poll` mode — usage limits with no session running
 
@@ -164,13 +186,28 @@ timer, not just an interactive shell.
 
 ## Smoke test
 
+Check both homes during the dual-write window — a write landing on one and not
+the other is exactly what the window exists to catch.
+
 ```sh
 printf '%s' '{"hook_event_name":"SessionStart","session_id":"smoke-1","cwd":"/tmp/smoke"}' \
   | ~/.claude/kdeskdash-pub/claude-pub.sh hook
-redis-cli -h 192.168.1.144 -p 6380 hgetall claude:session:$(hostname -s):smoke-1
+
+key=claude:session:$(hostname -s):smoke-1
+at() { redis-cli -h "${1%:*}" -p "${1##*:}" "${@:2}"; }   # kdash-pub prints host:port
+
+at "$(kdash-pub --stem KDASH_CLAUDE_REDIS --no-auth endpoint)" hgetall "$key"  # interim
+at "$(kdash-pub endpoint)" hgetall "$key"                                      # central, needs REDISCLI_AUTH
+
 printf '%s' '{"hook_event_name":"SessionEnd","reason":"other","session_id":"smoke-1","cwd":"/tmp/smoke"}' \
   | ~/.claude/kdeskdash-pub/claude-pub.sh hook   # cleans up + pushes a recent record
 ```
+
+Neither address is written down here any more — both come from khlenv.
+
+What the script hands to `kdash-pub` is pinned by `publisher/tests/batch-shape.sh`,
+which runs in `just check` as `test_publisher_batch`. It stubs the CLI, so it
+needs no network and no installed binary.
 
 ## Fleet notes (2026-07-03; AskUserQuestion hooks 2026-07-19; poll mode 2026-08-04)
 

@@ -5,6 +5,7 @@
 #include "config.h"
 
 #include <stdlib.h>
+#include <string.h>
 #include <strings.h>
 
 #define DEFAULT_DRM_DEV   "/dev/dri/card1"
@@ -59,16 +60,34 @@ void config_load(kdeskdash_config_t *cfg) {
      * same instance as the claude feed, so unset means "reuse the claude-feed
      * values" and that device's env needs no change. A second panel reads the
      * same fleet claude feed but drives a *different* kvscf, which is what this
-     * split exists for. Each field falls back independently — set only the host
-     * and you inherit the claude port and auth. */
+     * split exists for. Host and port fall back independently — set only the
+     * host and you inherit the claude port. Auth does NOT; see below. */
     cfg->kvscf_redis_host =
         env_or("KDESKDASH_KVSCF_REDIS_HOST", cfg->claude_redis_host);
     int kport = atoi(env_or("KDESKDASH_KVSCF_REDIS_PORT", "0"));
     cfg->kvscf_redis_port =
         (kport > 0 && kport <= 65535) ? kport : cfg->claude_redis_port;
+    /* The auth fallback follows the ENDPOINT, not the variable. Inheriting the
+     * claude password is only ever right when kvscf is the *same instance* —
+     * which is the entire reason the fallback exists. Once the two endpoints
+     * differ, inheriting is actively wrong, and wrong in the way that reads
+     * worst: a Redis with no password configured answers AUTH with an ERROR,
+     * not a shrug, so the handle never connects and the panel reports "kvscf
+     * feed unavailable" as though the endpoint were down.
+     *
+     * Sprint 031 hit exactly that. Repointing the claude feed to central gave
+     * that handle a password for the first time, and rpidash2's kvscf — the
+     * same loopback instance as always, still passwordless — inherited it and
+     * stopped connecting. Pinning host and port was not enough, and no value
+     * of KDESKDASH_KVSCF_REDISCLI_AUTH could say "this one takes none": empty
+     * means unset, which means inherit. */
     const char *kauth = getenv("KDESKDASH_KVSCF_REDISCLI_AUTH");
-    cfg->kvscf_redis_auth =
-        (kauth && kauth[0] != '\0') ? kauth : cfg->claude_redis_auth;
+    bool same_instance =
+        cfg->kvscf_redis_port == cfg->claude_redis_port &&
+        strcmp(cfg->kvscf_redis_host, cfg->claude_redis_host) == 0;
+    cfg->kvscf_redis_auth = (kauth && kauth[0] != '\0')
+                                ? kauth
+                                : (same_instance ? cfg->claude_redis_auth : NULL);
 
     /* Icons mode: the runtime Symbols Nerd Font (deployed as a file) and the
      * favourites list it curates. Both default to system paths the deploy sets

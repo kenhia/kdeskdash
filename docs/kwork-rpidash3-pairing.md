@@ -7,8 +7,14 @@ machine, deliberately off the tailnet, and every decision below follows from
 keeping it that way.
 
 The home-desk pairing is the simple case for comparison — `cleo` publishes to
-rpidash2's open claude-feed instance and rpidash2 reads it over loopback. Read
-this document only for the work desk.
+the open instance on rpidash2 and rpidash2 reads it over loopback. Read this
+document only for the work desk.
+
+(That instance was the claude feed's home too, until sprint 031 moved the feed
+to the central Redis. It still carries `claude:*` through the CD-7 dual-write
+window, and after the close-out it serves `kvscf:*` alone. Nothing below
+changes: the kvscf side was always the reason for the split, and pinning it is
+now enforced by `config.c` rather than by remembering.)
 
 ## Topology
 
@@ -51,7 +57,7 @@ exists for exactly this case.
 
 ### Why this instance requires a password when rpidash2's does not
 
-rpidash2's claude feed is open on the trusted home LAN, and that stays true.
+rpidash2's 6380 instance is open on the trusted home LAN, and that stays true.
 This one is different in three ways:
 
 1. **rpidash3 is dual-homed** (`eth0` + `tailscale0`) and kwork cannot join the
