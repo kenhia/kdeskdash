@@ -38,8 +38,10 @@ cross-compile approach and adding touch input.
   its percentage independently when its own data goes stale. Fed by
   [publisher/claude-pub.sh](publisher/README.md) hooks + statusline on each dev
   machine, and session-free by its `poll` mode (desktop-app usage file, or the
-  OAuth usage endpoint on headless hosts), via a dedicated Redis instance
-  ([deploy/redis-claude.conf](deploy/redis-claude.conf), port 6380).
+  OAuth usage endpoint on headless hosts). The feed lives on the homelab's
+  central Redis (`rpi53:6379`) since sprint 031 — publishers reach it through
+  `kdash-pub`, which resolves the endpoint from khlenv, so moving it again is a
+  store edit rather than a sweep of every publisher host.
 - **Icons** — a Nerd Font browser: page a glyph set (Font Logos, Devicons, Codicons,
   Font Awesome, Material Design, …) in a touch grid, preview the selected glyph at several
   sizes, and mark favourites saved to a bake-ready file. Renders any of ~9,300 glyphs at
@@ -226,10 +228,10 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_TELEMETRY_REDIS_HOST` | `rpi53`    | Telemetry source Redis host (kpidash host metrics; read-only, separate from the control Redis). Used by `dev` mode. |
 | `KDESKDASH_TELEMETRY_REDIS_PORT` | `6379`     | Telemetry source Redis port |
 | `KDESKDASH_TELEMETRY_REDISCLI_AUTH` | _(unset)_ | Telemetry source Redis password (AUTH). **Secret** — rpi53's telemetry Redis requires it, so `dev` mode shows no host data without it. Install via `/etc/kdeskdash/secrets.env`, not a committed host file. |
-| `KDESKDASH_CLAUDE_REDIS_HOST` | `127.0.0.1`   | Claude-feed Redis host (agent activity + usage limits; a second, LAN-reachable instance on the Pi itself). Used by `claude` mode. |
-| `KDESKDASH_CLAUDE_REDIS_PORT` | `6380`        | Claude-feed Redis port |
-| `KDESKDASH_CLAUDE_REDISCLI_AUTH` | _(unset)_  | Claude-feed Redis password, if any (AUTH) |
-| `KDESKDASH_KVSCF_REDIS_HOST` | _(claude-feed host)_ | kvscf instance the `Remote` and `Launcher` modes read and publish to. Unset reuses the Claude-feed value, which is right when both live on the same Redis; set it when a panel reads the fleet Claude feed but drives a *different* kvscf — rpidash3 points these at its own second instance on 6380, which kwork publishes to. |
+| `KDESKDASH_CLAUDE_REDIS_HOST` | `127.0.0.1`   | Claude-feed Redis host (agent activity + usage limits). Used by `claude` mode. The default is the interim home; both shipped panels set `rpi53` — see sprint 031. |
+| `KDESKDASH_CLAUDE_REDIS_PORT` | `6380`        | Claude-feed Redis port (both panels set `6379`) |
+| `KDESKDASH_CLAUDE_REDISCLI_AUTH` | _(unset)_  | Claude-feed Redis password (AUTH). **Required** on central, and the same string as the telemetry password — separate variable because it is a separate connection. **Secret**: install via `/etc/kdeskdash/secrets.env`. |
+| `KDESKDASH_KVSCF_REDIS_HOST` | _(claude-feed host)_ | kvscf instance the `Remote` and `Launcher` modes read and publish to. The fallback is legacy: kvscf stays with its workstation pair while the Claude feed has moved to central, so **both** panels now pin these explicitly (rpidash2 → its own `127.0.0.1:6380`, rpidash3 → its own second instance that kwork publishes to). Leaving them unset drags kvscf to central, which is the one thing the pin exists to prevent. |
 | `KDESKDASH_KVSCF_REDIS_PORT` | _(claude-feed port)_ | As above. Each of the three falls back independently — set only the host and you inherit the Claude-feed port and auth. |
 | `KDESKDASH_KVSCF_REDISCLI_AUTH` | _(claude-feed auth)_ | As above — the **transport** gate, distinct from `KVSCF_TOKEN`'s application one. **Secret** where it is needed (rpidash3): install via `/etc/kdeskdash/secrets.env`. Wrong or missing looks like an unreachable endpoint, not a permissions error. |
 | `KDESKDASH_MODES`      | _(unset → all modes)_ | Per-device mode set: `fun:<ids>;ops:<ids>`. See [Per-device mode sets](#per-device-mode-sets). |
@@ -316,12 +318,13 @@ kdeskdash/
 │   │   ├── rpidash2.env            #   Pi 5, dev desk
 │   │   ├── rpidash3.env            #   Pi 4, work desk
 │   │   └── README.md               #   install flow + the hand-installed secrets.env
-│   ├── redis-claude.conf           # claude-feed Redis instance (rpidash2:6380, ephemeral, open)
-│   ├── redis-claude.service        # systemd unit for the claude-feed instance
+│   ├── redis-claude.conf           # rpidash2:6380 instance, ephemeral + open — serves kvscf now; the claude keys move out with the CD-7 close-out
+│   ├── redis-claude.service        # systemd unit for that instance
 │   ├── redis-kvscf.conf            # kvscf-feed Redis instance (rpidash3:6380, ephemeral, AUTH + LAN bind)
 │   └── redis-kvscf.service         # systemd unit for the kvscf-feed instance
 ├── publisher/
-│   ├── claude-pub.sh               # zero-dep hook/statusline/poll publisher (RESP over /dev/tcp)
+│   ├── claude-pub.sh               # hook/statusline/poll publisher — batches through kdash-pub
+│   ├── tests/batch-shape.sh        #   what it hands kdash-pub, pinned (ctest: test_publisher_batch)
 │   ├── settings-fragment.json      # ~/.claude/settings.json hook + statusline config
 │   ├── poll-hidden.vbs             # Windows shim: run `poll` from Task Scheduler windowless
 │   ├── kdeskdash-claude-poll.*     # systemd user unit pair for `poll` on headless hosts

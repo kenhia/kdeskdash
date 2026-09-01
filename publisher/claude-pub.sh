@@ -1,9 +1,14 @@
 #!/bin/bash
-# claude-pub.sh — kdeskdash claude-feed publisher (zero-dependency).
+# claude-pub.sh — kdeskdash claude-feed publisher.
 #
-# Publishes Claude Code session activity and subscription usage limits to the
-# claude-feed Redis (rpidash2:6380) by speaking RESP directly over bash /dev/tcp.
-# No redis-cli, no jq — runs identically on Linux and Git Bash on Windows.
+# Publishes Claude Code session activity and subscription usage limits through
+# `kdash-pub`, kdashdata's publisher CLI: khlenv-resolved endpoint, CD-12 auth,
+# and the key grammar checked before anything reaches Redis. No redis-cli, no
+# jq — runs identically on Linux and Git Bash on Windows.
+#
+# CD-7 dual-write window: the `KDASH_CLAUDE_REDIS` stem still names the interim
+# home (rpidash2:6380, unauthenticated), so every write goes to BOTH that and
+# the central Redis until the stem flips. See KDD_LEGS below.
 #
 # Modes (first arg):
 #   hook        stdin = hook event JSON (SessionStart/UserPromptSubmit/Stop/
@@ -30,8 +35,29 @@
 LC_ALL=C
 export LC_ALL
 
-KDD_REDIS_HOST="${KDD_REDIS_HOST:-192.168.1.144}"
-KDD_REDIS_PORT="${KDD_REDIS_PORT:-6380}"
+# The publisher CLI, at the fleet-installed absolute path (kdashdata CD-13).
+# Absolute, not a PATH lookup: a hook context's PATH is not the interactive
+# shell's. Not a per-user copy either — that would bypass the store, so a
+# `knarr deploy kdash-pub` upgrade would never reach the hooks.
+KDD_PUB_BIN="${KDD_PUB_BIN:-}"
+if [ -z "$KDD_PUB_BIN" ]; then
+  for _kdd_c in /usr/local/bin/kdash-pub /c/tools/bin/kdash-pub.exe ; do
+    [ -x "$_kdd_c" ] && { KDD_PUB_BIN="$_kdd_c" ; break ; }
+  done
+fi
+# Checked however it was chosen, override included: an override naming a file
+# that is not there would otherwise fail at exec time with output already
+# redirected to /dev/null — publishing nothing, and saying nothing about it.
+[ -x "$KDD_PUB_BIN" ] || KDD_PUB_BIN=""
+
+# Which homes this publisher writes, comma-separated (CD-7):
+#   interim  --stem KDASH_CLAUDE_REDIS --no-auth   the old home, while the stem still names it
+#   central  --stem KDASH_CENTRAL_REDIS            rpi53:6379, authenticated
+#   claude   --stem KDASH_CLAUDE_REDIS             the end state, once the stem flips
+# The default IS the dual-write window. When slice 3 (korg:1754) flips the stem,
+# this becomes `claude` and the interim leg comes out of this script entirely.
+KDD_LEGS="${KDD_LEGS:-interim,central}"
+
 KDD_TTL_S=7200
 KDD_RECENT_KEEP=19      # LTRIM 0 19 -> 20 entries
 KDD_LIMITS_MIN_S=5      # statusline publish throttle
@@ -44,7 +70,9 @@ KDD_POLL_MAX_AGE_S=900  # plan-usage-history sample older than this = app closed
 KDD_STATUSLINE_EXPECT_S=60  # statusline: sub-minute while a session renders
 KDD_POLL_EXPECT_S=300       # poll: the 5-minute timer on every host
 
-STATE_DIR="${HOME}/.claude/kdeskdash-pub/state"
+# Overridable so the batch-shape test can run without touching a real
+# install's throttle state (and vice versa).
+STATE_DIR="${KDD_STATE_DIR:-${HOME}/.claude/kdeskdash-pub/state}"
 
 # ---------- tiny JSON helpers (flat fields on a single-line document) ----------
 
@@ -62,36 +90,72 @@ jnum() {
 # sanitized token for key material (host/session id)
 token() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._-' | cut -c1-63; }
 
-# ---------- RESP pipeline ----------
+# ---------- transport: kdash-pub batch ----------
+#
+# Commands accumulate as tab-separated lines — kdash-pub's `batch` format, which
+# needs no quoting rules because a JSON string cannot contain a literal tab —
+# and go out in one connection per home. `--best-effort` maps a delivery failure
+# to exit 0, because a dead Redis must never fail a hook; an off-contract key
+# still exits 1, which is a bug worth noticing.
 
-PAYLOAD=""
-resp() {
-  local a
-  PAYLOAD+="*$#"$'\r\n'
+BATCH=""
+
+# cmd <verb> <arg…>: append one command. Tab/CR/LF are stripped from every field
+# because they are the format's only delimiters, and nothing published here
+# legitimately contains one.
+cmd() {
+  local a first=1
   for a in "$@"; do
-    PAYLOAD+="\$${#a}"$'\r\n'"${a}"$'\r\n'
+    a="${a//[$'\t\r\n']/}"   # pure bash: this runs on every tool call, forks do not
+    if [ "$first" = 1 ]; then BATCH+="$a" ; first=0 ; else BATCH+=$'\t'"$a" ; fi
   done
+  BATCH+=$'\n'
 }
 
-# Send the accumulated pipeline. Synchronous variant for events where the
-# process is about to die (SessionEnd): a backgrounded sender loses the race
-# with CLI exit / ssh teardown and the DEL never arrives (ghost session until
-# TTL). The hook-level timeout bounds the worst case.
+# Write $BATCH to one home. An unknown leg name publishes nowhere rather than
+# guessing at a home.
+send_leg() {
+  case "$1" in
+    interim) set -- --stem KDASH_CLAUDE_REDIS --no-auth ;;
+    central) set -- --stem KDASH_CENTRAL_REDIS ;;
+    claude)  set -- --stem KDASH_CLAUDE_REDIS ;;
+    *)       return 0 ;;
+  esac
+  printf '%s' "$BATCH" | "$KDD_PUB_BIN" --app kdeskdash "$@" --best-effort batch
+}
+
+# A host with no kdash-pub publishes nothing — the failure the store install
+# exists to prevent. Leave a breadcrumb a human can find instead of a hook that
+# prints, and never let it cost more than the file write.
+no_binary() {
+  printf 'no kdash-pub at /usr/local/bin or /c/tools/bin as of %s\n' "$NOW" \
+    > "${STATE_DIR}/no-kdash-pub" 2>/dev/null
+  BATCH=""
+}
+
+# Send to every leg, in parallel, and wait. Used where the process is about to
+# die (SessionEnd): a backgrounded sender loses the race with CLI exit / ssh
+# teardown and the DEL never arrives (ghost session until TTL). The hook-level
+# timeout bounds the worst case; kdash-pub's own is 1.5 s per leg.
 send_sync() {
-  [ -n "$PAYLOAD" ] || return 0
-  (
-    exec 3<>"/dev/tcp/${KDD_REDIS_HOST}/${KDD_REDIS_PORT}" || exit 0
-    printf '%s' "$PAYLOAD" >&3
-    read -r -t 1 _ <&3   # give the server a beat to consume before close
-    exec 3>&- 3<&-
-  ) >/dev/null 2>&1
+  [ -n "$BATCH" ] || return 0
+  [ -n "$KDD_PUB_BIN" ] || { no_binary ; return 0 ; }
+  local leg
+  for leg in ${KDD_LEGS//,/ }; do
+    send_leg "$leg" &
+  done
+  wait
+  BATCH=""
 }
 
-# Disowned fire-and-forget variant so live-session events never wait.
+# Disowned fire-and-forget variant so live-session events never wait. The child
+# forks with $BATCH already set, so clearing it here cannot race the send.
 send() {
-  [ -n "$PAYLOAD" ] || return 0
-  send_sync &
+  [ -n "$BATCH" ] || return 0
+  [ -n "$KDD_PUB_BIN" ] || { no_binary ; return 0 ; }
+  send_sync >/dev/null 2>&1 &
   disown 2>/dev/null
+  BATCH=""
 }
 
 # ---------- shared context ----------
@@ -184,8 +248,8 @@ heartbeat() {
   hb=$(cat "${STATE_DIR}/${sid}.hb" 2>/dev/null | tr -cd '0-9')
   [ -n "$hb" ] && [ $((NOW - hb)) -lt "$KDD_HEARTBEAT_MIN_S" ] && return 0
   printf '%s' "$NOW" > "${STATE_DIR}/${sid}.hb" 2>/dev/null
-  resp HSET "$key" ts "$NOW"
-  resp EXPIRE "$key" "$KDD_TTL_S"   # never leave a TTL-less key behind
+  cmd hset "$key" ts "$NOW"
+  cmd expire "$key" "$KDD_TTL_S"   # never leave a TTL-less key behind
   send
 }
 
@@ -219,16 +283,16 @@ hook_mode() {
   case "$event" in
     SessionStart)
       printf '%s' "$NOW" > "${STATE_DIR}/${sid}.start" 2>/dev/null
-      resp HSET "$key" host "$HOST" project "$project" cwd "$cwd" \
+      cmd hset "$key" host "$HOST" project "$project" cwd "$cwd" \
                  status working ts "$NOW" started_ts "$NOW"
-      resp EXPIRE "$key" "$KDD_TTL_S"
+      cmd expire "$key" "$KDD_TTL_S"
       ;;
     UserPromptSubmit|Stop)
       local st=working
       [ "$event" = Stop ] && st=awaiting
-      resp HSET "$key" host "$HOST" project "$project" cwd "$cwd" \
+      cmd hset "$key" host "$HOST" project "$project" cwd "$cwd" \
                  status "$st" ts "$NOW"
-      resp EXPIRE "$key" "$KDD_TTL_S"
+      cmd expire "$key" "$KDD_TTL_S"
       ;;
     PreToolUse|PostToolUse)
       # Only AskUserQuestion reaches here — the fast path above routed every
@@ -240,21 +304,26 @@ hook_mode() {
       # nothing but tool_name — prompt content never reaches Redis (R20).
       local qst=blocked
       [ "$event" = PostToolUse ] && qst=working
-      resp HSET "$key" host "$HOST" project "$project" cwd "$cwd" \
+      cmd hset "$key" host "$HOST" project "$project" cwd "$cwd" \
                  status "$qst" ts "$NOW"
-      resp EXPIRE "$key" "$KDD_TTL_S"
+      cmd expire "$key" "$KDD_TTL_S"
       ;;
     SessionEnd)
       reason=$(jstr "$json" reason)
-      resp DEL "$key"
+      # The DEL ships in its OWN batch, before the recent record. kdash-pub
+      # refuses a whole batch when any line is off-contract, so a hand-built
+      # record that somehow failed to be JSON would otherwise take the DEL down
+      # with it and leave a ghost session until the 2h TTL.
+      cmd del "$key"
+      send_sync
       if [ "$reason" != "clear" ]; then
         started=$(cat "${STATE_DIR}/${sid}.start" 2>/dev/null | tr -cd '0-9')
         dur=""
         [ -n "$started" ] && [ "$started" -le "$NOW" ] && dur=$((NOW - started))
         title=$(plain "$(cat "${STATE_DIR}/${sid}.title" 2>/dev/null)")
         rec="{\"host\":\"${HOST}\",\"project\":\"$(plain "$project")\",\"title\":\"${title}\",\"ended_ts\":${NOW},\"dur_s\":${dur:-0}}"
-        resp LPUSH claude:recent "$rec"
-        resp LTRIM claude:recent 0 "$KDD_RECENT_KEEP"
+        cmd lpush claude:recent "$rec"
+        cmd ltrim claude:recent 0 "$KDD_RECENT_KEEP"
       fi
       rm -f "${STATE_DIR}/${sid}.start" "${STATE_DIR}/${sid}.title" \
             "${STATE_DIR}/${sid}.hb" 2>/dev/null
@@ -270,10 +339,10 @@ hook_mode() {
   # generate one for the first few turns, so `title` stays empty early and the
   # view falls back to `project`.
   mid=$(model_from_transcript "$tpath")
-  [ -n "$mid" ] && resp HSET "$key" model "$(plain "$(model_label "$mid")")"
+  [ -n "$mid" ] && cmd hset "$key" model "$(plain "$(model_label "$mid")")"
   sname=$(title_from_transcript "$tpath")
   if [ -n "$sname" ]; then
-    resp HSET "$key" title "$(plain "$sname")"
+    cmd hset "$key" title "$(plain "$sname")"
     printf '%s' "$sname" > "${STATE_DIR}/${sid}.title" 2>/dev/null
   fi
   send
@@ -319,7 +388,7 @@ statusline_mode() {
   printf '%s' "$NOW" > "${STATE_DIR}/limits.stamp" 2>/dev/null
 
   if [ -n "$fh_pct" ] || [ -n "$sd_pct" ]; then
-    resp HSET claude:limits \
+    cmd hset claude:limits \
       five_hour_pct "${fh_pct:-0}" five_hour_resets_at "${fh_reset:-0}" \
       seven_day_pct "${sd_pct:-0}" seven_day_resets_at "${sd_reset:-0}" \
       updated_at "$NOW" host "$HOST" source statusline \
@@ -327,8 +396,8 @@ statusline_mode() {
   fi
   if [ -n "$sid" ]; then
     key="claude:session:${HOST}:${sid}"
-    resp HSET "$key" title "$(plain "$name")" model "$(plain "$model")"
-    resp EXPIRE "$key" "$KDD_TTL_S"   # never leave a TTL-less key behind
+    cmd hset "$key" title "$(plain "$name")" model "$(plain "$model")"
+    cmd expire "$key" "$KDD_TTL_S"   # never leave a TTL-less key behind
   fi
   send
 }
@@ -353,25 +422,37 @@ P_T="" ; P_FH="" ; P_SD="" ; P_FHR="" ; P_SDR="" ; P_SRC=""
 # is_active flag, and how many weekly_scoped entries the reply carried.
 P_SCM="" ; P_SCP="" ; P_SCR="" ; P_SCA="" ; P_SCN=""
 
-# Send PAYLOAD and return one bulk-string reply. Empty on nil or any failure.
-send_read() {
-  [ -n "$PAYLOAD" ] || return 0
-  (
-    exec 3<>"/dev/tcp/${KDD_REDIS_HOST}/${KDD_REDIS_PORT}" || exit 0
-    printf '%s' "$PAYLOAD" >&3
-    read -r -t 2 hdr <&3 || exit 0
-    case "$hdr" in '$-1'*|'') exit 0 ;; esac
-    read -r -t 2 val <&3 || exit 0
-    printf '%s' "$val"
-  ) 2>/dev/null
+# The one remaining hand-rolled socket, and the only read in this script.
+# kdash-pub has no read verb, so the freshness guard below still speaks RESP
+# over /dev/tcp — against the INTERIM home, which takes no AUTH and, while every
+# publisher dual-writes, carries every observation central carries. When the
+# claude stem flips (slice 3, korg:1754) this needs a real answer; a kdash-pub
+# read verb is filed for it. Failure here is benign by design: an empty read
+# means "unknown", and the guard then publishes.
+KDD_READ_HP=""
+read_endpoint() {
+  [ -n "$KDD_READ_HP" ] && return 0
+  [ -n "$KDD_PUB_BIN" ] || return 1
+  KDD_READ_HP=$("$KDD_PUB_BIN" --app kdeskdash --stem KDASH_CLAUDE_REDIS \
+                  --no-auth endpoint 2>/dev/null | head -n1 | tr -cd 'A-Za-z0-9.:_-')
+  case "$KDD_READ_HP" in *:*) return 0 ;; *) KDD_READ_HP="" ; return 1 ;; esac
 }
 
 # Stored observation time (updated_at / scoped_updated_at), so a writer can
 # refuse to publish over a fresher one. Empty when absent or unreachable.
 stored_epoch() {
-  PAYLOAD=""
-  resp HGET claude:limits "$1"
-  send_read | tr -cd '0-9'
+  local field="$1" host port
+  read_endpoint || return 0
+  host="${KDD_READ_HP%:*}" ; port="${KDD_READ_HP##*:}"
+  (
+    exec 3<>"/dev/tcp/${host}/${port}" || exit 0
+    printf '*3\r\n$4\r\nHGET\r\n$13\r\nclaude:limits\r\n$%s\r\n%s\r\n' \
+      "${#field}" "$field" >&3
+    read -r -t 2 hdr <&3 || exit 0
+    case "$hdr" in '$-1'*|'') exit 0 ;; esac
+    read -r -t 2 val <&3 || exit 0
+    printf '%s' "$val"
+  ) 2>/dev/null | tr -cd '0-9'
 }
 
 # ISO-8601 (with fractional seconds and offset) -> epoch seconds. GNU date only;
@@ -496,30 +577,30 @@ poll_mode() {
   prev=$(stored_epoch updated_at)
   sprev=$(stored_epoch scoped_updated_at)
 
-  PAYLOAD=""
+  BATCH=""
   # Headline: never publish over a fresher observation — a live statusline,
   # on this host or any other, is always the better number.
   if [ -z "$prev" ] || [ "$prev" -lt "${P_T:-$NOW}" ]; then
-    resp HSET claude:limits \
+    cmd hset claude:limits \
       five_hour_pct "${P_FH:-0}" seven_day_pct "${P_SD:-0}" \
       updated_at "${P_T:-$NOW}" host "$HOST" source "$P_SRC" \
       expected_refresh_s "$KDD_POLL_EXPECT_S"
     # Reset stamps only when the source actually knows them. The history file
     # carries percentages only, and writing 0 would break the panel's countdown —
     # leaving the previous value in place is the honest degradation.
-    [ -n "$P_FHR" ] && resp HSET claude:limits five_hour_resets_at "$P_FHR"
-    [ -n "$P_SDR" ] && resp HSET claude:limits seven_day_resets_at "$P_SDR"
+    [ -n "$P_FHR" ] && cmd hset claude:limits five_hour_resets_at "$P_FHR"
+    [ -n "$P_SDR" ] && cmd hset claude:limits seven_day_resets_at "$P_SDR"
   fi
   # Scoped set: oauth is its only producer, stamped with its own
   # scoped_updated_at so a headline-only write can never make it look fresh.
   if [ -n "$P_SCM" ] && [ -n "$P_SCP" ] && \
      { [ -z "$sprev" ] || [ "$sprev" -lt "${P_T:-$NOW}" ]; }; then
-    resp HSET claude:limits \
+    cmd hset claude:limits \
       scoped_model "$(plain "$P_SCM")" scoped_pct "$P_SCP" \
       scoped_active "${P_SCA:-0}" scoped_count "${P_SCN:-1}" \
       scoped_updated_at "${P_T:-$NOW}" \
       scoped_expected_refresh_s "$KDD_POLL_EXPECT_S"
-    [ -n "$P_SCR" ] && resp HSET claude:limits scoped_resets_at "$P_SCR"
+    [ -n "$P_SCR" ] && cmd hset claude:limits scoped_resets_at "$P_SCR"
   fi
   send_sync
 }

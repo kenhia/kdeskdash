@@ -272,4 +272,15 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_dev_view PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_dev_view PRIVATE -Wall -Wextra)
     add_test(NAME test_dev_view COMMAND test_dev_view)
+
+    # The one test here that is not C: what publisher/claude-pub.sh hands to
+    # kdash-pub. Since the CD-7 port, one off-contract line makes a whole batch
+    # publish nothing, so the format is worth pinning. It stubs kdash-pub, so it
+    # needs no network and no installed binary.
+    find_program(BASH_EXECUTABLE bash)
+    if(BASH_EXECUTABLE)
+        add_test(NAME test_publisher_batch
+                 COMMAND ${BASH_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/publisher/tests/batch-shape.sh)
+    endif()
 endif()
