@@ -170,3 +170,50 @@ cross-compiles and does the pushing.
 - rpidash2 was left on Claude mode. Its previous mode was not captured before
   the switch, so it was not restored; rpidash3's key was set back to `launcher`
   to match what it displays.
+
+## Deployed
+
+**0.27.0-bb064f8**, published from merged `main` (`bb064f8`) and installed on
+**both** boards — rpidash3 was awake again, so the fleet is whole rather than
+split. This replaces the `-dirty` dev pushes the sprint used for its pre-ship
+panel check: what is on Ken's wall is now a released artifact.
+
+| board | version reported | unit | frame |
+|---|---|---|---|
+| rpidash2 (Pi 5) | `kdeskdash 0.27.0-bb064f8` | active | Claude mode, correct |
+| rpidash3 (Pi 4) | `kdeskdash 0.27.0-bb064f8` | active | Launcher mode, correct |
+
+`just versions` reports both board lines as exactly `kdeskdash 0.27.0-bb064f8`.
+The unit file was untouched this sprint, so no `install-service` was needed.
+
+### Re-verified on the panel after the store deploy, not just after the build
+
+The overseer's clearance asked for the panel check to be repeated against the
+published build rather than inherited from the dev push, which is the right
+demand — a dev push and a store artifact are different bytes.
+
+**rpidash2, Claude mode**, every element the port touches, on live data:
+
+| element | observed |
+|---|---|
+| session rows | 5 rendered, `+9 more` overflow |
+| attention-first order | two amber `AWAITING INPUT` above three green `WORKING` — libkdash's sort |
+| ages | `2m`, `27m`, `4s`, `37s`, `55s` — the panel's `claude_fmt_age` |
+| header counts | "4 working • 2 waiting on you" |
+| model column | `Opus 5` on four rows, empty on the kubs0 row (the `""` passthrough, not a `?`) |
+| 5 HR gauge | 40%, `resets 01:50` |
+| 7 DAY gauge | 14%, `resets Thu 05:00` |
+| scoped weekly gauge | `FABLE` 9%, `resets Thu 05:00` — the `scoped_valid` path |
+| freshness readout | `as of 3m ago` |
+
+**rpidash3** renders Launcher with a live ticking clock and *"no launcher
+configured"* — the documented degraded state when kwork's machine is asleep, not
+a regression. It still registers no `claude` mode, which remains the live proof
+that a panel without the mode never constructs the feed handle.
+
+### What is still not evidenced
+
+The counted-reader `-1` path. Exercising it means killing a Redis three
+dashboards read, so it is evidenced by construction only. kdashdata **WI 2246**
+owns that gap for all three counted readers; the overseer's clearance explicitly
+ruled not to open a second one here.
