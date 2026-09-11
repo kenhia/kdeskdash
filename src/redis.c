@@ -38,6 +38,7 @@
 #define GOLZ_GENS_FLOOR 100
 #define KEY_DEV_LEFT     "kdeskdash:dev:left"
 #define KEY_DEV_RIGHT    "kdeskdash:dev:right"
+#define KEY_CALC_REGS    "kdeskdash:calc:regs"
 
 /* A blocking connect to an unreachable host stalls the single-threaded UI loop
  * for up to the connect timeout. Keep that timeout short and only retry a dead
@@ -248,6 +249,25 @@ void redis_set_dev_assignment(redis_dev_side_t side, const char *host) {
 
 bool redis_get_dev_assignment(redis_dev_side_t side, char *buf, size_t buflen) {
     return redis_get_string(dev_side_key(side), buf, buflen);
+}
+
+void redis_set_calc_regs(const char *line) {
+    if (!redis_client_ensure(&g_control))
+        return;
+    redisReply *r;
+    /* An empty line means "no registers set", and the honest way to say that
+     * is an absent key rather than an empty string the reader has to special-
+     * case. Clearing the last register really does clear the saved state. */
+    if (line && line[0] != '\0')
+        r = redisCommand(g_control.ctx, "SET %s %s", KEY_CALC_REGS, line);
+    else
+        r = redisCommand(g_control.ctx, "DEL %s", KEY_CALC_REGS);
+    if (r)
+        freeReplyObject(r);
+}
+
+bool redis_get_calc_regs(char *buf, size_t buflen) {
+    return redis_get_string(KEY_CALC_REGS, buf, buflen);
 }
 
 bool redis_apply_gol_settings(gol_settings_t *cfg) {
