@@ -159,3 +159,25 @@ from another machine.
 - `scripts/kddss` can `cat` the BMP while the device is still writing it — one
   of two shots came back truncated and a retry succeeded. A size-stable check,
   or a write-then-rename on the device side, would close it.
+
+## Deployed
+
+2026-09-11 06:47–06:48 UTC (23:47 PDT on 09-10), from merged `main` at `31a285b`
+(PR #42), by the ship turn of karc leg `kdeskdash-8a6a07`.
+
+- Published **`0.27.0-31a285b`** to the store on kubsdb; `latest` now points at it.
+- **rpidash2**: installed from the store, `--version` → `kdeskdash 0.27.0-31a285b`,
+  unit active, frame rendered (`.scratch/035/deploy-0.27.0-31a285b-rpidash2.png`;
+  the first shot came back truncated — WI 2308 — and the retry succeeded).
+- **rpidash3**: reachable tonight — installed, `kdeskdash 0.27.0-31a285b`, unit
+  active, frame rendered.
+- `just versions`: both boards report `kdeskdash 0.27.0-31a285b`.
+
+A redeploy for a comment-only C change: the deploy-panels skill publishes from
+merged `main` unconditionally and this sprint touched `src/`, so the fleet's
+reported version now matches `main`'s head; behaviourally identical to
+`bb064f8`. The Redis-side changes are not part of the artifact — a deploy never
+touches `/etc/redis` or `secrets.env` — and had been live by hand since 06:36
+UTC. Re-verified after the restart the deploy performs: with rpidash2 switched to
+Launcher, the panel's authenticated loopback connection is present on 6380 and
+cleo's four keys are still being published.
