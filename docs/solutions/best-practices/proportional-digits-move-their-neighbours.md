@@ -84,8 +84,19 @@ lv_obj_align(st->sw_label, LV_ALIGN_RIGHT_MID, -60, -50);  /* clock mode's stopw
 
 Its right edge is pinned, so the digits push the **left** edge around — and the
 stopwatch updates at 10 Hz, ten times the rate that was distracting on the
-clock. Not fixed in sprint 027 (out of its WI's scope, and #1136 rebuilds clock
-mode anyway), but it is the same bug and the same fix applies.
+clock. Deferred in sprint 027 (out of its WI's scope, and #1136 rebuilt clock
+mode anyway) and **fixed in sprint 036** when that rebuild landed: the readout
+is now left-aligned inside a box pinned to its widest rendering, so the leading
+digit stays put and the caption above and buttons below never move.
+
+One wrinkle that rebuild turned up, for any readout whose *length* changes and
+not just its glyphs: "the widest rendering" is not one string. `0:00.0` and
+`12:34.5` differ by a whole digit, so pinning to a fixed `M:SS.s` clips after
+ten minutes and pinning to a generous maximum leaves the readout visibly
+off-centre for the first nine. The stopwatch therefore recomputes its pinned
+width **when the minute-digit count changes** — twice an hour rather than ten
+times a second. Pin to the widest rendering *of the current shape*, not to the
+widest rendering ever.
 
 **The check to run when adding any live readout**: if the text changes on a
 timer, ask which edge is pinned and which one the digits push. If the answer is
