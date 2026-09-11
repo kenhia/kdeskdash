@@ -181,13 +181,18 @@ the mode rather than by a module main.c initialises.
    reads `kvscf:launcher:*`. Both **publish** to `kvscf:focus:<host>` (`{id}`, `{app}` or
    `{button}` — kvscf's precedence is `button` > `app` > `id`). Its own handle *and* its own
    endpoint config (`KDESKDASH_KVSCF_REDIS_*`), each field falling back independently to the
-   Claude feed's — on rpidash2 both genuinely live on the same 6380 instance, but a panel can
-   read the shared fleet Claude feed while driving a different kvscf. rpidash3 is that panel
-   (sprint 026): it reads rpidash2's fleet feed and drives kwork's kvscf over a *second,
-   password-protected* instance on rpidash3 itself (`deploy/redis-kvscf.conf`), which is why
-   both gates are live there and why they fail in opposite ways — a bad
+   Claude feed's — a legacy of the days both lived on rpidash2:6380. Today both panels read
+   the Claude feed from rpi53 and pin kvscf to `127.0.0.1:6380`, **their own board's second
+   Redis instance**: rpidash2's `redis-claude` (cleo publishes to it; the name is historical)
+   and rpidash3's `redis-kvscf` (kwork's). Both instances require AUTH and listen on loopback
+   + the LAN address only — rpidash3's since sprint 026, rpidash2's since sprint 035 (korg WI
+   2216 closed the tailnet-reachable unauthenticated listener kmon's nightly reported) — with
+   the `requirepass` in a hand-installed `/etc/redis/redis-*-local.conf` that the committed
+   conf `include`s, so a missing local file fails to start rather than starting open. So
+   both gates are live on both boards, and they fail in opposite ways — a bad
    `KDESKDASH_KVSCF_REDISCLI_AUTH` looks like an unreachable endpoint, a bad `KVSCF_TOKEN`
-   looks like nothing at all. See `docs/kwork-rpidash3-pairing.md`. These are the only modes
+   looks like nothing at all. See `docs/kwork-rpidash3-pairing.md` and
+   `deploy/hosts/README.md`. These are the only modes
    that **write/act on another machine**, gated by `KVSCF_TOKEN` (byte-exact, trimmed, never
    logged; per-kvscf-instance, so it lives in each device's `secrets.env`). PUBLISH rides the
    ordinary command connection — kdeskdash never SUBSCRIBEs.

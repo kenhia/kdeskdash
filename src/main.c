@@ -193,10 +193,10 @@ int main(int argc, char **argv) {
      */
 
     /* kvscf feed (foreground + launcher modes — one handle, two readers): its
-     * own endpoint, defaulting to the claude-feed values because on rpidash2
-     * both live on the same 6380 instance — but a second panel reads that same
-     * fleet claude feed while driving a different kvscf. Own handle either way,
-     * for failure isolation. The token comes from KVSCF_TOKEN (empty -> the
+     * own endpoint. The claude-feed fallback is legacy (CD-8): both panels pin
+     * their own board's authenticated 6380 instance while the claude feed lives
+     * on rpi53, so the fallback no longer resolves anywhere useful. Own handle
+     * either way, for failure isolation. The token comes from KVSCF_TOKEN (empty -> the
      * modes render read-only and refuse to send commands). */
     if (modeset_enabled(&modes, "foreground") || modeset_enabled(&modes, "launcher"))
         kvscf_redis_init(cfg.kvscf_redis_host, cfg.kvscf_redis_port,

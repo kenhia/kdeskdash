@@ -58,8 +58,8 @@ cross-compile approach and adding touch input.
   (`kvscf:apps:*`, non-running apps greyed). **Tapping brings a window to the foreground on its
   host — or launches it** (a closed Code favorite relaunches the editor; a stopped app starts)
   — the dashboard's first *control-plane* mode, not just a view. Publishes to `kvscf:focus:<host>`
-  on its own endpoint (`KDESKDASH_KVSCF_REDIS_*`, defaulting to the Claude-feed instance on port
-  6380, so a panel can read the shared fleet feed while driving a different kvscf); commands
+  on its own endpoint (`KDESKDASH_KVSCF_REDIS_*` — each panel pins its own board's
+  authenticated 6380 instance; the Claude-feed fallback is legacy, CD-8); commands
   (`{id}` for windows, `{app}` for apps) are authenticated with a per-instance
   `KVSCF_TOKEN`. See
   [sprints/011-remote-foreground-mode](sprints/011-remote-foreground-mode/requirements.md).
@@ -258,7 +258,7 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_CLAUDE_REDISCLI_AUTH` | _(unset)_  | Claude-feed Redis password (AUTH). **Required** on central, and the same string as the telemetry password — separate variable because it is a separate connection. **Secret**: install via `/etc/kdeskdash/secrets.env`. |
 | `KDESKDASH_KVSCF_REDIS_HOST` | _(claude-feed host)_ | kvscf instance the `Remote` and `Launcher` modes read and publish to. The fallback is legacy: kvscf stays with its workstation pair while the Claude feed has moved to central, so **both** panels now pin these explicitly (rpidash2 → its own `127.0.0.1:6380`, rpidash3 → its own second instance that kwork publishes to). Leaving them unset drags kvscf to central, which is the one thing the pin exists to prevent. |
 | `KDESKDASH_KVSCF_REDIS_PORT` | _(claude-feed port)_ | As above. Host and port fall back independently — set only the host and you inherit the Claude-feed port. |
-| `KDESKDASH_KVSCF_REDISCLI_AUTH` | _(claude-feed auth, **same instance only**)_ | The **transport** gate, distinct from `KVSCF_TOKEN`'s application one. **Secret** where it is needed (rpidash3): install via `/etc/kdeskdash/secrets.env`. Wrong or missing looks like an unreachable endpoint, not a permissions error. Unlike host and port, this inherits the Claude-feed value *only when the kvscf endpoint resolves to the same host:port* — sending a password to a Redis that has none configured is an error, not a shrug, so a differing endpoint gets no inherited password. |
+| `KDESKDASH_KVSCF_REDISCLI_AUTH` | _(claude-feed auth, **same instance only**)_ | The **transport** gate, distinct from `KVSCF_TOKEN`'s application one. **Secret**, needed on both panels since sprint 035 (each board's own 6380 instance has a `requirepass`): install via `/etc/kdeskdash/secrets.env`. Wrong or missing looks like an unreachable endpoint, not a permissions error. Unlike host and port, this inherits the Claude-feed value *only when the kvscf endpoint resolves to the same host:port* — sending a password to a Redis that has none configured is an error, not a shrug, so a differing endpoint gets no inherited password. |
 | `KDESKDASH_MODES`      | _(unset → all modes)_ | Per-device mode set: `fun:<ids>;ops:<ids>`. See [Per-device mode sets](#per-device-mode-sets). |
 | `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
 | `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
@@ -348,7 +348,7 @@ kdeskdash/
 │   │   ├── rpidash2.env            #   Pi 5, dev desk
 │   │   ├── rpidash3.env            #   Pi 4, work desk
 │   │   └── README.md               #   install flow + the hand-installed secrets.env
-│   ├── redis-claude.conf           # rpidash2:6380 instance, ephemeral + open — serves kvscf ALONE now; the claude keys were retired from it by the CD-7 close-out (name is historical)
+│   ├── redis-claude.conf           # rpidash2:6380 kvscf-feed instance (ephemeral, AUTH + LAN bind since sprint 035) — serves kvscf ALONE; the claude keys were retired by the CD-7 close-out (name is historical)
 │   ├── redis-claude.service        # systemd unit for that instance
 │   ├── redis-kvscf.conf            # kvscf-feed Redis instance (rpidash3:6380, ephemeral, AUTH + LAN bind)
 │   └── redis-kvscf.service         # systemd unit for the kvscf-feed instance

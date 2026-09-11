@@ -55,10 +55,16 @@ panel. Separate is less code *and* better isolation, and a work-side network
 change cannot break the home dashboard. `KDESKDASH_KVSCF_REDIS_*` (WI #664)
 exists for exactly this case.
 
-### Why this instance requires a password when rpidash2's does not
+### Why this instance required a password when rpidash2's did not
 
-rpidash2's 6380 instance is open on the trusted home LAN, and that stays true.
-This one is different in three ways:
+*Written 2026-08-09, when rpidash2's 6380 instance was open on the trusted home
+LAN. That is no longer so: sprint 035 (korg WI 2216) gave rpidash2's instance
+the same `requirepass` and loopback-plus-LAN bind, after kmon's nightly reported
+it answering unauthenticated across the tailnet. The asymmetry below is history;
+the three reasons still explain why rpidash3 went first, and the bring-up for
+rpidash2's instance is in `deploy/hosts/README.md`.*
+
+This one was different in three ways:
 
 1. **rpidash3 is dual-homed** (`eth0` + `tailscale0`) and kwork cannot join the
    tailnet, so the LAN listener is mandatory and sits outside the tailnet ACLs
@@ -212,8 +218,12 @@ back to `DEFAULT_HOST`/`DEFAULT_PORT`, which are **rpidash2's** `192.168.1.144`
 and `6380` — so the line reads `redis://192.168.1.144:6380` and kwork is aiming
 at the wrong board entirely. That was the first rollout's failure: the registry
 held all five, kvscf read two of them, and the password it *did* read was then
-offered to rpidash2's passwordless instance, which rejects AUTH outright. Both
-feeds dead on rpidash3, nothing in the log but a reconnect loop.
+offered to rpidash2's then-passwordless instance, which rejected AUTH outright.
+Both feeds dead on rpidash3, nothing in the log but a reconnect loop. (Since
+sprint 035 rpidash2's instance has a password of its own, so a kwork on the
+defaults is refused there for the opposite reason — the wrong password rather
+than an unwanted one — and can no longer publish work titles onto the home
+panel's instance. Same symptom on rpidash3 either way.)
 
 ## Verification
 
@@ -223,7 +233,8 @@ Do all four. The first three can each pass while the pairing is still broken.
    keys 'kvscf:*'` lists `kvscf:launcher:kwork` and friends. If it is empty,
    kvscf on kwork is not publishing: wrong build, missing token, or wrong
    endpoint. Check rpidash2's `6380` too (`redis-cli -p 6380 --scan --pattern
-   'kvscf:*'` — no password there) — a `kvscf:*:kwork` key sitting on *that*
+   'kvscf:*'` — with rpidash2's own password in `REDISCLI_AUTH` since sprint
+   035) — a `kvscf:*:kwork` key sitting on *that*
    board means the env-only settings never landed and kwork is talking to the
    compiled-in default.
 2. **The panel reads it** — the Launcher grid draws kwork's buttons, and Remote
