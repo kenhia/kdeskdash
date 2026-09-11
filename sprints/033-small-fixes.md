@@ -1,8 +1,11 @@
 # 033 — Small fixes: Windows publisher install, the service card, double-tap, the palette migration
 
 korg: proposal 2228, one leg of program 2233 (backlog drain 3 of 3, the
-sub-1000 sweep). Covered: 800, 782, 1032, 514 — and 847, which is not landed and
-says so below. Run headless as karc leg `kdeskdash-3e9ab5`.
+sub-1000 sweep). Covered: 800, 782, 1032, 514 — all four landed. 847 was
+investigated here, found blocked on a question only Ken can answer, and
+**detached from the proposal by the overseer** so a merge-ready branch would not
+hold the kdeskdash repo lock (three more slices are queued on it) waiting for a
+human. Run headless as karc leg `kdeskdash-3e9ab5`.
 
 The proposal's standing rule was **verify before working**: these items are 6–8
 weeks old and two were suspected moot. None were. The premise check is written
@@ -16,7 +19,7 @@ up first because it is the part that would have been wasted work.
 | 782 service card | **holds.** Nothing in `src/` mentions `kpidash:services`. Not moot. |
 | 514 palette | **holds.** 74 local `COLOR_*` defines across 7 modes, plus 18 inline literals. |
 | 1032 double-tap | **holds.** `shell.c` handles LEFT/RIGHT/BOTTOM only; LVGL 9.2.2 has no double-click event at all. |
-| 847 ABS doc link | **holds, but blocked.** See "Not landed". |
+| 847 ABS doc link | **holds, but blocked.** See "847 — verified, not landed". |
 
 ## What changed
 
@@ -39,7 +42,9 @@ never affected, so no k-homelab change was needed.
 `kpidash:services:*`.
 
 **1032 — double-tap the background to switch modes.** Pure core
-`quickswitch.c`; `shell.c` wires it.
+`quickswitch.c`; `shell.c` wires it. `KDESKDASH_QUICK_PAIRS` has three reachable
+states: unset (partner = previously active mode), `none`/`off` (inert), or
+pinned pairs.
 
 **514 — the palette is now the single source of truth.** All 74 `COLOR_*`
 defines and all 18 inline literals across 10 modes now resolve through
@@ -74,13 +79,22 @@ own taps unchanged. The handler still takes the swipe-vs-tap guard — a swipe
 that releases over the background fires `CLICKED` too
 (`docs/solutions/best-practices/lvgl-swipe-vs-tap-gesture-guard.md`).
 
-**The quick-switch partner works with no configuration.** `KDESKDASH_QUICK_PAIRS`
-pins a partner as the item asked, but unset is a *working default*, not "off":
-the partner is the previously active mode. For the Claude↔Remote case that
-prompted the item, that is the same behaviour with nothing to set up. **The menu
-is deliberately excluded from that history** — passing through it to reach a mode
-must not make it the partner, which is the one thing that would have made the
-zero-config path useless.
+**The quick-switch partner works with no configuration — and can still be turned
+off.** `KDESKDASH_QUICK_PAIRS` pins a partner as the item asked, but unset is a
+*working default*, not "off": the partner is the previously active mode. For the
+Claude↔Remote case that prompted the item, that is the same behaviour with
+nothing to set up. **The menu is deliberately excluded from that history** —
+passing through it to reach a mode must not make it the partner, which is the one
+thing that would have made the zero-config path useless.
+
+That fallback originally left the gesture *unconditional*: there was a way to
+change the partner and no way to decline the feature, and **a default you cannot
+opt out of is not a default** (overseer ruling 2). `none` — or `off`, because a
+reader who knows `env_flag`'s vocabulary will try it — now disables it outright.
+The grammar lives in `quickswitch.c`, not `config.c`, the same split `modeset.c`
+has with `KDESKDASH_MODES`; `config_load` passes the spec through verbatim, and
+`test_config` pins that the three states stay distinguishable. A mode genuinely
+named `none` on one side of a pair is still a pair.
 
 **Migrating 92 colors changed 3 of them, all below the JND.** Every value was
 matched by exact RGB where the palette had one (67 of 74 defines). The rest were
@@ -89,6 +103,18 @@ measured in CIELAB: only `0xeaf0fb`→`MOON_INK` (ΔE 1.54, twice) and
 **new palette entries** rather than being repainted onto a near neighbour —
 adding a name changes no pixels, and which near-duplicates *should* merge is a
 design call for Ken on the panel, filed as **WI 2259**.
+
+**A fifth Redis handle, and the doctrine that names them was updated in the same
+sprint.** The card writes to `rpi53:6379` — telemetry's endpoint — but telemetry
+is initialised only when Dev mode is registered, and the card must publish from
+every panel, so sharing would tie a panel's presence on the kpidash board to
+whether it happens to carry Dev. Conflating them would have been the actual
+violation of "do not conflate them"; the rule is against *sharing*, not against
+*existing*. `CLAUDE.md` said **"Four independent Redis handles"** and now says
+five, with the service card documented and — the load-bearing half — *why it is
+not telemetry*, so the next reader who notices two handles pointing at one
+endpoint does not merge them. Shipping a sprint that falsifies its own governing
+doctrine is the same decay this whole program exists to reverse.
 
 **`#include "palette.h"` from inside `src/modes/` is a trap, and it is already
 documented.** `src/modes/palette.h` (the mode header) shadows the core header,
@@ -107,8 +133,9 @@ blue-dominant), which does not re-break every time the palette grows.
 ## Gates
 
 `just check` — **21/21 green**, up from 19: `test_service_card` and
-`test_quickswitch` are new, and `test_config` gained four cases for the card's
-endpoint/auth fallback. The host `kdeskdash` binary builds warning-clean.
+`test_quickswitch` are new, and `test_config` gained five cases (four for the
+card's endpoint/auth fallback, one pinning the quick switch's three states). The
+host `kdeskdash` binary builds warning-clean.
 
 **Not verified here:** the aarch64 cross build. There is no `~/pi-sysroot` on
 kai, so `build-pi` could not be configured — the new sources are POSIX-only C
@@ -118,7 +145,7 @@ deploy. Likewise the card's live acceptance criteria (AC-1…AC-6) need the bina
 because kpidash keeps a card in an in-memory registry until restart and a test
 card would have needed a proper evict to remove.
 
-## Not landed — 847, awaiting Ken
+## 847 — verified, not landed, and no longer this proposal's
 
 `stl/README_ABS.md` is still in `.scratch/` and still unlinked, correctly. The
 item is gated on a question only Ken can answer: **which field did `100.545 %`
@@ -130,6 +157,12 @@ the 2026-07-31 trial result was never recorded. Marked **Awaiting Ken** with the
 question on the item (comment 1731) rather than shipping a doc link whose central
 claim is unverified — and linking it now would also read as "ABS is ready", while
 the blind overhang is still open.
+
+The overseer then **removed the `covers` edge**: holding a merge-ready branch for
+a human answer would serialise the kdeskdash repo lock behind Ken's sleep, and
+slices korg:2218, korg:2231 and korg:2219 are all queued on that one lock. 847
+goes back to the kdeskdash backlog, `open` and Awaiting Ken, on this push's
+batched-ask list. Do not re-relate it to this proposal.
 
 ## Follow-ups filed
 

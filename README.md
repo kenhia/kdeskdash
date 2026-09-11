@@ -106,6 +106,12 @@ make it the partner. Set a pair to make the partner fixed regardless of history:
 KDESKDASH_QUICK_PAIRS="claude:foreground,clock:calc"
 ```
 
+To turn the gesture off entirely without touching the mode set, set it to `none`:
+
+```bash
+KDESKDASH_QUICK_PAIRS=none
+```
+
 The double-tap is read on a mode's **bare background** only: LVGL does not bubble a
 click to the screen, so a fast double-tap on a calc key or a launcher button stays
 with that widget and never switches modes.
@@ -253,7 +259,7 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_MODES`      | _(unset → all modes)_ | Per-device mode set: `fun:<ids>;ops:<ids>`. See [Per-device mode sets](#per-device-mode-sets). |
 | `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
 | `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
-| `KDESKDASH_QUICK_PAIRS` | _(unset → previously active mode)_ | Double-tap partner pairs, `"<id>:<id>[,<id>:<id>]"`. Unset is a working default, not "off" — the partner is then whichever mode was active before this one. Malformed entries are warned about and skipped, so one typo costs one pair, not the feature. |
+| `KDESKDASH_QUICK_PAIRS` | _(unset → previously active mode)_ | Double-tap partner pairs, `"<id>:<id>[,<id>:<id>]"`. Three states: **unset** → the partner is whichever mode was active before this one (a working default, not "off"); **`none`** (or `off`) → the double-tap is inert; **pairs** → the partner is pinned regardless of history. Malformed entries are warned about and skipped, so one typo costs one pair, not the feature. |
 | `KDESKDASH_CARD_REDIS_HOST` | _(telemetry host → `rpi53`)_ | Where this instance publishes its own kpidash **service card** (`kpidash:services:deskdash:<host>`). Write-only — kdeskdash never reads that namespace. Defaults to the telemetry endpoint because the card lives on the same board Redis, so neither device needs a new line. |
 | `KDESKDASH_CARD_REDIS_PORT` | _(telemetry port → `6379`)_ | Falls back independently of the host. |
 | `KDESKDASH_CARD_REDISCLI_AUTH` | _(telemetry auth, **same instance only**)_ | Inherits the telemetry password *only when the card endpoint resolves to the same host:port* — the same rule, and the same reason, as `KDESKDASH_KVSCF_REDISCLI_AUTH`. **Secret**: install via `/etc/kdeskdash/secrets.env`. |

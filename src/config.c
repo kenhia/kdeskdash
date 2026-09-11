@@ -106,10 +106,16 @@ void config_load(kdeskdash_config_t *cfg) {
      * the modeset core owns the grammar and every degradation path. */
     cfg->modes_spec = env_or("KDESKDASH_MODES", NULL);
 
-    /* Double-tap quick switch. Unset is a working default, not a disabled
-     * feature: with no pairs the double-tap bounces to the previously active
-     * mode, which is the same thing for the Claude/Remote case that asked for
-     * it. A pair only pins the partner regardless of history. */
+    /* Double-tap quick switch — three reachable states, because a default
+     * nobody can opt out of is not a default:
+     *
+     *   unset      the partner is the previously active mode (the working
+     *              default: the Claude/Remote case needs no configuration)
+     *   "none"     the gesture is inert ("off" is accepted too)
+     *   "a:b,c:d"  pinned pairs, which win over the fallback
+     *
+     * Passed through verbatim: quickswitch.c owns the grammar and every
+     * degradation path, the same split as modeset.c and KDESKDASH_MODES. */
     cfg->quick_pairs = env_or("KDESKDASH_QUICK_PAIRS", NULL);
 
     /* kpidash service card (write-only). The board lives on the same Redis the

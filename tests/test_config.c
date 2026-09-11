@@ -33,6 +33,7 @@ static void clear_env(void) {
     unsetenv("KDESKDASH_CARD_REDIS_PORT");
     unsetenv("KDESKDASH_CARD_REDISCLI_AUTH");
     unsetenv("KDESKDASH_CARD_NAME");
+    unsetenv("KDESKDASH_QUICK_PAIRS");
 }
 
 static void load(kdeskdash_config_t *cfg) {
@@ -179,6 +180,39 @@ static void test_card_explicit_overrides(void) {
     printf("ok  explicit card endpoint, password and name all win\n");
 }
 
+/* The quick switch has three reachable states and config_load must keep them
+ * distinguishable — it passes the spec through verbatim, because quickswitch.c
+ * owns the grammar (the same split as modeset.c and KDESKDASH_MODES). The state
+ * that matters is "none": without it the gesture would be unconditional, and a
+ * default nobody can opt out of is not a default. */
+static void test_quick_pairs_three_states(void) {
+    kdeskdash_config_t cfg;
+
+    clear_env();
+    load(&cfg);
+    assert(cfg.quick_pairs == NULL); /* unset -> previously-active fallback */
+
+    clear_env();
+    setenv("KDESKDASH_QUICK_PAIRS", "none", 1);
+    load(&cfg);
+    assert(cfg.quick_pairs != NULL && strcmp(cfg.quick_pairs, "none") == 0);
+
+    clear_env();
+    setenv("KDESKDASH_QUICK_PAIRS", "claude:foreground,clock:calc", 1);
+    load(&cfg);
+    assert(cfg.quick_pairs != NULL &&
+           strcmp(cfg.quick_pairs, "claude:foreground,clock:calc") == 0);
+
+    /* Empty is not "none" — env_or treats it as unset, which is the fallback
+     * state, not the off state. */
+    clear_env();
+    setenv("KDESKDASH_QUICK_PAIRS", "", 1);
+    load(&cfg);
+    assert(cfg.quick_pairs == NULL);
+
+    printf("ok  quick pairs: unset, \"none\" and pairs stay distinguishable\n");
+}
+
 int main(void) {
     test_same_instance_inherits_everything();
     test_different_endpoint_does_not_inherit_auth();
@@ -189,6 +223,7 @@ int main(void) {
     test_card_same_instance_inherits_auth();
     test_card_different_endpoint_does_not_inherit_auth();
     test_card_explicit_overrides();
+    test_quick_pairs_three_states();
     printf("test_config: all passed\n");
     return 0;
 }

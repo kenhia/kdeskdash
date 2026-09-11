@@ -156,6 +156,47 @@ int main(void) {
         check(quickswitch_target(NULL) == NULL, "NULL state target is NULL");
     }
 
+    /* --- the off switch: a default you cannot opt out of is not a default --- */
+    {
+        quickswitch_t q;
+        quickswitch_init(&q, "none");
+        check(q.disabled, "\"none\" disables");
+        check(q.pair_count == 0, "\"none\" configures no pairs");
+        /* Inert end to end: the tap never completes and there is never a target,
+         * even once two modes have been seen (which is exactly when the
+         * previous-mode fallback would otherwise fire). */
+        quickswitch_note_active(&q, "claude");
+        quickswitch_note_active(&q, "foreground");
+        target_is(&q, NULL, "disabled: no fallback target");
+        check(!quickswitch_tap(&q, 1000), "disabled: first tap inert");
+        check(!quickswitch_tap(&q, 1050), "disabled: second tap inert too");
+
+        /* Spellings. "none" is canonical; "off" is accepted because a reader who
+         * knows env_flag's vocabulary will try it, and the failure mode
+         * otherwise is a silent "malformed pair" warning plus a still-live
+         * gesture. */
+        quickswitch_init(&q, "NONE");  check(q.disabled, "case-insensitive NONE");
+        quickswitch_init(&q, "None");  check(q.disabled, "case-insensitive None");
+        quickswitch_init(&q, "off");   check(q.disabled, "\"off\" also disables");
+        quickswitch_init(&q, "OFF");   check(q.disabled, "case-insensitive OFF");
+        quickswitch_init(&q, "  none  "); check(q.disabled, "surrounding space tolerated");
+
+        /* Not the off switch: unset/empty is the working default, and a mode
+         * genuinely called "none" on one side of a pair is still a pair. */
+        quickswitch_init(&q, NULL);
+        check(!q.disabled, "unset is NOT disabled");
+        quickswitch_init(&q, "");
+        check(!q.disabled, "empty is NOT disabled");
+        quickswitch_init(&q, "none:calc");
+        check(!q.disabled, "\"none:calc\" is a pair, not the off switch");
+        check(q.pair_count == 1, "and it parsed");
+        quickswitch_note_active(&q, "none");
+        target_is(&q, "calc", "a mode named \"none\" still pairs");
+        /* A longer word merely starting with "none" is not the off switch. */
+        quickswitch_init(&q, "nonesuch:calc");
+        check(!q.disabled, "\"nonesuch:calc\" is not the off switch");
+    }
+
     if (failures) {
         fprintf(stderr, "%d test(s) failed\n", failures);
         return 1;

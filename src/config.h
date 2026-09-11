@@ -30,7 +30,7 @@ typedef struct {
     const char *card_redis_host;   /* KDESKDASH_CARD_REDIS_HOST — kpidash service-card target; falls back to the telemetry values */
     int         card_redis_port;   /* KDESKDASH_CARD_REDIS_PORT — falls back to telemetry_redis_port */
     const char *card_redis_auth;   /* KDESKDASH_CARD_REDISCLI_AUTH — falls back to telemetry_redis_auth ONLY when the endpoint is the same instance; NULL otherwise */
-    const char *quick_pairs;       /* KDESKDASH_QUICK_PAIRS — double-tap partner pairs "a:b,c:d"; NULL when unset (falls back to the previously active mode) */
+    const char *quick_pairs;       /* KDESKDASH_QUICK_PAIRS — three states: NULL (unset) = partner is the previously active mode; "none"/"off" = double-tap inert; "a:b,c:d" = pinned pairs. Grammar owned by quickswitch.c */
     const char *card_name;         /* KDESKDASH_CARD_NAME — service-card name segment; default "deskdash" (change it to keep two instances on ONE host distinct) */
 } kdeskdash_config_t;
 

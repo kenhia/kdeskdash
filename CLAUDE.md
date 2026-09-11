@@ -146,7 +146,7 @@ only recoverable over SSH.
 **Adding a mode is three lines**: the roster in `src/modeset.c`, a case in `main.c`'s
 `create_mode()` dispatch, and its source in `CMakeLists.txt` — plus the mode's own `.c`/`.h`.
 
-#### Four independent Redis handles — do not conflate them
+#### Five independent Redis handles — do not conflate them
 
 Each has its own `redis_client_t` connection and failure isolation (a down endpoint never
 stalls boot or another path). The generic client + backoff lives in `src/redis.c` /
@@ -174,9 +174,27 @@ stalls boot or another path). The generic client + backoff lives in `src/redis.c
    logged; per-kvscf-instance, so it lives in each device's `secrets.env`). PUBLISH rides the
    ordinary command connection — kdeskdash never SUBSCRIBEs.
 
+5. **Service card** (`src/service_pub.c`, `KDESKDASH_CARD_REDIS_*`) — **write-only**, and the
+   only handle that is *not* mode-gated. Publishes this instance's own liveness to
+   `kpidash:services:deskdash:<host>` every 15 s (no TTL — the kpidash board computes
+   freshness from the payload's `ts` and reddens the card after 60 s) so every panel appears
+   on the board. kdeskdash never *reads* that namespace; the contract lives in the pure
+   `src/service_card.c` and is host-tested.
+
+   **Why this is not the telemetry handle, although both reach `rpi53:6379`.** Telemetry is
+   initialised only when Dev mode is registered, and the card must publish from *every*
+   panel — sharing the handle would tie a panel's presence on the board to whether it
+   happens to carry Dev. So the card gets its own handle, with its own endpoint config
+   falling back to `KDESKDASH_TELEMETRY_REDIS_*` field by field and auth inherited **only
+   when host and port both match** (the sprint-031 rule — see the long comment in
+   `config.c`). Both Pis already point telemetry at `rpi53:6379`, so the card authenticates
+   with no new env line on either device. If you find yourself merging these two because
+   "they go to the same place", this paragraph is the reason not to.
+
 Feeds are initialised **only for modes the modeset registered**, so a panel without Dev never
 dials the telemetry endpoint at all. A handle shared by two modes is initialised when *either*
-is registered — see the kvscf gate in `main.c`.
+is registered — see the kvscf gate in `main.c`. **The service card is the deliberate
+exception**: it reports the instance, not a mode, so it is initialised unconditionally.
 
 **A feed key's TTL is not a policy for every consumer.** The kvscf keys carry a 10s TTL, which
 is right for a live window list (absent genuinely means "nothing to focus") and wrong for the

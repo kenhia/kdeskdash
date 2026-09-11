@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <strings.h> /* strcasecmp */
 
 static void copy_id(char *dst, const char *src) {
     snprintf(dst, QUICKSWITCH_ID_MAX, "%s", src);
@@ -32,12 +33,34 @@ static bool parse_entry(const char *tok, size_t len, char *a, char *b) {
     return true;
 }
 
+/* Whole-spec off switch. Checked before the pair grammar so "none" can never
+ * also be read as a malformed pair and warned about. */
+static bool spec_is_off(const char *spec) {
+    const char *b = spec;
+    while (*b == ' ' || *b == '\t')
+        b++;
+    const char *e = b + strlen(b);
+    while (e > b && (e[-1] == ' ' || e[-1] == '\t'))
+        e--;
+    size_t n = (size_t)(e - b);
+    char buf[8];
+    if (n == 0 || n >= sizeof(buf))
+        return false;
+    memcpy(buf, b, n);
+    buf[n] = '\0';
+    return strcasecmp(buf, "none") == 0 || strcasecmp(buf, "off") == 0;
+}
+
 void quickswitch_init(quickswitch_t *q, const char *spec) {
     if (!q)
         return;
     memset(q, 0, sizeof(*q));
     if (!spec || spec[0] == '\0')
         return;
+    if (spec_is_off(spec)) {
+        q->disabled = true;
+        return;
+    }
 
     const char *p = spec;
     while (*p) {
@@ -89,7 +112,7 @@ void quickswitch_note_active(quickswitch_t *q, const char *id) {
 }
 
 bool quickswitch_tap(quickswitch_t *q, uint32_t now_ms) {
-    if (!q)
+    if (!q || q->disabled)
         return false;
     /* Unsigned arithmetic wraps, which is exactly right for an LVGL tick that
      * rolls over every ~49 days. */
@@ -103,7 +126,7 @@ bool quickswitch_tap(quickswitch_t *q, uint32_t now_ms) {
 }
 
 const char *quickswitch_target(const quickswitch_t *q) {
-    if (!q || q->current[0] == '\0')
+    if (!q || q->disabled || q->current[0] == '\0')
         return NULL;
     for (int i = 0; i < q->pair_count; i++) {
         if (strcmp(q->current, q->a[i]) == 0)
