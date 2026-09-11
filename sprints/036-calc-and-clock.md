@@ -272,3 +272,34 @@ plainly.
   discipline — #509 says "register persistence" — and the `DEG`/`RAD` key names
   its own state on screen, so a surprise is immediately readable in a way a lost
   register is not.
+
+## Deployed
+
+**`0.27.0-ece5bc8` on the whole fleet**, published from merged `main` (the
+stamp is the squash-merge commit, so the published version names a commit that
+is an ancestor of `origin/main` — the reason Phase 7 runs after the merge).
+
+| Board | Version reported | Unit | Restarts | Frame |
+|---|---|---|---|---|
+| `rpidash2` (Pi 5, dev desk) | `kdeskdash 0.27.0-ece5bc8` | active | 0 | clock + calc |
+| `rpidash3` (Pi 4, work desk) | `kdeskdash 0.27.0-ece5bc8` | active | 0 | clock + calc |
+
+**Both boards were reachable**, which is not the usual state — rpidash3 is at
+the work desk and is often simply off. Worth having used the window: it is the
+Pi 4, and both rebuilt layouts were confirmed drawing on it as well as on the Pi
+5.
+
+Both changed modes were screenshotted on both boards rather than trusting a
+live unit, because this sprint rewrote two full-screen layouts and an active
+unit only proves *a* kdeskdash is running. The clock frames also re-check the
+arithmetic against the deployed build: at 00:31 local the day bar reads 2%,
+having ticked up from the 1% of the pre-merge check at 00:22 — the bars are
+live, not a fixed render.
+
+Each board's `kdeskdash:active_mode` was restored afterwards (`claude` on
+rpidash2, `launcher` on rpidash3), so neither panel was left sitting on a mode
+this deploy chose for it.
+
+**Nothing else was installed.** The sprint touched no file under `deploy/`, so
+`install-service` was not needed on either board — the unit and both host env
+files are untouched, and the fleet has not drifted a device.
