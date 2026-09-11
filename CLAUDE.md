@@ -116,8 +116,8 @@ Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMak
 
 - **Pure cores** (`src/gol.c`, `src/golz.c`, `src/stopwatch.c`, `src/calc.c`, `src/palette.c`, `src/registry.c`,
   `src/modeset.c`, `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/claude_feed.c`,
-  `src/telemetry_host.c`, `src/bmp_write.c`, `src/clock_core.c`, `src/modes/dev_hostlist.c`,
-  `src/modes/dev_view.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
+  `src/telemetry_host.c`, `src/bmp_write.c`, `src/clock_core.c`, `src/service_card.c`,
+  `src/quickswitch.c`, `src/modes/dev_hostlist.c`, `src/modes/dev_view.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
   explicit `uint32_t *state` seam). Each has a `tests/test_*.c`.
 - **Modes** (`src/modes/*.c`) — each implements the `kd_mode_t` lifecycle from `src/mode.h`:
   `activate` / `deactivate` / `tick`, owning one LVGL screen and its private `state`. A mode
@@ -129,7 +129,11 @@ Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMak
   mode, which is how you get a widget shaped like whichever mode happened to be first.
 - **Shell** (`src/shell.c`, `src/shell.h`) — owns the set of modes, the active mode, and
   gesture navigation: swipe left/right cycles content modes (wrapping), swipe down opens the
-  Menu. It does **not** own mode storage; `main.c` keeps registered modes alive for the
+  Menu, and a **double-tap on the bare background** jumps to the current mode's quick-switch
+  partner (`src/quickswitch.c` — `KDESKDASH_QUICK_PAIRS` pins a partner, unset means the
+  previously active mode, `none` disables it; the menu is excluded from that history).
+  LVGL does not bubble `CLICKED` to a parent, which is what keeps the double-tap off calc
+  keys and launcher buttons. It does **not** own mode storage; `main.c` keeps registered modes alive for the
   program's lifetime. A change callback (`shell_set_change_cb`) persists the active mode to Redis.
 - **Entry** (`src/main.c`) — DRM display + evdev touch bring-up, registers the modes the
   modeset selects, wires the Redis handles the enabled modes actually use, runs the LVGL main
@@ -262,7 +266,11 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
 - **Colors come from the named palette** (`src/palette.h`, `KD_PAL_*` / `kd_pal_rgb`).
   New UI colors get an X-macro entry there (paint-store name + usage note) rather than
   a bare `lv_color_hex` literal; the `palette` mode displays the table on-panel.
-  Existing modes' local `COLOR_*` blocks migrate opportunistically (korg WI 514).
+  **The migration is done** (sprint 033, korg WI 514): there is no bare `lv_color_hex(0x…)`
+  left in `src/`, and a mode's local `COLOR_*` names are aliases defined as `PAL(NAME)`.
+  Adding one back is a regression, not a shortcut. From inside `src/modes/`, include the
+  core header as `"../palette.h"` — `src/modes/palette.h` is the *mode* header and shadows
+  it (`docs/solutions/best-practices/quote-include-core-header-shadowing.md`).
 - LVGL is a pinned submodule at `lib/lvgl` (v9.2.2); cJSON is vendored at `lib/cjson`.
   Clone with `--recurse-submodules`.
 

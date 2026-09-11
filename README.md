@@ -370,6 +370,9 @@ kdeskdash/
 │   ├── modeset.{c,h}               # pure core: KDESKDASH_MODES grammar + the mode roster
 │   ├── gol.{c,h} / stopwatch.{c,h} / iconset.{c,h} / kvscf_feed.{c,h} / calc.{c,h} / palette.{c,h} / clock_core.{c,h} # pure, host-tested mode cores
 │   ├── clock_widget.{c,h}          # shared dual-clock widget (Launcher pane; clock mode next)
+│   ├── quickswitch.{c,h}           # pure core: double-tap partner (pairs, previous-mode fallback, off)
+│   ├── service_card.{c,h}          # pure core: the kpidash service-card key + payload contract
+│   ├── service_pub.{c,h}           # write-only kpidash service-card publisher (own Redis handle)
 │   └── modes/                      # game_of_life, clock, menu, dev, claude, icons, foreground, launcher, calc, palette
 ├── fonts/ttf/                      # vendored SymbolsNerdFont-Regular.ttf (icons mode, runtime TinyTTF)
 ├── tests/                          # host unit tests (registry, gol, stopwatch, iconset, …)
