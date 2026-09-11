@@ -168,3 +168,54 @@ batched-ask list. Do not re-relate it to this proposal.
 
 - **WI 2259** — which near-duplicate palette neutrals should merge (design call,
   verify on-panel with the `palette` mode).
+
+## Deployed
+
+**0.27.0-06b6f9a**, published from merged `main` (`06b6f9a`) and installed on
+**both** boards — rpidash3 happened to be awake, so the fleet is whole rather
+than split.
+
+| board | version reported | unit | frame |
+|---|---|---|---|
+| rpidash2 (Pi 5) | `kdeskdash 0.27.0-06b6f9a` | active | Claude mode, correct |
+| rpidash3 (Pi 4) | `kdeskdash 0.27.0-06b6f9a` | active | Launcher mode, correct |
+
+`just versions` reports both board lines as exactly `kdeskdash 0.27.0-06b6f9a`.
+rpidash3's frame shows *"no launcher configured"* — the documented degraded
+state when kwork's machine is off, not a regression. The unit file was untouched
+this sprint, so no `install-service` was needed.
+
+**The aarch64 cross build was never actually blocked.** The pre-ship note said
+`build-pi` could not be configured because there is no `~/pi-sysroot` on kai.
+That check was too narrow: the toolchain also honours the legacy
+`~/pi5-sysroot`, which exists, and `cmake/aarch64-toolchain.cmake` falls through
+to it by design so an old tree keeps working. The cross build ran clean and the
+artifact is `ELF 64-bit LSB pie executable, ARM aarch64`.
+
+### WI 782's acceptance criteria, on the live board
+
+| AC | result |
+|---|---|
+| **AC-1** one key per instance, JSON with `ts`/`state`/`text`/`host` | **PASS** — `deskdash:rpiDash2` and `deskdash:rpidash3`, both parsing, both `TTL -1` |
+| **AC-2** a `deskdash` card per instance, green (ok) | **PASS** — kpidash's own `kpidash-cards list` shows both `ok`, ages 5 s and 12 s |
+| **AC-3** `ts` refreshed well under the 60 s cutoff | **PASS** — advanced 30 s and 45 s across a 40 s window (the 15 s cadence); ages 11 s and 3 s |
+| **AC-4** `text` shows the running version | **PASS** — `0.27.0-06b6f9a` on both |
+| **AC-5** a down Redis never crashes or stalls the render loop | **by construction, not exercised live** — see below |
+| **AC-6** both dashboards distinguishable on the board | **PASS** — two cards, `(name, host)` identity, no extra config |
+
+**AC-5 is the honest gap.** Both panels render and publish with the endpoint up,
+which shows the publish does not stall the loop in the normal case — but the
+endpoint was never taken *down* under a running panel, so the failure path is
+evidenced by construction only: `service_pub_tick` returns early when
+`redis_client_ensure` fails, the handle carries its own backoff, and `g_last` is
+deliberately not advanced on failure so a reconnect publishes immediately. That
+is the same shape as the four older handles. Worth a real test the next time
+something touches this path.
+
+### One finding
+
+rpidash2's actual hostname is **`rpiDash2`** (capital D), so its key is
+`kpidash:services:deskdash:rpiDash2` while every other fleet reference is
+lowercase. Nothing is broken and both cards render — but the key *is* the card's
+identity and cards have no TTL, so a later lowercasing would create a second
+card and strand the first. Filed as **WI 2277** with the prune step named.
