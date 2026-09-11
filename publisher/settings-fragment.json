@@ -1,7 +1,7 @@
 {
   "//": "kdeskdash claude-feed publisher — merge into user-level ~/.claude/settings.json.",
   "//managed": "UNMANAGED HOSTS ONLY (cleo). On kai and kubs0 this file is not the source of truth: k-homelab's claude-hooks recipe owns these entries and reports drift against them, so edit recipes/claude-hooks/settings_merge.py there and keep this fragment in step.",
-  "//path": "Use the machine's absolute path to claude-pub.sh; forward slashes work in Git Bash on Windows (e.g. C:/Users/kenhi/.claude/kdeskdash-pub/claude-pub.sh).",
+  "//path": "Use the machine's absolute path to claude-pub.sh. On Windows name the interpreter explicitly, with forward slashes: C:/PROGRA~1/Git/bin/bash.exe C:/Users/kenhi/.claude/kdeskdash-pub/claude-pub.sh. A bare .sh path pops a modal 'How do you want to open this file?' picker whenever Claude Code launches the hook through PowerShell, and fails silently and unattended. See README.md, 'Windows: why the hook command names bash.exe'.",
   "//tooluse": "PreToolUse/PostToolUse carry no matcher on purpose: they fire for every tool so a long working turn keeps its ts fresh (the panel greys a row at 15m). The script branches on tool_name itself — AskUserQuestion drives the blocked status, everything else is a throttled ts-only keepalive.",
   "statusLine": {
     "type": "command",

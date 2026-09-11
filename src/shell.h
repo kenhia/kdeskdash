@@ -6,6 +6,7 @@
  * Navigation model:
  *   - swipe left/right  -> next/previous content mode (wrapping)
  *   - swipe down        -> menu
+ *   - double-tap the background -> this mode's quick-switch partner
  *   - tapping a menu tile (handled by the menu mode) -> open that mode
  *
  * The shell does not own the mode_t storage; callers keep registered modes
@@ -51,6 +52,11 @@ void shell_tick(void);
  * changes. Used to persist the active mode (e.g. to Redis). Pass NULL to
  * clear. The callback fires after the new mode is shown. */
 void shell_set_change_cb(void (*cb)(const char *id));
+
+/* Configure the double-tap quick switch (KDESKDASH_QUICK_PAIRS, `"a:b,c:d"`).
+ * NULL/empty leaves the zero-config behaviour: double-tap bounces to the
+ * previously active content mode. Call before shell_start(). */
+void shell_set_quick_pairs(const char *spec);
 
 /* Start the shell. If `restore_id` names a registered mode, open it; otherwise
  * open the menu, or the first content mode if no menu is registered. */

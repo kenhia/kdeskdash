@@ -24,6 +24,9 @@
 
 #include "lvgl.h"
 #include "shell.h"
+/* "../palette.h": src/modes/palette.h shadows the core header from in here —
+ * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
+#include "../palette.h"
 
 #define TILE_W    288
 #define TILE_H    112
@@ -32,14 +35,17 @@
 #define GRID_ROWS 3
 #define GROUP_CAP (GRID_COLS * GRID_ROWS)
 
-#define COLOR_BG        lv_color_hex(0x05070d)
-#define COLOR_PANEL     lv_color_hex(0x0a0f1a)
-#define COLOR_PANEL_HI  lv_color_hex(0x101726) /* pressed lift */
-#define COLOR_HAIRLINE  lv_color_hex(0x1b2334)
-#define COLOR_INK       lv_color_hex(0xe9edf6)
-#define COLOR_ACCENT    lv_color_hex(0xcf6b4a) /* claude coral */
-#define COLOR_INSIDERS  lv_color_hex(0x38be84) /* VS Code Insiders green (Remote) */
-#define COLOR_GOLZ      lv_color_hex(0xc0392b) /* dark red — zombies */
+/* Local aliases onto the named palette (src/palette.h) — the palette is the
+ * single source of truth for every color here. */
+#define PAL(name) lv_color_hex(kd_pal_rgb(KD_PAL_##name))
+#define COLOR_BG       PAL(VOID)
+#define COLOR_PANEL    PAL(DEEP_SLATE)
+#define COLOR_PANEL_HI PAL(RAISED_SLATE)  /* pressed lift */
+#define COLOR_HAIRLINE PAL(GUNMETAL_SEAM)
+#define COLOR_INK      PAL(MOON_INK)
+#define COLOR_ACCENT   PAL(CLAUDE_CORAL)  /* claude coral */
+#define COLOR_INSIDERS PAL(INSIDER_MINT)  /* VS Code Insiders green (Remote) */
+#define COLOR_GOLZ     PAL(ZOMBIE_RUST)   /* dark red — zombies */
 
 /* Per-mode tile-text colour (default ink). Claude reuses the coral accent; Remote
  * the Insiders green from the foreground mode; GoLZ a dark red. GoL/Icons/Clock/

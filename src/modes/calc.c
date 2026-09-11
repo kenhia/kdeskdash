@@ -25,22 +25,28 @@
  * shadowing the core. */
 #include "../calc.h"
 #include "lvgl.h"
+/* "../palette.h": src/modes/palette.h shadows the core header from in here —
+ * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
+#include "../palette.h"
 
-#define COLOR_BG        lv_color_hex(0x05070d)
-#define COLOR_PANEL     lv_color_hex(0x0a0f1a)
-#define COLOR_PANEL_HI  lv_color_hex(0x101726)
-#define COLOR_HAIRLINE  lv_color_hex(0x1b2334)
-#define COLOR_INK       lv_color_hex(0xe9edf6)
-#define COLOR_SECONDARY lv_color_hex(0x8b95ab)
-#define COLOR_MUTED     lv_color_hex(0x525d73)
-#define COLOR_ACCENT    lv_color_hex(0xcf6b4a) /* claude coral (menu "Ops" header) */
-#define COLOR_EQ        lv_color_hex(0x99492e) /* darker coral for the "=" key */
-#define COLOR_TEAL      lv_color_hex(0x2ec4c4) /* Edge teal (Remote mode) */
-#define COLOR_GREEN     lv_color_hex(0x38be84) /* Insiders green (Remote tile) */
-#define COLOR_KEY_NUM   lv_color_hex(0x1a2332) /* digit island */
-#define COLOR_KEY_OP    lv_color_hex(0x24344d) /* binary ops */
-#define COLOR_KEY_FN    lv_color_hex(0x141c2b) /* unary/constants/edit */
-#define COLOR_KEY_DANGER lv_color_hex(0x3a1b22) /* C */
+/* Local aliases onto the named palette (src/palette.h) — the palette is the
+ * single source of truth for every color here. */
+#define PAL(name) lv_color_hex(kd_pal_rgb(KD_PAL_##name))
+#define COLOR_BG         PAL(VOID)
+#define COLOR_PANEL      PAL(DEEP_SLATE)
+#define COLOR_PANEL_HI   PAL(RAISED_SLATE)
+#define COLOR_HAIRLINE   PAL(GUNMETAL_SEAM)
+#define COLOR_INK        PAL(MOON_INK)
+#define COLOR_SECONDARY  PAL(STEEL_MIST)
+#define COLOR_MUTED      PAL(FADED_DENIM)
+#define COLOR_ACCENT     PAL(CLAUDE_CORAL)  /* claude coral (menu "Ops" header) */
+#define COLOR_EQ         PAL(BURNT_CORAL)   /* darker coral for the "=" key */
+#define COLOR_TEAL       PAL(EDGE_TEAL)     /* Edge teal (Remote mode) */
+#define COLOR_GREEN      PAL(INSIDER_MINT)  /* Insiders green (Remote tile) */
+#define COLOR_KEY_NUM    PAL(SLATE_KEY)     /* digit island */
+#define COLOR_KEY_OP     PAL(STEEL_KEY)     /* binary ops */
+#define COLOR_KEY_FN     PAL(QUIET_KEY)     /* unary/constants/edit */
+#define COLOR_KEY_DANGER PAL(SMOKED_MAROON) /* C */
 
 /* Keypad geometry: 7 cols x 4 rows in an 856x424 panel. */
 #define KEY_W 113

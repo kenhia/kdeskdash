@@ -29,6 +29,9 @@
 #include "claude_feed.h"
 #include "claude_redis.h"
 #include "lvgl.h"
+/* "../palette.h": src/modes/palette.h shadows the core header from in here —
+ * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
+#include "../palette.h"
 
 #define CLAUDE_POLL_MS     2000 /* sessions + limits refresh cadence */
 #define CLAUDE_DISCOVER_MS 5000 /* SCAN discovery cadence */
@@ -54,22 +57,25 @@
 #define GAUGE_ARC_W 10
 
 /* Design tokens (validated against this surface — see the plan). */
-#define COLOR_BG        lv_color_hex(0x05070d)
-#define COLOR_PANEL     lv_color_hex(0x0a0f1a)
-#define COLOR_HAIRLINE  lv_color_hex(0x1b2334)
-#define COLOR_INK       lv_color_hex(0xe9edf6)
-#define COLOR_SECONDARY lv_color_hex(0x8b95ab)
-#define COLOR_MUTED     lv_color_hex(0x525d73)
-#define COLOR_ACCENT    lv_color_hex(0xcf6b4a) /* claude coral */
-#define COLOR_WORKING   lv_color_hex(0x35a271)
-#define COLOR_AWAITING  lv_color_hex(0xb9832c) /* doubles as the warn tone */
-#define COLOR_BLOCKED   lv_color_hex(0xe0563f) /* hard-blocked: hotter than awaiting */
-#define COLOR_PANEL_ALT lv_color_hex(0x2a1109) /* row wash behind BLOCKED ON YOU */
+/* Local aliases onto the named palette (src/palette.h) — the palette is the
+ * single source of truth for every color here. */
+#define PAL(name) lv_color_hex(kd_pal_rgb(KD_PAL_##name))
+#define COLOR_BG        PAL(VOID)
+#define COLOR_PANEL     PAL(DEEP_SLATE)
+#define COLOR_HAIRLINE  PAL(GUNMETAL_SEAM)
+#define COLOR_INK       PAL(MOON_INK)
+#define COLOR_SECONDARY PAL(STEEL_MIST)
+#define COLOR_MUTED     PAL(FADED_DENIM)
+#define COLOR_ACCENT    PAL(CLAUDE_CORAL)  /* claude coral */
+#define COLOR_WORKING   PAL(WORKING_JADE)
+#define COLOR_AWAITING  PAL(PATIENT_AMBER) /* doubles as the warn tone */
+#define COLOR_BLOCKED   PAL(ALARM_EMBER)   /* hard-blocked: hotter than awaiting */
+#define COLOR_PANEL_ALT PAL(SCORCHED_WASH) /* row wash behind BLOCKED ON YOU */
 /* Session name. CPU_SKY (palette.h) deliberately: the obvious "bright accent"
  * picks collide with the status column — GPU_GRASS reads as COLOR_WORKING
  * green, VRAM_MANGO as COLOR_AWAITING amber / COLOR_ACCENT coral — so a title
  * in either could be misread as a status. Blue belongs to no status here. */
-#define COLOR_TITLE     lv_color_hex(0x4dabf7)
+#define COLOR_TITLE PAL(CPU_SKY)
 
 typedef struct {
     lv_obj_t *row;

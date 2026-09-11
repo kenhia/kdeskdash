@@ -4,9 +4,10 @@
  * one X-macro table, paint-store names. "Make the label CLAUDE_CORAL" is a
  * complete instruction; the `palette` mode is this table rendered as swatches.
  *
- * Adding a color is one X() line. Legacy strays (clock's pre-design-language
- * shades) are intentionally absent — repaint them onto palette colors instead
- * of adding them here (see WI 514).
+ * Adding a color is one X() line. Every mode sources its colors from here (WI
+ * 514): a mode keeps readable local aliases, but they are defined as PAL(NAME),
+ * never as a bare lv_color_hex literal, so this table is the only place a
+ * value lives.
  */
 #ifndef KDESKDASH_PALETTE_H
 #define KDESKDASH_PALETTE_H
@@ -42,8 +43,20 @@
     X(STAR_GOLD,     0xd9a441, "Remote: favorite star") \
     X(HOST_GREY,     0x969696, "Remote: host names") \
     X(UTC_FROST,     0xcfe0f5, "clock widget: the UTC face") \
+    X(PURE_WHITE,    0xffffff, "clock: the local-time face, brightest on the panel") \
+    X(DUSK_SILVER,   0xb9c6db, "clock: local seconds") \
+    X(STOPWATCH_LIME,0x6ddf6d, "clock: a running stopwatch") \
+    X(PALE_STEEL,    0xc8d0e0, "game of life: info text") \
+    X(ASH_MIST,      0x8a929e, "GoLZ: footer text") \
+    X(TRUE_BLACK,    0x000000, "sim screens + modal scrim - deeper than VOID by design") \
+    X(PITCH_SLATE,   0x12151c, "sim modal panel fill") \
     X(ZOMBIE_RUST,   0xc0392b, "GoLZ: menu tile, zombie red") \
-    /* --- dev charts --- */ \
+    /* --- dev charts & dev-mode chrome --- */ \
+    X(PEWTER_ROW,    0x2b3340, "dev: host row background") \
+    X(ANVIL_GREY,    0x394150, "dev: assign-button fill") \
+    X(DORMANT_SLATE, 0x6b7280, "dev: offline host / disabled readout") \
+    X(CAPTION_HAZE,  0x7c93b3, "small captions: clock faces, dev chart axes") \
+    X(MINT_FROST,    0xe6ffe6, "dev chart: gap / start marker") \
     X(CPU_SKY,       0x4dabf7, "dev chart: CPU") \
     X(GPU_GRASS,     0x40c057, "dev chart: GPU") \
     X(RAM_SALMON,    0xff6b6b, "dev chart: RAM") \

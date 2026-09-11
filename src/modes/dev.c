@@ -30,6 +30,9 @@
 #include "redis.h"
 #include "telemetry.h"
 #include "telemetry_host.h"
+/* "../palette.h": src/modes/palette.h shadows the core header from in here —
+ * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
+#include "../palette.h"
 
 /* selector_refresh copies up to TELEMETRY_HOSTS_MAX discovered hosts into the
  * dev_hostlist model, so the model must be able to hold at least that many. */
@@ -43,13 +46,16 @@ _Static_assert(DEV_HOSTLIST_MAX >= TELEMETRY_HOSTS_MAX,
 #define CENTER_W        260   /* center selector column width (px) */
 #define ROW_H           40
 
-#define COLOR_BG       lv_color_hex(0x05070d)
-#define COLOR_HOST     lv_color_hex(0xcfe0f5)
-#define COLOR_ROW      lv_color_hex(0x2b3340)
-#define COLOR_ROW_SEL  lv_color_hex(0x3d6fb0)
-#define COLOR_TXT      lv_color_hex(0xeaf0fb)
-#define COLOR_TXT_OFF  lv_color_hex(0x6b7280)
-#define COLOR_ASSIGN   lv_color_hex(0x394150)
+/* Local aliases onto the named palette (src/palette.h) — the palette is the
+ * single source of truth for every color here. */
+#define PAL(name) lv_color_hex(kd_pal_rgb(KD_PAL_##name))
+#define COLOR_BG      PAL(VOID)
+#define COLOR_HOST    PAL(UTC_FROST)
+#define COLOR_ROW     PAL(PEWTER_ROW)
+#define COLOR_ROW_SEL PAL(SELECT_BLUE)
+#define COLOR_TXT     PAL(MOON_INK)
+#define COLOR_TXT_OFF PAL(DORMANT_SLATE)
+#define COLOR_ASSIGN  PAL(ANVIL_GREY)
 
 typedef struct {
     lv_obj_t *box; /* side container holding the two charts */

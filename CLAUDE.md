@@ -116,8 +116,8 @@ Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMak
 
 - **Pure cores** (`src/gol.c`, `src/golz.c`, `src/stopwatch.c`, `src/calc.c`, `src/palette.c`, `src/registry.c`,
   `src/modeset.c`, `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/claude_feed.c`,
-  `src/telemetry_host.c`, `src/bmp_write.c`, `src/clock_core.c`, `src/modes/dev_hostlist.c`,
-  `src/modes/dev_view.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
+  `src/telemetry_host.c`, `src/bmp_write.c`, `src/clock_core.c`, `src/service_card.c`,
+  `src/quickswitch.c`, `src/modes/dev_hostlist.c`, `src/modes/dev_view.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
   explicit `uint32_t *state` seam). Each has a `tests/test_*.c`.
 - **Modes** (`src/modes/*.c`) — each implements the `kd_mode_t` lifecycle from `src/mode.h`:
   `activate` / `deactivate` / `tick`, owning one LVGL screen and its private `state`. A mode
@@ -129,7 +129,11 @@ Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMak
   mode, which is how you get a widget shaped like whichever mode happened to be first.
 - **Shell** (`src/shell.c`, `src/shell.h`) — owns the set of modes, the active mode, and
   gesture navigation: swipe left/right cycles content modes (wrapping), swipe down opens the
-  Menu. It does **not** own mode storage; `main.c` keeps registered modes alive for the
+  Menu, and a **double-tap on the bare background** jumps to the current mode's quick-switch
+  partner (`src/quickswitch.c` — `KDESKDASH_QUICK_PAIRS` pins a partner, unset means the
+  previously active mode, `none` disables it; the menu is excluded from that history).
+  LVGL does not bubble `CLICKED` to a parent, which is what keeps the double-tap off calc
+  keys and launcher buttons. It does **not** own mode storage; `main.c` keeps registered modes alive for the
   program's lifetime. A change callback (`shell_set_change_cb`) persists the active mode to Redis.
 - **Entry** (`src/main.c`) — DRM display + evdev touch bring-up, registers the modes the
   modeset selects, wires the Redis handles the enabled modes actually use, runs the LVGL main
@@ -146,7 +150,7 @@ only recoverable over SSH.
 **Adding a mode is three lines**: the roster in `src/modeset.c`, a case in `main.c`'s
 `create_mode()` dispatch, and its source in `CMakeLists.txt` — plus the mode's own `.c`/`.h`.
 
-#### Four independent Redis handles — do not conflate them
+#### Five independent Redis handles — do not conflate them
 
 Each has its own `redis_client_t` connection and failure isolation (a down endpoint never
 stalls boot or another path). The generic client + backoff lives in `src/redis.c` /
@@ -174,9 +178,27 @@ stalls boot or another path). The generic client + backoff lives in `src/redis.c
    logged; per-kvscf-instance, so it lives in each device's `secrets.env`). PUBLISH rides the
    ordinary command connection — kdeskdash never SUBSCRIBEs.
 
+5. **Service card** (`src/service_pub.c`, `KDESKDASH_CARD_REDIS_*`) — **write-only**, and the
+   only handle that is *not* mode-gated. Publishes this instance's own liveness to
+   `kpidash:services:deskdash:<host>` every 15 s (no TTL — the kpidash board computes
+   freshness from the payload's `ts` and reddens the card after 60 s) so every panel appears
+   on the board. kdeskdash never *reads* that namespace; the contract lives in the pure
+   `src/service_card.c` and is host-tested.
+
+   **Why this is not the telemetry handle, although both reach `rpi53:6379`.** Telemetry is
+   initialised only when Dev mode is registered, and the card must publish from *every*
+   panel — sharing the handle would tie a panel's presence on the board to whether it
+   happens to carry Dev. So the card gets its own handle, with its own endpoint config
+   falling back to `KDESKDASH_TELEMETRY_REDIS_*` field by field and auth inherited **only
+   when host and port both match** (the sprint-031 rule — see the long comment in
+   `config.c`). Both Pis already point telemetry at `rpi53:6379`, so the card authenticates
+   with no new env line on either device. If you find yourself merging these two because
+   "they go to the same place", this paragraph is the reason not to.
+
 Feeds are initialised **only for modes the modeset registered**, so a panel without Dev never
 dials the telemetry endpoint at all. A handle shared by two modes is initialised when *either*
-is registered — see the kvscf gate in `main.c`.
+is registered — see the kvscf gate in `main.c`. **The service card is the deliberate
+exception**: it reports the instance, not a mode, so it is initialised unconditionally.
 
 **A feed key's TTL is not a policy for every consumer.** The kvscf keys carry a 10s TTL, which
 is right for a live window list (absent genuinely means "nothing to focus") and wrong for the
@@ -244,7 +266,11 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
 - **Colors come from the named palette** (`src/palette.h`, `KD_PAL_*` / `kd_pal_rgb`).
   New UI colors get an X-macro entry there (paint-store name + usage note) rather than
   a bare `lv_color_hex` literal; the `palette` mode displays the table on-panel.
-  Existing modes' local `COLOR_*` blocks migrate opportunistically (korg WI 514).
+  **The migration is done** (sprint 033, korg WI 514): there is no bare `lv_color_hex(0x…)`
+  left in `src/`, and a mode's local `COLOR_*` names are aliases defined as `PAL(NAME)`.
+  Adding one back is a regression, not a shortcut. From inside `src/modes/`, include the
+  core header as `"../palette.h"` — `src/modes/palette.h` is the *mode* header and shadows
+  it (`docs/solutions/best-practices/quote-include-core-header-shadowing.md`).
 - LVGL is a pinned submodule at `lib/lvgl` (v9.2.2); cJSON is vendored at `lib/cjson`.
   Clone with `--recurse-submodules`.
 

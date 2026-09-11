@@ -27,6 +27,11 @@ typedef struct {
     const char *icons_favorites_path; /* KDESKDASH_ICONS_FAVORITES — icons-mode favourites file (load/save) */
     const char *kvscf_token;       /* KVSCF_TOKEN — shared secret for foreground-mode focus commands ("" when unset; trimmed at use) */
     const char *modes_spec;        /* KDESKDASH_MODES — per-device mode set; NULL when unset (modeset falls back to the full default) */
+    const char *card_redis_host;   /* KDESKDASH_CARD_REDIS_HOST — kpidash service-card target; falls back to the telemetry values */
+    int         card_redis_port;   /* KDESKDASH_CARD_REDIS_PORT — falls back to telemetry_redis_port */
+    const char *card_redis_auth;   /* KDESKDASH_CARD_REDISCLI_AUTH — falls back to telemetry_redis_auth ONLY when the endpoint is the same instance; NULL otherwise */
+    const char *quick_pairs;       /* KDESKDASH_QUICK_PAIRS — three states: NULL (unset) = partner is the previously active mode; "none"/"off" = double-tap inert; "a:b,c:d" = pinned pairs. Grammar owned by quickswitch.c */
+    const char *card_name;         /* KDESKDASH_CARD_NAME — service-card name segment; default "deskdash" (change it to keep two instances on ONE host distinct) */
 } kdeskdash_config_t;
 
 /* Populate cfg from the environment, falling back to defaults. */

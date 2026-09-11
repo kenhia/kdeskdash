@@ -24,6 +24,9 @@
 #include "kvscf_redis.h"
 #include "lvgl.h"
 #include "src/libs/tiny_ttf/lv_tiny_ttf.h"
+/* "../palette.h": src/modes/palette.h shadows the core header from in here —
+ * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
+#include "../palette.h"
 
 #define POLL_MS     1500
 #define RAIL_W      180
@@ -43,19 +46,22 @@
 #define MARK_GLYPH   22 /* marker font size */
 #define MARK_STRIP   26 /* reserved width for the ★/○ marker */
 
-#define COLOR_BG        lv_color_hex(0x05070d)
-#define COLOR_PANEL     lv_color_hex(0x0a0f1a)
-#define COLOR_PANEL_HI  lv_color_hex(0x101726)
-#define COLOR_HAIRLINE  lv_color_hex(0x1b2334)
-#define COLOR_INK       lv_color_hex(0xe9edf6)
-#define COLOR_SECONDARY lv_color_hex(0x8b95ab)
-#define COLOR_MUTED     lv_color_hex(0x525d73)
-#define COLOR_ACCENT    lv_color_hex(0xcf6b4a) /* claude coral */
-#define COLOR_HOST      lv_color_hex(0x969696) /* cleo-side host grey */
-#define COLOR_VSCODE    lv_color_hex(0x60A5EB) /* VS Code blue (rail + stable) */
-#define COLOR_EDGE      lv_color_hex(0x2ec4c4) /* Edge teal (rail + named windows) */
-#define COLOR_APPS      lv_color_hex(0xef5350) /* Apps rocket red */
-#define COLOR_STAR      lv_color_hex(0xd9a441) /* favorite gold */
+/* Local aliases onto the named palette (src/palette.h) — the palette is the
+ * single source of truth for every color here. */
+#define PAL(name) lv_color_hex(kd_pal_rgb(KD_PAL_##name))
+#define COLOR_BG        PAL(VOID)
+#define COLOR_PANEL     PAL(DEEP_SLATE)
+#define COLOR_PANEL_HI  PAL(RAISED_SLATE)
+#define COLOR_HAIRLINE  PAL(GUNMETAL_SEAM)
+#define COLOR_INK       PAL(MOON_INK)
+#define COLOR_SECONDARY PAL(STEEL_MIST)
+#define COLOR_MUTED     PAL(FADED_DENIM)
+#define COLOR_ACCENT    PAL(CLAUDE_CORAL)  /* claude coral */
+#define COLOR_HOST      PAL(HOST_GREY)     /* cleo-side host grey */
+#define COLOR_VSCODE    PAL(CODE_BLUE)     /* VS Code blue (rail + stable) */
+#define COLOR_EDGE      PAL(EDGE_TEAL)     /* Edge teal (rail + named windows) */
+#define COLOR_APPS      PAL(ROCKET_RED)    /* Apps rocket red */
+#define COLOR_STAR      PAL(STAR_GOLD)     /* favorite gold */
 
 typedef enum { APP_CODE = 0, APP_EDGE, APP_APPS } fg_app_t;
 

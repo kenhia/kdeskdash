@@ -6,6 +6,9 @@
  * (LVGL 9 has no per-series line width); VRAM is a single line.
  */
 #include "modes/dev_graph.h"
+/* "../palette.h": src/modes/palette.h shadows the core header from in here —
+ * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
+#include "../palette.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -22,16 +25,19 @@
 #define MB_AXIS_DEFAULT 16384
 
 /* Series colours. */
-#define COLOR_GPU   lv_color_hex(0x40c057) /* GPU compute % (green) */
-#define COLOR_CPU   lv_color_hex(0x4dabf7) /* CPU avg %     (blue)  */
-#define COLOR_TOP   lv_color_hex(0xb197fc) /* CPU top core % (mauve) */
-#define COLOR_VRAM  lv_color_hex(0xff922b) /* VRAM MB       (orange) */
-#define COLOR_RAM   lv_color_hex(0xff6b6b) /* RAM MB        (red)    */
-#define COLOR_BG    lv_color_hex(0x05070d)
-#define COLOR_GRID  lv_color_hex(0x1b2433)
-#define COLOR_HOST  lv_color_hex(0xcfe0f5)
-#define COLOR_CAP   lv_color_hex(0x7c93b3)
-#define COLOR_GAP   lv_color_hex(0xe6ffe6) /* gap/start marker (pale green) */
+/* Local aliases onto the named palette (src/palette.h) — the palette is the
+ * single source of truth for every color here. */
+#define PAL(name) lv_color_hex(kd_pal_rgb(KD_PAL_##name))
+#define COLOR_GPU  PAL(GPU_GRASS)     /* GPU compute % (green) */
+#define COLOR_CPU  PAL(CPU_SKY)       /* CPU avg %     (blue)  */
+#define COLOR_TOP  PAL(TOP_LILAC)     /* CPU top core % (mauve) */
+#define COLOR_VRAM PAL(VRAM_MANGO)    /* VRAM MB       (orange) */
+#define COLOR_RAM  PAL(RAM_SALMON)    /* RAM MB        (red)    */
+#define COLOR_BG   PAL(VOID)
+#define COLOR_GRID PAL(GUNMETAL_SEAM)
+#define COLOR_HOST PAL(UTC_FROST)
+#define COLOR_CAP  PAL(CAPTION_HAZE)
+#define COLOR_GAP  PAL(MINT_FROST)    /* gap/start marker (pale green) */
 
 typedef struct {
     dev_graph_kind_t kind;

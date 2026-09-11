@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "lvgl.h"
+#include "quickswitch.h"
 #include "registry.h"
 
 #define SHELL_MAX_CONTENT 16
@@ -17,9 +18,10 @@ static int        s_content_count;
 static kd_mode_t *s_menu;
 static kd_mode_t *s_active;
 static void     (*s_change_cb)(const char *id);
+static quickswitch_t s_quick;
 
-/* Screens that already have the gesture handler attached, so we wire each one
- * exactly once. Content modes + menu, so the same bound applies. */
+/* Screens that already have the gesture + tap handlers attached, so we wire
+ * each one exactly once. Content modes + menu, so the same bound applies. */
 static lv_obj_t *s_wired[SHELL_MAX_CONTENT + 1];
 static int       s_wired_count;
 
@@ -52,7 +54,31 @@ static void gesture_cb(lv_event_t *e) {
     }
 }
 
-static void wire_gesture_once(lv_obj_t *screen) {
+/* Double-tap the background to bounce to this mode's partner (WI 1032).
+ *
+ * Attached to the SCREEN, which is what makes it safe: LVGL does not bubble
+ * CLICKED to a parent by default, so this fires only on a mode's bare
+ * background and can never hijack a calc key, a launcher button or a dev row.
+ * Modes keep their own taps; the gesture stays the way to reach a neighbour. */
+static void tap_cb(lv_event_t *e) {
+    (void)e;
+    /* A swipe that releases over the background still fires CLICKED — the
+     * swipe-vs-tap guard, and lv_indev_get_gesture_dir() has no NULL check of
+     * its own (docs/solutions/best-practices/lvgl-swipe-vs-tap-gesture-guard.md). */
+    lv_indev_t *indev = lv_indev_active();
+    if (indev && lv_indev_get_gesture_dir(indev) != LV_DIR_NONE)
+        return;
+    if (!quickswitch_tap(&s_quick, lv_tick_get()))
+        return; /* first tap of a possible pair */
+    const char *id = quickswitch_target(&s_quick);
+    if (!id)
+        return;
+    kd_mode_t *m = shell_find_mode(id);
+    if (m)
+        shell_set_active(m);
+}
+
+static void wire_screen_once(lv_obj_t *screen) {
     if (!screen)
         return;
     for (int i = 0; i < s_wired_count; i++)
@@ -60,6 +86,7 @@ static void wire_gesture_once(lv_obj_t *screen) {
             return;
     if (s_wired_count < (int)(sizeof(s_wired) / sizeof(s_wired[0]))) {
         lv_obj_add_event_cb(screen, gesture_cb, LV_EVENT_GESTURE, NULL);
+        lv_obj_add_event_cb(screen, tap_cb, LV_EVENT_CLICKED, NULL);
         s_wired[s_wired_count++] = screen;
     }
 }
@@ -70,6 +97,7 @@ void shell_init(void) {
     s_menu = NULL;
     s_active = NULL;
     s_change_cb = NULL;
+    quickswitch_init(&s_quick, NULL);
     memset(s_wired, 0, sizeof(s_wired));
     s_wired_count = 0;
 }
@@ -95,6 +123,10 @@ void shell_register_menu(kd_mode_t *m) {
 
 void shell_set_change_cb(void (*cb)(const char *id)) {
     s_change_cb = cb;
+}
+
+void shell_set_quick_pairs(const char *spec) {
+    quickswitch_init(&s_quick, spec);
 }
 
 kd_mode_t *shell_find_mode(const char *id) {
@@ -149,9 +181,14 @@ void shell_set_active(kd_mode_t *m) {
     if (m->activate)
         m->activate(m); /* must leave m->screen non-NULL */
     if (m->screen) {
-        wire_gesture_once(m->screen);
+        wire_screen_once(m->screen);
         lv_screen_load(m->screen);
     }
+    /* The menu is navigation chrome, not a destination: leaving it out of the
+     * history is what keeps a Claude -> menu -> Remote trip leaving "Claude"
+     * as Remote's partner, instead of the menu the user passed through. */
+    if (m != s_menu)
+        quickswitch_note_active(&s_quick, m->id);
     if (s_change_cb && m->id)
         s_change_cb(m->id);
 }

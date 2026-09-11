@@ -105,18 +105,32 @@ static void test_display_order(void) {
         check(seen[i] == 1, "order is a permutation");
 
     /* The blues cluster (the report that motivated the sort): CODE_BLUE,
-     * CPU_SKY and SELECT_BLUE must sit in one contiguous-ish run. */
+     * CPU_SKY and SELECT_BLUE must sit in one unbroken run of blues.
+     *
+     * This asserted a fixed 4-card window until sprint 033, which grew the blue
+     * family (CAPTION_HAZE crossed NEUTRAL_CHROMA into the blue bin, and the
+     * light blue-greys arrived). The window was only ever a proxy for what the
+     * original report actually wanted — blues together, nothing foreign wedged
+     * between them — and a magic number re-breaks every time the palette grows.
+     * Assert the invariant instead: everything between the family's ends is
+     * itself blue-dominant. */
     int cb = order_pos(order, "CODE_BLUE");
     int cs = order_pos(order, "CPU_SKY");
     int sb = order_pos(order, "SELECT_BLUE");
     check(cb >= 0 && cs >= 0 && sb >= 0, "blues present in order");
     int lo = cb < cs ? (cb < sb ? cb : sb) : (cs < sb ? cs : sb);
     int hi = cb > cs ? (cb > sb ? cb : sb) : (cs > sb ? cs : sb);
-    check(hi - lo <= 3, "blue family within a 4-card window");
+    for (int i = lo; i <= hi; i++) {
+        uint32_t v = kd_pal_rgb(order[i]);
+        int r = (int)((v >> 16) & 0xFF), g = (int)((v >> 8) & 0xFF), b = (int)(v & 0xFF);
+        check(b >= r && b >= g, "no non-blue between the blue family's ends");
+    }
 
-    /* Neutral chrome (VOID, the darkest) leads; MOON_INK is the last
-     * neutral; vivid reds come after the neutral block. */
-    check(order[0] == kd_pal_find("VOID"), "VOID first (darkest neutral)");
+    /* Neutral chrome leads, darkest first; MOON_INK is the last neutral; vivid
+     * reds come after the neutral block. TRUE_BLACK (sprint 033: the sim
+     * screens and the modal scrim) is darker than VOID and now leads. */
+    check(order[0] == kd_pal_find("TRUE_BLACK"), "darkest neutral first");
+    check(order[1] == kd_pal_find("VOID"), "VOID follows it");
     check(order_pos(order, "MOON_INK") < order_pos(order, "ZOMBIE_RUST"),
           "neutrals precede hue families");
     /* Dark-to-light inside a family: ZOMBIE_RUST before RAM_SALMON. */
