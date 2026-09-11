@@ -49,6 +49,14 @@ typedef enum {
     CALC_KEY_E,
     CALC_KEY_EQ,
     CALC_KEY_CLEAR,
+    CALC_KEY_SQRT,  /* unary sqrt(x); negative x is an error */
+    CALC_KEY_RECIP, /* unary 1/x; zero is an error */
+    CALC_KEY_SIN,
+    CALC_KEY_COS,
+    CALC_KEY_TAN,
+    CALC_KEY_INV, /* arm/disarm the inverse modifier for the next trig key */
+    CALC_KEY_DRG, /* toggle degrees <-> radians */
+    CALC_KEY_CE,  /* clear entry: the operand only, not the pending op */
 } calc_key_t;
 
 typedef struct {
@@ -59,14 +67,17 @@ typedef struct {
     int    pending;                   /* calc_key_t binary op, or -1 */
     bool   new_operand;               /* an operand arrived since `pending` was set */
     bool   error;                     /* div-by-zero / overflow; C or a digit recovers */
+    bool   degrees;                   /* trig angles in degrees (default) or radians */
+    bool   inv;                       /* INV armed: next trig key takes its inverse */
     double regs[CALC_REGS];
     bool   reg_set[CALC_REGS];
 } calc_t;
 
-/* Reset everything, including registers. */
+/* Reset everything, including registers. Angle mode starts in degrees — a desk
+ * calculator's default, and the one the on-panel DEG/RAD key shows. */
 void calc_init(calc_t *c);
 
-/* Feed one key press. Registers survive CLEAR and errors. */
+/* Feed one key press. Registers survive CLEAR, CE and errors. */
 void calc_key(calc_t *c, calc_key_t k);
 
 /* Copy the current display value into register r (0..CALC_REGS-1). No-op on
@@ -76,6 +87,27 @@ void calc_store(calc_t *c, int r);
 /* Recall register r into the display (as a freshly entered operand). No-op if
  * the register was never stored, on error state, or bad index. */
 void calc_recall(calc_t *c, int r);
+
+/* Registers as one line of text, for the caller to persist however it likes
+ * (the mode puts it in Redis). Format is `<idx>:<value>` pairs separated by
+ * single spaces, only for registers that are set, ascending — so an untouched
+ * calculator serializes to "". Values use %.17g, which round-trips a double
+ * exactly; anything less would drift a stored constant on every restart. */
+void calc_regs_serialize(const calc_t *c, char *buf, size_t n);
+
+/* Restore registers from a string produced by calc_regs_serialize. Returns
+ * true when the registers were replaced.
+ *
+ * **All or nothing.** The string is parsed into a scratch set first and only
+ * committed once every token is well formed, so a truncated or hand-edited
+ * value can never leave half the registers restored and half stale — the same
+ * rule kvscf_parse_launcher follows for the launcher layout. An empty or
+ * malformed string returns false and leaves `c` untouched. */
+bool calc_regs_parse(calc_t *c, const char *s);
+
+/* Bytes enough for any calc_regs_serialize output: CALC_REGS entries of
+ * "<idx>:" plus a %.17g double (24 chars is the worst case) plus a separator. */
+#define CALC_REGS_STR_MAX (CALC_REGS * 28 + 1)
 
 /* The current numeric value shown on the display (0.0 while in error state). */
 double calc_value(const calc_t *c);

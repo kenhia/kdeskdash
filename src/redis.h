@@ -148,4 +148,16 @@ void redis_set_dev_assignment(redis_dev_side_t side, const char *host);
  * it against the host-token contract before using it to build a telemetry key. */
 bool redis_get_dev_assignment(redis_dev_side_t side, char *buf, size_t buflen);
 
+/* Persist the calculator's store/recall registers (SET kdeskdash:calc:regs),
+ * as produced by calc_regs_serialize. An empty or NULL line DELs the key.
+ * No-op when the control Redis is down — the registers then simply behave as
+ * they always did, living only as long as the process. */
+void redis_set_calc_regs(const char *line);
+
+/* Read the persisted register line into `buf` (GET). Returns true if a
+ * non-empty value was read. The value is untrusted: hand it to
+ * calc_regs_parse, which rejects a malformed line whole rather than
+ * half-restoring the register file. */
+bool redis_get_calc_regs(char *buf, size_t buflen);
+
 #endif /* KDESKDASH_REDIS_H */
