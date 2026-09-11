@@ -12,11 +12,15 @@
  * own writer's stamp + cadence).
  *
  * A RECENT zone (last completed sessions) sat between them until sprint 020;
- * it was traded for the width the session names needed — the publisher still
- * writes claude:recent, and claude_redis_get_recent() still reads it.
+ * it was traded for the width the session names needed. The publisher still
+ * writes claude:recent and libkdash still reads it (kdash_claude_recent);
+ * nothing on this panel renders it.
  *
- * All ordering/derivation lives in the pure claude_feed core; this file owns
- * LVGL rendering and feed I/O cadence. Data is polled only while active.
+ * Since sprint 034 the feed itself — key grammar, hash parsing, the display
+ * ladder, the attention-first order, limits staleness — is libkdash's
+ * (lib/kdashdata), not this project's. This file owns the LVGL rendering, the
+ * I/O cadence, and its own handle; the panel-only display strings live in
+ * claude_view.h. Data is polled only while active.
  */
 #include "modes/claude.h"
 
@@ -26,17 +30,32 @@
 #include <string.h>
 #include <time.h>
 
-#include "claude_feed.h"
-#include "claude_redis.h"
+#include "kdash/kdash_conn.h"
+#include "kdash/kdash_endpoint.h"
+#include "kdash/kdash_feed.h"
+#include "kdash/kdash_freshness.h"
+#include "kdash/kdash_payload.h"
 #include "lvgl.h"
+#include "modes/claude_view.h"
 /* "../palette.h": src/modes/palette.h shadows the core header from in here —
  * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
 #include "../palette.h"
 
-#define CLAUDE_POLL_MS     2000 /* sessions + limits refresh cadence */
-#define CLAUDE_DISCOVER_MS 5000 /* SCAN discovery cadence */
+#define CLAUDE_POLL_MS 2000 /* render + limits refresh cadence */
+/* SCAN cadence for the session family, kept at what the retired client's
+ * incremental discovery ran at. kdash_claude_sessions() does the whole
+ * SCAN + HGETALL in one call, so folding it into the 2 s render tick would
+ * have raised this panel's SCAN rate 2.5x on a Redis three dashboards share —
+ * a load change nobody asked for, arriving as a side effect of a refactor.
+ * Rows are re-rendered from the cached array every poll, so the age column
+ * still ticks at CLAUDE_POLL_MS. */
+#define CLAUDE_SCAN_MS 5000
 
 #define CLAUDE_ROWS 5 /* session rows on screen; overflow -> "+N more" */
+
+/* Rows the panel tracks. The store's cap, not the library's — kdash_claude_
+ * sessions() writes at most this many and reports how many it wrote. */
+#define CLAUDE_SESSIONS_MAX 24
 
 /* Zone widths (px); usage takes the remainder of 1920. Hardware-calibrated
  * 2026-07-03: at 1120 the usage zone (430 - 60 padding = 370 content) clipped
@@ -110,8 +129,21 @@ typedef struct {
 
     lv_obj_t *unavail; /* full-panel quiet banner when the feed is down */
 
+    /* This mode's own libkdash handle on the claude stem (kdashdata CD-7).
+     * Owned here rather than by a module main.c initialises: the feed exists
+     * exactly when the mode does, so the "only dial an endpoint a registered
+     * mode uses" gate is structural instead of a second roster to keep in
+     * sync with modeset.c. */
+    kdash_conn_t *conn;
+
+    /* Last complete session list, re-rendered between SCANs. Only ever holds
+     * a list the counted reader said was complete — see scan_sessions(). */
+    kdash_claude_session_t sessions[CLAUDE_SESSIONS_MAX];
+    int  nsessions;
+    bool have_sessions;
+
     uint32_t last_poll;
-    uint32_t last_discover;
+    uint32_t last_scan;
 } claude_state_t;
 
 /* ---------- widget builders ---------- */
@@ -338,31 +370,31 @@ static void build_screen(kd_mode_t *self) {
 
 /* ---------- rendering ---------- */
 
-static lv_color_t disp_color(cf_disp_t d) {
+static lv_color_t disp_color(kdash_claude_disp_t d) {
     switch (d) {
-    case CF_DISP_BLOCKED:  return COLOR_BLOCKED;
-    case CF_DISP_AWAITING: return COLOR_AWAITING;
-    case CF_DISP_WORKING:  return COLOR_WORKING;
-    default:               return COLOR_MUTED;
+    case KDASH_CLAUDE_DISP_BLOCKED:  return COLOR_BLOCKED;
+    case KDASH_CLAUDE_DISP_AWAITING: return COLOR_AWAITING;
+    case KDASH_CLAUDE_DISP_WORKING:  return COLOR_WORKING;
+    default:                         return COLOR_MUTED;
     }
 }
 
 /* Row background. Every state but BLOCKED uses the flat panel tone; a blocked
  * session gets a warm wash so "something wants me" reads from across the room
  * without having to parse the label. */
-static lv_color_t row_bg_color(cf_disp_t d) {
-    return (d == CF_DISP_BLOCKED) ? COLOR_PANEL_ALT : COLOR_PANEL;
+static lv_color_t row_bg_color(kdash_claude_disp_t d) {
+    return (d == KDASH_CLAUDE_DISP_BLOCKED) ? COLOR_PANEL_ALT : COLOR_PANEL;
 }
 
-static void render_sessions(claude_state_t *st, cf_session_t *s, int n,
-                            long long now) {
+static void render_sessions(claude_state_t *st, const kdash_claude_session_t *s,
+                            int n, long long now) {
     int working = 0, waiting = 0, blocked = 0;
     for (int i = 0; i < n; i++) {
-        if (s[i].disp == CF_DISP_WORKING)
+        if (s[i].disp == KDASH_CLAUDE_DISP_WORKING)
             working++;
-        else if (s[i].disp == CF_DISP_AWAITING)
+        else if (s[i].disp == KDASH_CLAUDE_DISP_AWAITING)
             waiting++;
-        else if (s[i].disp == CF_DISP_BLOCKED)
+        else if (s[i].disp == KDASH_CLAUDE_DISP_BLOCKED)
             blocked++;
     }
 
@@ -392,32 +424,39 @@ static void render_sessions(claude_state_t *st, cf_session_t *s, int n,
         }
         lv_obj_clear_flag(r->row, LV_OBJ_FLAG_HIDDEN);
 
-        cf_session_t *e = &s[i];
-        bool dim = (e->disp == CF_DISP_IDLE || e->disp == CF_DISP_STALE);
+        const kdash_claude_session_t *e = &s[i];
+        bool dim = (e->disp == KDASH_CLAUDE_DISP_IDLE ||
+                    e->disp == KDASH_CLAUDE_DISP_STALE);
+
+        /* libkdash leaves an absent project as "" — the placeholder is this
+         * panel's (CD-10), and it is what the row and the unnamed-session
+         * fallback below both render. */
+        const char *project = claude_project_label(e->project);
 
         lv_obj_set_style_bg_color(r->row, row_bg_color(e->disp), 0);
         lv_obj_set_style_bg_color(r->stripe, disp_color(e->disp), 0);
         lv_label_set_text(r->host, e->host);
-        lv_label_set_text(r->proj, e->project);
+        lv_label_set_text(r->proj, project);
         lv_obj_set_style_text_color(r->proj, dim ? COLOR_SECONDARY : COLOR_INK, 0);
 
         /* The name lags — Claude generates none for the first few turns, so a
          * young session has an empty title. Repeat the project rather than
          * leave a hole, muted so it reads as "no name yet" and not as one. */
         bool named = e->title[0] != '\0';
-        lv_label_set_text(r->title, named ? e->title : e->project);
+        lv_label_set_text(r->title, named ? e->title : project);
         lv_obj_set_style_text_color(
             r->title, dim || !named ? COLOR_MUTED : COLOR_TITLE, 0);
 
         lv_label_set_text(r->model, e->model);
         lv_obj_set_style_text_color(r->model, dim ? COLOR_MUTED : COLOR_SECONDARY, 0);
-        lv_label_set_text(r->status, cf_disp_label(e->disp));
+        lv_label_set_text(r->status, claude_disp_label(e->disp));
         lv_obj_set_style_text_color(r->status, disp_color(e->disp), 0);
-        lv_obj_set_style_opa(r->row,
-                             e->disp == CF_DISP_STALE ? LV_OPA_70 : LV_OPA_COVER, 0);
+        lv_obj_set_style_opa(
+            r->row, e->disp == KDASH_CLAUDE_DISP_STALE ? LV_OPA_70 : LV_OPA_COVER,
+            0);
 
         char age[16];
-        cf_fmt_age(now - e->ts, age, sizeof(age));
+        claude_fmt_age(now - (long long)e->ts, age, sizeof(age));
         lv_label_set_text(r->age, age);
     }
 
@@ -436,7 +475,7 @@ static void render_sessions(claude_state_t *st, cf_session_t *s, int n,
         lv_obj_add_flag(st->empty, LV_OBJ_FLAG_HIDDEN);
 }
 
-static void render_gauge(claude_gauge_t *g, float pct, long long resets_at,
+static void render_gauge(claude_gauge_t *g, double pct, long long resets_at,
                          long long now, bool valid, bool stale) {
     if (!valid) {
         lv_arc_set_value(g->arc, 0);
@@ -449,43 +488,50 @@ static void render_gauge(claude_gauge_t *g, float pct, long long resets_at,
      * keep rendering the last-known data, the number stops claiming it is
      * live. (A frozen bright number is indistinguishable from a fresh one —
      * that is the failure this exists to prevent.) */
-    bool warn = pct >= CF_LIMITS_WARN_PCT;
-    lv_arc_set_value(g->arc, (int)(pct + 0.5f));
+    bool warn = pct >= CLAUDE_LIMITS_WARN_PCT;
+    lv_arc_set_value(g->arc, (int)(pct + 0.5));
     lv_obj_set_style_arc_color(g->arc, warn ? COLOR_AWAITING : COLOR_ACCENT,
                                LV_PART_INDICATOR);
 
     char buf[16];
-    snprintf(buf, sizeof(buf), "%d%%", (int)(pct + 0.5f));
+    snprintf(buf, sizeof(buf), "%d%%", (int)(pct + 0.5));
     lv_label_set_text(g->pct, buf);
     lv_obj_set_style_text_color(
         g->pct, stale ? COLOR_MUTED : (warn ? COLOR_AWAITING : COLOR_INK), 0);
 
     char reset[24], line[40];
-    cf_fmt_reset(resets_at, now, reset, sizeof(reset));
+    claude_fmt_reset(resets_at, now, reset, sizeof(reset));
     snprintf(line, sizeof(line), "resets %s", reset);
     lv_label_set_text(g->reset, line);
 }
 
-static void render_limits(claude_state_t *st, const cf_limits_t *l,
+static void render_limits(claude_state_t *st, const kdash_claude_limits_t *l,
                           long long now) {
     /* Gauges grey independently: the headline pair on updated_at, the scoped
-     * gauge on scoped_updated_at — different writers, different cadences. */
-    bool stale = cf_limits_stale(l, now);
-    render_gauge(&st->five, l->five_pct, l->five_reset, now, l->valid, stale);
-    render_gauge(&st->seven, l->seven_pct, l->seven_reset, now, l->valid, stale);
+     * gauge on scoped_updated_at — different writers, different cadences. Both
+     * rules are libkdash's, with this family's own default windows. */
+    bool stale = kdash_claude_limits_stale(l, now, KDASH_CLAUDE_LIMITS_GRACE_S,
+                                           KDASH_CLAUDE_LIMITS_STALE_S);
+    render_gauge(&st->five, l->five_hour_pct, (long long)l->five_hour_resets_at,
+                 now, l->valid, stale);
+    render_gauge(&st->seven, l->seven_day_pct,
+                 (long long)l->seven_day_resets_at, now, l->valid, stale);
 
     if (l->valid && l->scoped_valid) {
         /* Caption from scoped_model verbatim (uppercased): the API exposes
          * only a display string with a null id today, so render whatever
          * arrives rather than expecting "Fable". */
-        char cap[CF_MODEL_MAX];
+        char cap[KDASH_MODEL_MAX];
         int i;
         for (i = 0; l->scoped_model[i] != '\0' && i < (int)sizeof(cap) - 1; i++)
             cap[i] = (char)toupper((unsigned char)l->scoped_model[i]);
         cap[i] = '\0';
         lv_label_set_text(st->scoped.cap, cap);
-        render_gauge(&st->scoped, l->scoped_pct, l->scoped_reset, now, true,
-                     cf_limits_scoped_stale(l, now));
+        render_gauge(&st->scoped, l->scoped_pct, (long long)l->scoped_resets_at,
+                     now, true,
+                     kdash_claude_limits_scoped_stale(
+                         l, now, KDASH_CLAUDE_LIMITS_GRACE_S,
+                         KDASH_CLAUDE_LIMITS_STALE_S));
         lv_obj_clear_flag(st->row_scoped, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(st->row_scoped, LV_OBJ_FLAG_HIDDEN);
@@ -496,7 +542,7 @@ static void render_limits(claude_state_t *st, const cf_limits_t *l,
         lv_obj_set_style_text_color(st->asof, COLOR_MUTED, 0);
     } else {
         char age[16], buf[40];
-        cf_fmt_age(now - l->updated_at, age, sizeof(age));
+        claude_fmt_age(now - (long long)l->updated_at, age, sizeof(age));
         if (stale) {
             snprintf(buf, sizeof(buf), "stale - as of %s ago", age);
             lv_obj_set_style_text_color(st->asof, COLOR_AWAITING, 0);
@@ -510,42 +556,63 @@ static void render_limits(claude_state_t *st, const cf_limits_t *l,
 
 /* ---------- mode plumbing ---------- */
 
+/* SCAN claude:session:* and read every hash that survives the grammar.
+ *
+ * The counted-reader contract (kdash_feed.h): a negative return means the read
+ * did not complete and NEITHER the array nor the skipped count carries
+ * information — including a drop half way through the list. Rendering that as
+ * zero rows would say "nobody has Claude open", which is a confident wrong
+ * answer and exactly the partial-list failure kdashdata sprint 009 removed.
+ * So a failed scan keeps the previous list and drops `have_sessions`; poll()
+ * turns that into the banner. */
+static void scan_sessions(claude_state_t *st) {
+    kdash_claude_session_t s[CLAUDE_SESSIONS_MAX];
+    int n = kdash_claude_sessions(st->conn, s, CLAUDE_SESSIONS_MAX, NULL);
+    if (n < 0) {
+        st->have_sessions = false;
+        return;
+    }
+    memcpy(st->sessions, s, sizeof(s));
+    st->nsessions = n;
+    st->have_sessions = true;
+}
+
 static void poll(claude_state_t *st) {
     long long now = (long long)time(NULL);
 
-    claude_key_t keys[CF_SESSIONS_MAX];
-    int nkeys = claude_redis_keys(keys, CF_SESSIONS_MAX);
+    kdash_claude_limits_t limits;
+    if (kdash_claude_limits(st->conn, &limits) != KDASH_OK)
+        memset(&limits, 0, sizeof(limits)); /* ABSENT/UNAVAIL -> "no data yet" */
 
-    cf_session_t sessions[CF_SESSIONS_MAX];
-    int n = 0;
-    for (int i = 0; i < nkeys; i++) {
-        if (claude_redis_get_session(&keys[i], &sessions[n]) == CLAUDE_OK)
-            n++; /* ABSENT (just ended / malformed) rows simply drop out */
-    }
-    cf_sessions_refresh(sessions, n, now);
-
-    cf_limits_t limits;
-    claude_redis_get_limits(&limits);
-
-    bool up = claude_redis_reachable();
-    if (up) {
-        render_sessions(st, sessions, n, now);
-        render_limits(st, &limits, now);
-        lv_obj_add_flag(st->unavail, LV_OBJ_FLAG_HIDDEN);
-    } else {
+    /* One endpoint check covering both reads, as before: a drop between the
+     * scan and the limits read still means the panel is showing history. */
+    if (!st->have_sessions || !kdash_conn_reachable(st->conn)) {
         /* Keep the last-rendered panel visible underneath; one quiet banner
          * says why nothing is moving. */
         lv_obj_clear_flag(st->unavail, LV_OBJ_FLAG_HIDDEN);
+        return;
     }
+
+    /* The library owns the derivation AND the order (kdashdata CD-16): which
+     * session most wants Ken has one right answer, and deriving it here as
+     * well is how two dashboards drift. Re-run every render rather than once
+     * per scan — `disp` is a function of `now`, so a session has to be able to
+     * age into IDLE and STALE between scans. */
+    kdash_claude_sessions_refresh(st->sessions, st->nsessions, now,
+                                  KDASH_CLAUDE_IDLE_S, KDASH_CLAUDE_STALE_S);
+
+    render_sessions(st, st->sessions, st->nsessions, now);
+    render_limits(st, &limits, now);
+    lv_obj_add_flag(st->unavail, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void activate(kd_mode_t *self) {
     if (!self->screen)
         build_screen(self);
     claude_state_t *st = self->state;
-    /* Force discovery + a poll on the next tick. */
+    /* Force a scan + a poll on the next tick. */
     st->last_poll = 0;
-    st->last_discover = 0;
+    st->last_scan = 0;
 }
 
 static void tick(kd_mode_t *self) {
@@ -553,10 +620,9 @@ static void tick(kd_mode_t *self) {
     if (!self->screen)
         return;
 
-    if (st->last_discover == 0 ||
-        lv_tick_elaps(st->last_discover) >= CLAUDE_DISCOVER_MS) {
-        claude_redis_discover_step();
-        st->last_discover = lv_tick_get();
+    if (st->last_scan == 0 || lv_tick_elaps(st->last_scan) >= CLAUDE_SCAN_MS) {
+        scan_sessions(st);
+        st->last_scan = lv_tick_get();
     }
 
     if (st->last_poll == 0 || lv_tick_elaps(st->last_poll) >= CLAUDE_POLL_MS) {
@@ -565,9 +631,38 @@ static void tick(kd_mode_t *self) {
     }
 }
 
-kd_mode_t *claude_mode_create(const char *id, const char *title) {
+kd_mode_t *claude_mode_create(const char *id, const char *title,
+                              const char *redis_host, int redis_port,
+                              const char *redis_auth) {
     kd_mode_t *m = calloc(1, sizeof(*m));
     claude_state_t *st = calloc(1, sizeof(*st));
+
+    /* The claude family lives at its own endpoint (kdashdata CD-7), so it gets
+     * its own handle on its own stem — never the one a kpidash reader uses,
+     * even though both stems answer rpi53:6379 today. That coincidence is
+     * precisely what a stem exists to survive. Lazy: nothing connects here. */
+    kdash_conn_opts_t opts = {
+        .app  = "kdeskdash",
+        .stem = &KDASH_STEM_CLAUDE,
+
+        /* Config beats discovery (CD-4): with `host` set libkdash never
+         * consults khlenv, so both panels' explicit rpi53:6379 pin from sprint
+         * 031 keeps doing exactly what it did. config.c always supplies a
+         * host, so this handle never resolves an endpoint at runtime. */
+        .host = redis_host,
+        .port = redis_port,
+
+        /* `auth` inverts between the two clients, and silently. libkdash reads
+         * $REDISCLI_AUTH when this is NULL; the retired client sent no AUTH at
+         * all. A bare REDISCLI_AUTH is a documented option in
+         * kdeskdash.env.example, so NULL has to become "" — libkdash's
+         * spelling of "no AUTH" — or a board could start authenticating with
+         * the control Redis's password on a refactor meant to change nothing.
+         */
+        .auth = redis_auth ? redis_auth : "",
+    };
+    st->conn = kdash_conn_new(&opts);
+
     m->id = id;
     m->title = title;
     m->state = st;
@@ -575,4 +670,12 @@ kd_mode_t *claude_mode_create(const char *id, const char *title) {
     m->deactivate = NULL;
     m->tick = tick;
     return m;
+}
+
+void claude_mode_shutdown(kd_mode_t *self) {
+    if (!self || !self->state)
+        return;
+    claude_state_t *st = self->state;
+    kdash_conn_free(st->conn);
+    st->conn = NULL;
 }

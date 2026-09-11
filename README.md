@@ -41,7 +41,10 @@ cross-compile approach and adding touch input.
   OAuth usage endpoint on headless hosts). The feed lives on the homelab's
   central Redis (`rpi53:6379`) since sprint 031 — publishers reach it through
   `kdash-pub`, which resolves the endpoint from khlenv, so moving it again is a
-  store edit rather than a sweep of every publisher host.
+  store edit rather than a sweep of every publisher host. Since sprint 034 the
+  panel reads it through **libkdash** (`lib/kdashdata`), the shared consumer
+  library every homelab dashboard uses, rather than its own copy of the
+  parsers.
 - **Icons** — a Nerd Font browser: page a glyph set (Font Logos, Devicons, Codicons,
   Font Awesome, Material Design, …) in a touch grid, preview the selected glyph at several
   sizes, and mark favourites saved to a bake-ready file. Renders any of ~9,300 glyphs at
@@ -186,7 +189,7 @@ ssh ken@rpidash2 'sudo apt-get install -y libdrm-dev libhiredis-dev'
 ### 2. Clone with submodules
 
 ```bash
-git clone --recurse-submodules <repo-url>   # LVGL is pinned at v9.2.2 in lib/lvgl
+git clone --recurse-submodules <repo-url>   # pins LVGL v9.2.2 (lib/lvgl) and libkdash (lib/kdashdata)
 cd kdeskdash
 ```
 
@@ -377,6 +380,7 @@ kdeskdash/
 ├── fonts/ttf/                      # vendored SymbolsNerdFont-Regular.ttf (icons mode, runtime TinyTTF)
 ├── tests/                          # host unit tests (registry, gol, stopwatch, iconset, …)
 ├── lib/lvgl/                       # LVGL v9.2.2 (submodule)
+├── lib/kdashdata/                  # libkdash: shared feed readers (submodule) — the claude:* family
 ├── stl/                            # 3D-printable case: main body + left/right end caps
 │                                   #   (right side also comes in a pen-holder variant)
 └── docs/                           # brainstorms, plans, solutions

@@ -11,7 +11,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "claude_redis.h"
 #include "config.h"
 #include "kvscf_redis.h"
 #include "service_pub.h"
@@ -62,7 +61,9 @@ static kd_mode_t *create_mode(const char *id, const kdeskdash_config_t *cfg) {
     if (strcmp(id, "dev") == 0)
         return dev_mode_create("dev", "Dev");
     if (strcmp(id, "claude") == 0)
-        return claude_mode_create("claude", "Claude");
+        return claude_mode_create("claude", "Claude", cfg->claude_redis_host,
+                                  cfg->claude_redis_port,
+                                  cfg->claude_redis_auth);
     if (strcmp(id, "icons") == 0)
         return icons_mode_create("icons", "Icons", cfg->icons_ttf_path,
                                  cfg->icons_favorites_path);
@@ -146,12 +147,17 @@ int main(int argc, char **argv) {
                modeset_count(&modes));
 
     shell_init();
+    kd_mode_t *claude_mode = NULL; /* see the registration loop below */
     for (int i = 0; i < modeset_count(&modes); i++) {
         const char *id = modeset_at(&modes, i);
         kd_mode_t *m = create_mode(id, &cfg);
-        if (m)
+        if (m) {
             shell_register_content_mode(m);
-        else
+            /* Kept only so teardown can close the feed handle the mode owns;
+             * the shell owns the mode itself. */
+            if (strcmp(id, "claude") == 0)
+                claude_mode = m;
+        } else
             fprintf(stderr, "kdeskdash: no constructor for mode \"%s\" — "
                             "skipped\n", id);
     }
@@ -180,11 +186,11 @@ int main(int argc, char **argv) {
         telemetry_init(cfg.telemetry_redis_host, cfg.telemetry_redis_port,
                        cfg.telemetry_redis_auth);
 
-    /* Claude feed (agent activity + usage limits): third independent handle,
-     * localhost instance on this Pi by default. */
-    if (modeset_enabled(&modes, "claude"))
-        claude_redis_init(cfg.claude_redis_host, cfg.claude_redis_port,
-                          cfg.claude_redis_auth);
+    /* The Claude feed needs no gate here: since sprint 034 the mode owns its
+     * own libkdash handle, created in claude_mode_create() and therefore only
+     * when the modeset registered `claude`. One less roster to keep in step
+     * with modeset.c.
+     */
 
     /* kvscf feed (foreground + launcher modes — one handle, two readers): its
      * own endpoint, defaulting to the claude-feed values because on rpidash2
@@ -235,7 +241,7 @@ int main(int argc, char **argv) {
     service_pub_shutdown();
     redis_shutdown();
     telemetry_shutdown();
-    claude_redis_shutdown();
+    claude_mode_shutdown(claude_mode);
     kvscf_redis_shutdown();
     lv_deinit();
     return 0;

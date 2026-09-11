@@ -1,7 +1,8 @@
 /**
  * @file kvscf_redis.c
- * kvscf window-feed client on a dedicated redis_client_t handle (6380). Mirrors
- * claude_redis.c: lazy connect, swallowed failures reported as "unavailable".
+ * kvscf window-feed client on a dedicated redis_client_t handle (6380): lazy
+ * connect, swallowed failures reported as "unavailable". The claude feed was
+ * this shape too until sprint 034 moved it onto libkdash's own client.
  */
 #include "kvscf_redis.h"
 
