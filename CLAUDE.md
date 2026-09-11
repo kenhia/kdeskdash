@@ -257,6 +257,14 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
   movement. Pin the volatile label to its widest rendering and align the text toward the
   stable element. `lv_obj_align` has the same failure one anchor away (clock mode's stopwatch
   still does, at 10 Hz). Check every live readout for which edge the digits push.
+- **Adopting a library inherits its defaults** (`adopting-a-library-inherits-its-defaults.md`)
+  — a library's "unset" is not yours. Swapping `claude_redis.c` for libkdash forwarded the
+  same nullable `auth` to a field where `NULL` means *read `$REDISCLI_AUTH`*, not *no AUTH*,
+  which would have had a panel authenticate with the control Redis's password on a refactor
+  that changed nothing else. Read the new type's docs for every parameter you forward, not
+  just the ones you edit — especially where a sentinel (`NULL`, `0`, `""`, `-1`) carries
+  meaning. Same sprint, same shape: `kdash_claude_sessions()`'s negative return is "the read
+  did not complete", never a count.
 - **Verify the side that actually connects** (`verify-the-side-that-actually-connects.md`) —
   a plan asserting "both sides already support X" is a claim about two specific binaries;
   enumerate them and read the source. Sprint 026's said so about kdeskdash's reader and
