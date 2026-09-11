@@ -27,7 +27,11 @@ cross-compile approach and adding touch input.
   injected via Redis).
 - **GoLZ** — Game of Life with Zombies: Humans vs. Zombies vs. the ordinary Living, with
   machetes, adaptive win thresholds, and persistent outcome counters.
-- **Clock** — local (America/Los_Angeles) + UTC time and a wall-clock stopwatch.
+- **Clock** — the shared dual clock (local America/Los_Angeles + UTC, the *same*
+  widget the Launcher's side pane renders) beside an almanac panel — the long date,
+  the ISO week and the day of the year — and a wall-clock stopwatch. Extra world-clock
+  faces are configuration: see `KDESKDASH_CLOCK_ZONES`. See
+  [sprints/036-calc-and-clock.md](sprints/036-calc-and-clock.md).
 - **Dev** — live CPU/RAM + GPU/VRAM charts for two selectable fleet hosts (kpidash
   telemetry from the `rpi53` Redis).
 - **Claude** — fleet Claude Code agent activity: attention-first session rows
@@ -85,9 +89,15 @@ cross-compile approach and adding touch input.
 - **Calc** — a desk calculator built for the wide panel: big result + hex/binary readouts
   and always-live unit conversions (in↔mm exact; px↔mm via the ruler-measured 7.69 px/mm
   panel calibration) on the left, six store/recall registers (R0–R5) in the middle, and a
-  keypad (numpad island, `+ − × ÷ xʸ x² x³ ± π e`) on the right. Immediate-execution
-  infix, entirely local — no Redis, no network. See
-  [sprints/016-calc-mode](sprints/016-calc-mode/requirements.md).
+  9×4 keypad on the right (numpad island, `+ − × ÷ xʸ x² x³ ± π e`, `√x` `1/x`, and
+  `sin cos tan` with an `INV` modifier for the inverses and a `DEG`/`RAD` key that names
+  the angle mode it is in). `CE` clears the operand you are typing; `C` takes the pending
+  operation with it. Immediate-execution infix. **Registers survive a restart** — the only
+  thing here that touches Redis (`kdeskdash:calc:regs`), and the calculator works normally
+  without it. **Tap a register row to recall it, hold it to store** — the two STO/RCL
+  buttons that used to sit on each row are what paid for the keypad's extra columns. See
+  [sprints/016-calc-mode](sprints/016-calc-mode/requirements.md) and
+  [sprints/036-calc-and-clock.md](sprints/036-calc-and-clock.md).
 - **Palette** — the living style guide: the canonical named color palette
   (`src/palette.h`, ~30 paint-store names like `CLAUDE_CORAL`, `EDGE_TEAL`,
   `GUNMETAL_SEAM`) as paged swatch cards — name and sample text in the color, filled +
@@ -262,6 +272,7 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_MODES`      | _(unset → all modes)_ | Per-device mode set: `fun:<ids>;ops:<ids>`. See [Per-device mode sets](#per-device-mode-sets). |
 | `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
 | `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
+| `KDESKDASH_CLOCK_ZONES` | _(unset → no extra faces)_ | Clock mode: extra world-clock rows, comma-separated `[<label>=]<tz>` — e.g. `"Asia/Tokyo,HQ=Europe/London"`. Without a label the zone's last path segment is used with underscores as spaces (`America/New_York` → "New York"). Up to four; malformed entries are skipped, so a typo costs one row. An unknown zone name is not an error to the C library — it silently shows UTC under whatever label you gave it. |
 | `KDESKDASH_QUICK_PAIRS` | _(unset → previously active mode)_ | Double-tap partner pairs, `"<id>:<id>[,<id>:<id>]"`. Three states: **unset** → the partner is whichever mode was active before this one (a working default, not "off"); **`none`** (or `off`) → the double-tap is inert; **pairs** → the partner is pinned regardless of history. Malformed entries are warned about and skipped, so one typo costs one pair, not the feature. |
 | `KDESKDASH_CARD_REDIS_HOST` | _(telemetry host → `rpi53`)_ | Where this instance publishes its own kpidash **service card** (`kpidash:services:deskdash:<host>`). Write-only — kdeskdash never reads that namespace. Defaults to the telemetry endpoint because the card lives on the same board Redis, so neither device needs a new line. |
 | `KDESKDASH_CARD_REDIS_PORT` | _(telemetry port → `6379`)_ | Falls back independently of the host. |
@@ -286,6 +297,7 @@ Keys:
 | `kdeskdash:gol:settings` | hash   | One-shot Game of Life settings, consumed (deleted) on the next GoL entry. |
 | `kdeskdash:dev:left`     | string | Dev mode: hostname assigned to the left charts; written on assign, restored on dev entry. |
 | `kdeskdash:dev:right`    | string | Dev mode: hostname assigned to the right charts; written on assign, restored on dev entry. |
+| `kdeskdash:calc:regs`    | string | Calc mode: the store/recall registers as `<idx>:<value>` pairs (e.g. `0:1.4142135623730951 3:-1.5`); written on every store, restored on calc entry. A malformed line is rejected whole rather than half-restored. Deleting the key clears the saved registers. |
 | `kdeskdash:screenshot`   | string | One-shot device self-screenshot (consumed with GETDEL): `SET` any value to write the active screen to `/var/lib/kdeskdash/kdeskdash-shot.bmp`; a value starting with `/` names the output path. (The state directory, not `/tmp` — the unit's `PrivateTmp=yes` would hide a `/tmp` shot inside the service's namespace.) How the README hero image above was taken — no glossy-panel photography. [scripts/kddss](scripts/kddss) wraps the whole flow: `kddss [basename]` triggers the shot and lands a PNG in the current directory; `KDD_HOST=rpidash3 kddss` targets another panel. |
 
 Examples (run on the Pi or any host pointed at its Redis):
@@ -372,7 +384,7 @@ kdeskdash/
 │   ├── redis.{c,h}                 # optional Redis client (control/persistence/injection)
 │   ├── modeset.{c,h}               # pure core: KDESKDASH_MODES grammar + the mode roster
 │   ├── gol.{c,h} / stopwatch.{c,h} / iconset.{c,h} / kvscf_feed.{c,h} / calc.{c,h} / palette.{c,h} / clock_core.{c,h} # pure, host-tested mode cores
-│   ├── clock_widget.{c,h}          # shared dual-clock widget (Launcher pane; clock mode next)
+│   ├── clock_widget.{c,h}          # shared dual-clock widget (Launcher pane + clock mode)
 │   ├── quickswitch.{c,h}           # pure core: double-tap partner (pairs, previous-mode fallback, off)
 │   ├── service_card.{c,h}          # pure core: the kpidash service-card key + payload contract
 │   ├── service_pub.{c,h}           # write-only kpidash service-card publisher (own Redis handle)

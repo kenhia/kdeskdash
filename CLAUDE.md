@@ -124,7 +124,8 @@ Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMak
   does no ongoing work while deactivated. `*_mode_create(id, title)` builds and returns one.
 - **Shared widgets** (`src/clock_widget.c` so far) — LVGL glue that is *not* a mode: takes a
   parent container, sizes itself to it, renders a pure core. The dual clock is one widget used
-  by the Launcher's side pane and (WI #1136) the `clock` mode rebuild. Reach for this shape
+  by the Launcher's side pane and, since sprint 036 (WI #1136), the rebuilt `clock` mode.
+  Reach for this shape
   when two modes want the same thing on screen — not by generalizing an existing full-screen
   mode, which is how you get a widget shaped like whichever mode happened to be first.
 - **Shell** (`src/shell.c`, `src/shell.h`) — owns the set of modes, the active mode, and
@@ -261,7 +262,15 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
   in a centered `LV_SIZE_CONTENT` flex row it hands half of that change to its *sibling* as
   movement. Pin the volatile label to its widest rendering and align the text toward the
   stable element. `lv_obj_align` has the same failure one anchor away (clock mode's stopwatch
-  still does, at 10 Hz). Check every live readout for which edge the digits push.
+  did, at 10 Hz, until sprint 036's rebuild pinned it). Check every live readout for which
+  edge the digits push — and where the readout's *length* changes and not just its glyphs,
+  the pinned width has to track the current shape rather than one fixed maximum.
+- **Tap and hold on one widget** (`lvgl-tap-and-hold-on-one-widget.md`) — LVGL sends
+  `CLICKED` on release *whether or not* `LONG_PRESSED` already fired, so a tap/hold pair
+  wired to `CLICKED` has the tap undo the hold every time, silently. `SHORT_CLICKED` is the
+  one gated on `long_pr_sent == 0`. The swipe guard does cover a hold (`indev_gesture()`
+  runs earlier in the same press iteration), and a target carrying two gestures is sized
+  for the one you cannot afford to miss — a missed hold falls through to the tap.
 - **Adopting a library inherits its defaults** (`adopting-a-library-inherits-its-defaults.md`)
   — a library's "unset" is not yours. Swapping `claude_redis.c` for libkdash forwarded the
   same nullable `auth` to a field where `NULL` means *read `$REDISCLI_AUTH`*, not *no AUTH*,
