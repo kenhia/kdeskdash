@@ -115,7 +115,7 @@ testable without hardware.
 Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMakeLists.txt`.
 
 - **Pure cores** (`src/gol.c`, `src/golz.c`, `src/stopwatch.c`, `src/calc.c`, `src/palette.c`, `src/registry.c`,
-  `src/modeset.c`, `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/claude_feed.c`,
+  `src/modeset.c`, `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/modes/claude_view.c`,
   `src/telemetry_host.c`, `src/bmp_write.c`, `src/clock_core.c`, `src/service_card.c`,
   `src/quickswitch.c`, `src/modes/dev_hostlist.c`, `src/modes/dev_view.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
   explicit `uint32_t *state` seam). Each has a `tests/test_*.c`.
@@ -150,18 +150,32 @@ only recoverable over SSH.
 **Adding a mode is three lines**: the roster in `src/modeset.c`, a case in `main.c`'s
 `create_mode()` dispatch, and its source in `CMakeLists.txt` — plus the mode's own `.c`/`.h`.
 
-#### Five independent Redis handles — do not conflate them
+#### Five independent feed handles — do not conflate them
 
-Each has its own `redis_client_t` connection and failure isolation (a down endpoint never
-stalls boot or another path). The generic client + backoff lives in `src/redis.c` /
-`redis_internal.h`; each feed is a thin reader on its own handle:
+Each has its own connection and failure isolation (a down endpoint never stalls boot or
+another path). Four are `redis_client_t`s — the generic client + backoff lives in
+`src/redis.c` / `redis_internal.h`, and each feed is a thin reader on its own handle. The
+**claude feed is the exception**: since sprint 034 it is a libkdash `kdash_conn_t`, owned by
+the mode rather than by a module main.c initialises.
 
 1. **Control** (`src/redis.c`, `KDESKDASH_REDIS_*`) — remote mode control, last-mode
    persistence, GoL settings injection, screenshot trigger. Polled ~1×/sec from the main loop.
 2. **Telemetry** (`src/telemetry.c`, `KDESKDASH_TELEMETRY_REDIS_*`) — read-only kpidash host
    metrics for Dev mode. Defaults to host `rpi53`.
-3. **Claude feed** (`src/claude_redis.c`, `KDESKDASH_CLAUDE_REDIS_*`) — fleet Claude Code
-   agent activity + usage limits, fed by `publisher/claude-pub.sh` hooks. Port 6380.
+3. **Claude feed** (`src/modes/claude.c`, `KDESKDASH_CLAUDE_REDIS_*`) — fleet Claude Code
+   agent activity + usage limits, fed by `publisher/claude-pub.sh` hooks. **Not a
+   `redis_client_t`**: sprint 034 retired this panel's own `claude_feed.c`/`claude_redis.c`
+   pair for libkdash's typed readers (`kdash_claude_sessions/_limits/_recent`), so the
+   contract — key grammar, hash parsing, the display ladder, the attention-first sort,
+   limits staleness — lives in `lib/kdashdata` and is shared with kstudiodash. The handle is
+   opened on `KDASH_STEM_CLAUDE` (kdashdata CD-7: its own stem, never the one a kpidash
+   reader uses, even though both answer `rpi53:6379`), and the mode owns it — so the "only
+   dial an endpoint a registered mode uses" gate is structural rather than a roster in
+   `main.c`. Two traps when touching it: `kdash_claude_sessions()` is a **counted reader**,
+   so a negative return means "the read did not complete" and neither `out` nor `*skipped`
+   carries information — never a count; and libkdash reads `$REDISCLI_AUTH` when `auth` is
+   NULL, where this project means "no AUTH", so `claude.c` passes `""`. Panel-only display
+   strings stay in `src/modes/claude_view.c` (CD-10).
 4. **kvscf feed** (`src/kvscf_redis.c`) — one handle, **two** readers: the `foreground`
    ("Remote") mode reads `kvscf:instances:*` / `kvscf:edge:*` / `kvscf:apps:*`, and `launcher`
    reads `kvscf:launcher:*`. Both **publish** to `kvscf:focus:<host>` (`{id}`, `{app}` or
@@ -243,6 +257,14 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
   movement. Pin the volatile label to its widest rendering and align the text toward the
   stable element. `lv_obj_align` has the same failure one anchor away (clock mode's stopwatch
   still does, at 10 Hz). Check every live readout for which edge the digits push.
+- **Adopting a library inherits its defaults** (`adopting-a-library-inherits-its-defaults.md`)
+  — a library's "unset" is not yours. Swapping `claude_redis.c` for libkdash forwarded the
+  same nullable `auth` to a field where `NULL` means *read `$REDISCLI_AUTH`*, not *no AUTH*,
+  which would have had a panel authenticate with the control Redis's password on a refactor
+  that changed nothing else. Read the new type's docs for every parameter you forward, not
+  just the ones you edit — especially where a sentinel (`NULL`, `0`, `""`, `-1`) carries
+  meaning. Same sprint, same shape: `kdash_claude_sessions()`'s negative return is "the read
+  did not complete", never a count.
 - **Verify the side that actually connects** (`verify-the-side-that-actually-connects.md`) —
   a plan asserting "both sides already support X" is a claim about two specific binaries;
   enumerate them and read the source. Sprint 026's said so about kdeskdash's reader and
@@ -271,7 +293,9 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
   Adding one back is a regression, not a shortcut. From inside `src/modes/`, include the
   core header as `"../palette.h"` — `src/modes/palette.h` is the *mode* header and shadows
   it (`docs/solutions/best-practices/quote-include-core-header-shadowing.md`).
-- LVGL is a pinned submodule at `lib/lvgl` (v9.2.2); cJSON is vendored at `lib/cjson`.
+- LVGL is a pinned submodule at `lib/lvgl` (v9.2.2); libkdash (kdashdata) is a pinned
+  submodule at `lib/kdashdata`; cJSON is vendored at `lib/cjson` (and again inside
+  kdashdata, byte-identical — the linker keeps one copy).
   Clone with `--recurse-submodules`.
 
 ### Fonts

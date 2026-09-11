@@ -1,7 +1,7 @@
 /**
  * @file redis_internal.h
  * Private layout of the Redis connection handle, shared only by the Redis /
- * telemetry implementation units (redis.c, telemetry.c, claude_redis.c).
+ * telemetry implementation units (redis.c, telemetry.c, kvscf_redis.c).
  *
  * This is the one place that includes hiredis. Public consumers include
  * redis.h, which forward-declares redis_client_t as an opaque type, so touching

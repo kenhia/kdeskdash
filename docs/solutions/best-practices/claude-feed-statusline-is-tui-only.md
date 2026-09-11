@@ -2,7 +2,7 @@
 title: "Claude feed: the statusline runs only in TUI sessions, so enrich model from the transcript in the hook"
 date: 2026-07-07
 category: docs/solutions/best-practices
-module: Claude mode feed (publisher/claude-pub.sh, src/modes/claude.c, src/claude_feed.c)
+module: Claude mode feed (publisher/claude-pub.sh, src/modes/claude.c; the reader is libkdash since sprint 034)
 problem_type: best_practice
 component: telemetry_publisher
 severity: medium

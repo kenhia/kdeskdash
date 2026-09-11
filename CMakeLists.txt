@@ -32,6 +32,37 @@ include_directories(${DRM_INCLUDE_DIRS})
 
 add_subdirectory(lib/lvgl)
 
+# --- libkdash --------------------------------------------------------------
+# kdashdata's shared C consumer library: the typed readers for the `claude:*`
+# family. This panel carried its own copy of that logic until sprint 034
+# (src/claude_feed.c + src/claude_redis.c, now deleted), which is the
+# duplication CD-10 exists to prevent.
+#
+# A submodule for the same reasons LVGL is one — the pin is a commit in this
+# repo's history and `cmake -B build` needs no network — and following
+# kstudiodash, which adopted the library this way first.
+#
+# KDASH_HIREDIS_STATIC is deliberately NOT set here. kstudiodash forces it ON
+# because the machine it deploys to has no libhiredis at all; both Pis already
+# run a kdeskdash that links libhiredis.so, so forcing static would change this
+# project's deploy story as a side effect of a refactor. hiredis::hiredis is
+# created above and kdashdata's own lookup is guarded by `if(NOT TARGET ...)`,
+# so libkdash links exactly the hiredis this executable already linked.
+#
+# Both trees vendor cJSON 1.7.18, byte-identical (checked). kdeskdash compiles
+# its copy into the executable and kdash_core archives its own; the linker
+# satisfies kdash_core's references from the executable's objects and never
+# pulls the archived copy, so there is one cJSON in the binary either way.
+#
+# KDASH_BUILD_EXAMPLES and KDASH_BUILD_TESTS default OFF when kdashdata is not
+# the top-level project, so kdash_dump and its ctest registrations stay out of
+# this build without being named here.
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/lib/kdashdata/CMakeLists.txt")
+    message(FATAL_ERROR
+        "lib/kdashdata is empty. Run: git submodule update --init --recursive")
+endif()
+add_subdirectory(lib/kdashdata)
+
 add_executable(kdeskdash
     src/main.c
     src/config.c
@@ -54,8 +85,6 @@ add_executable(kdeskdash
     src/quickswitch.c
     src/service_card.c
     src/service_pub.c
-    src/claude_feed.c
-    src/claude_redis.c
     src/kvscf_feed.c
     src/kvscf_redis.c
     src/bmp_write.c
@@ -69,6 +98,7 @@ add_executable(kdeskdash
     src/modes/dev_hostlist.c
     src/modes/dev_view.c
     src/modes/claude.c
+    src/modes/claude_view.c
     src/modes/icons.c
     src/modes/foreground.c
     src/modes/launcher.c
@@ -86,6 +116,7 @@ target_include_directories(kdeskdash PRIVATE
 
 target_link_libraries(kdeskdash
     lvgl
+    kdash        # the claude:* feed readers (lib/kdashdata); opens its own socket
     ${DRM_LIBRARIES}
     hiredis::hiredis
     pthread
@@ -232,21 +263,21 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_compile_options(test_bmp_write PRIVATE -Wall -Wextra)
     add_test(NAME test_bmp_write COMMAND test_bmp_write)
 
-    # Pure claude-feed core: key contract, hash parsing, status ladder, sort,
-    # limits, recent records, formatting (cJSON + libm like dev_telemetry).
-    add_executable(test_claude_feed
-        tests/test_claude_feed.c
-        src/claude_feed.c
-        src/telemetry_host.c
-        lib/cjson/cJSON.c
+    # Panel-side rendering for the claude feed. The feed's CONTRACT — key
+    # grammar, hash parsing, the display ladder, the attention-first sort,
+    # limits staleness — belongs to libkdash since sprint 034; what is left
+    # here is the part CD-10 keeps on the panel, and this is its test. Links
+    # kdash_core (pure, no socket) for the display-state enum it labels.
+    add_executable(test_claude_view
+        tests/test_claude_view.c
+        src/modes/claude_view.c
     )
-    target_include_directories(test_claude_feed PRIVATE
+    target_include_directories(test_claude_view PRIVATE
         ${CMAKE_SOURCE_DIR}/src
-        ${CMAKE_SOURCE_DIR}/lib/cjson
     )
-    target_compile_options(test_claude_feed PRIVATE -Wall -Wextra)
-    target_link_libraries(test_claude_feed m)
-    add_test(NAME test_claude_feed COMMAND test_claude_feed)
+    target_compile_options(test_claude_view PRIVATE -Wall -Wextra)
+    target_link_libraries(test_claude_view kdash_core)
+    add_test(NAME test_claude_view COMMAND test_claude_view)
 
     # Pure host-token contract for telemetry discovery keys (no Redis/LVGL).
     add_executable(test_telemetry_host

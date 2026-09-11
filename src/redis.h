@@ -36,7 +36,7 @@
  * backoff on one never affects the other. Single-threaded; no locking.
  *
  * The layout lives in redis_internal.h, private to the Redis/telemetry
- * implementation units (redis.c, telemetry.c, claude_redis.c), so consumers of
+ * implementation units (redis.c, telemetry.c, kvscf_redis.c), so consumers of
  * this header get no compile-time coupling to hiredis. Those units embed a
  * handle by value and so include redis_internal.h for the full definition. */
 typedef struct redis_client redis_client_t;

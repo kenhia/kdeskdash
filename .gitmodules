@@ -1,3 +1,6 @@
 [submodule "lib/lvgl"]
 	path = lib/lvgl
 	url = https://github.com/lvgl/lvgl.git
+[submodule "lib/kdashdata"]
+	path = lib/kdashdata
+	url = https://github.com/kenhia/kdashdata.git
