@@ -173,5 +173,7 @@ Roll back only the board that is wrong. A split fleet is a normal state here.
   `deploy/kdeskdash.service`, run that on **every** board — the unit is the one
   thing that drifts a fleet one device at a time
   (`docs/solutions/best-practices/systemd-sandboxing-needs-a-second-device.md`).
-- **The claude-feed Redis instance** (`deploy/redis-claude.*`, port 6380) and
-  the publisher hooks on other machines. Separate installs, separate lifecycles.
+- **The kvscf-feed Redis instances** (`deploy/redis-claude.*` on rpidash2,
+  `deploy/redis-kvscf.*` on rpidash3 — port 6380, AUTH + LAN bind, each with a
+  hand-installed `/etc/redis/redis-*-local.conf`) and the publisher hooks on
+  other machines. Separate installs, separate lifecycles.
