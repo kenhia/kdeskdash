@@ -38,9 +38,17 @@ machines (cleo).
 1. Copy `claude-pub.sh` to `~/.claude/kdeskdash-pub/claude-pub.sh` and make it
    executable (`chmod +x`; not needed on Windows).
 2. Merge `settings-fragment.json` into user-level `~/.claude/settings.json`,
-   fixing the two command paths to that machine's absolute script path
-   (forward slashes on Windows, e.g.
-   `C:/Users/kenhi/.claude/kdeskdash-pub/claude-pub.sh hook`).
+   fixing the two command paths to that machine's absolute script path.
+   **On Windows, name the interpreter explicitly** — a bare `.sh` path is not a
+   runnable command there:
+
+   ```
+   C:/PROGRA~1/Git/bin/bash.exe C:/Users/kenhi/.claude/kdeskdash-pub/claude-pub.sh hook
+   ```
+
+   Read "Windows: why the hook command names `bash.exe`" below before
+   shortening that to the script path alone — the short form fails silently and
+   unattended.
 3. Done. Statusline config hot-reloads. Hooks were long assumed to be
    snapshotted at session start, but on 2.1.211 a newly-merged hook fired in a
    session that was **already running** (verified 2026-07-19 on cleo: adding the
@@ -146,6 +154,48 @@ ship a tier that lifts `sessionKey` from a browser cookie store to call
 `claude.ai/api/*`. That is the one method that reads squarely as prohibited
 automated access, and a `sessionKey` is a full-account bearer credential —
 either reason alone disqualifies it.
+
+### Windows: why the hook command names `bash.exe`
+
+The hook and `statusLine` commands must name the interpreter. A bare,
+interpreter-less `.sh` path only runs if the launcher happens to route it
+through sh/Git Bash; when Claude Code launches it through PowerShell instead,
+PowerShell's native-command fallback hands the `.sh` to ShellExecute, and
+because `.sh` has no registered handler Windows pops a modal **"How do you want
+to open this file?"** picker instead of running the publisher.
+
+It fails *unattended and silently*: the desktop app re-spawns Claude Code on its
+own (`WarmLifecycle:preview`), every warm-up fires SessionStart, and the
+transcript still records `hookErrors: []` because the ShellExecute launch
+"succeeds". Observed on cleo 2026-07-30 (Claude Desktop 2.1.219): several
+identical pickers queued up overnight, and the warm-ups that produced them left
+no `.start` file in `state/` while the ones that really ran the hook did.
+
+No single unquoted command string works under all three Windows shells:
+
+| form | sh / Git Bash | PowerShell | cmd.exe |
+|---|---|---|---|
+| bare `.sh` path | works | **picker dialog** | error |
+| fwd-slash `bash.exe <script>` | works | works | error (`/` parsed as a switch) |
+| quoted backslash `"...bash.exe" <script>` | works | fails (string literal, needs `&`) | works |
+| `.cmd` shim | works | works | error (same `/` issue) |
+
+Forward slashes plus an explicit `bash.exe` covers both launchers actually
+observed in play. cmd.exe stays uncovered but fails *loudly* with an error
+rather than a modal dialog, which is the acceptable failure mode. `PROGRA~1`
+(the 8.3 short path) avoids the space in `Program Files`, so nothing needs
+quoting. A `.cmd` shim was prototyped and discarded — it adds a file without
+improving coverage.
+
+**Do not "fix" the picker by clicking through it.** Choosing an app in that
+dialog registers a permanent user association
+(`HKCU\...\Explorer\FileExts\.sh\OpenWithList`). On cleo `.sh` is now bound to
+`Code - Insiders.exe`, so a future stray ShellExecute *silently* opens the
+script in VS Code instead of prompting — the symptom disappears while the bug
+remains.
+
+Linux hosts are unaffected (`.sh` is executable there), and on kai and kubs0
+k-homelab's `claude-hooks` recipe owns these entries in any case.
 
 ### Windows (scheduled task, the cleo install)
 

@@ -14,6 +14,7 @@
 #include "claude_redis.h"
 #include "config.h"
 #include "kvscf_redis.h"
+#include "service_pub.h"
 #include "lvgl.h"
 #include "modes/calc.h"
 #include "modes/claude.h"
@@ -161,6 +162,8 @@ int main(int argc, char **argv) {
      * mode is written back, then restore the last active mode if one exists. */
     redis_init(cfg.redis_host, cfg.redis_port, cfg.redis_auth);
     shell_set_change_cb(redis_set_active_mode);
+    /* Before shell_start, so the restored mode is the first history entry. */
+    shell_set_quick_pairs(cfg.quick_pairs);
     char last_mode[64];
     const char *restore =
         redis_get_active_mode(last_mode, sizeof(last_mode)) ? last_mode : NULL;
@@ -193,6 +196,13 @@ int main(int argc, char **argv) {
         kvscf_redis_init(cfg.kvscf_redis_host, cfg.kvscf_redis_port,
                          cfg.kvscf_redis_auth, cfg.kvscf_token);
 
+    /* The kpidash service card: this instance's own liveness, write-only, on a
+     * fifth handle. Deliberately NOT mode-gated — "this panel is alive" is true
+     * whatever modes it registered, so a Fun-only panel still shows up on the
+     * board. */
+    service_pub_init(cfg.card_redis_host, cfg.card_redis_port,
+                     cfg.card_redis_auth, cfg.card_name, KD_VERSION);
+
     /* Capacitive touch via evdev (ILITEK, default /dev/input/event1).
      * Touch is optional: if it cannot be opened, the display still runs. */
     lv_indev_t *touch = lv_evdev_create(LV_INDEV_TYPE_POINTER, cfg.touch_dev);
@@ -211,6 +221,8 @@ int main(int argc, char **argv) {
         /* Poll Redis ~once per second (remote control + reconnect). */
         if (lv_tick_elaps(last_poll) >= 1000) {
             redis_poll();
+            /* Self-published service card; throttles itself to 15 s. */
+            service_pub_tick();
             last_poll = lv_tick_get();
         }
         uint32_t sleep_ms = lv_timer_handler();
@@ -220,6 +232,7 @@ int main(int argc, char **argv) {
     }
 
     printf("\nkdeskdash: shutting down\n");
+    service_pub_shutdown();
     redis_shutdown();
     telemetry_shutdown();
     claude_redis_shutdown();

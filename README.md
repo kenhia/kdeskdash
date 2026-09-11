@@ -92,7 +92,23 @@ cross-compile approach and adding touch input.
   referenced by name. See
   [sprints/017-palette-mode](sprints/017-palette-mode/requirements.md).
 
-Navigation: swipe **left/right** to cycle content modes, swipe **down** for the Menu.
+Navigation: swipe **left/right** to cycle content modes, swipe **down** for the Menu,
+and **double-tap the background** to jump straight to the current mode's quick-switch
+partner.
+
+The partner is the previously active mode unless `KDESKDASH_QUICK_PAIRS` pins one, so
+bouncing between two modes (Claude and Remote, say) needs no configuration at all:
+swipe to the second one once, and the double-tap toggles from then on. The Menu is
+deliberately left out of that history — passing through it to reach a mode does not
+make it the partner. Set a pair to make the partner fixed regardless of history:
+
+```bash
+KDESKDASH_QUICK_PAIRS="claude:foreground,clock:calc"
+```
+
+The double-tap is read on a mode's **bare background** only: LVGL does not bubble a
+click to the screen, so a fast double-tap on a calc key or a launcher button stays
+with that widget and never switches modes.
 
 ### Per-device mode sets
 
@@ -237,6 +253,11 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_MODES`      | _(unset → all modes)_ | Per-device mode set: `fun:<ids>;ops:<ids>`. See [Per-device mode sets](#per-device-mode-sets). |
 | `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
 | `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
+| `KDESKDASH_QUICK_PAIRS` | _(unset → previously active mode)_ | Double-tap partner pairs, `"<id>:<id>[,<id>:<id>]"`. Unset is a working default, not "off" — the partner is then whichever mode was active before this one. Malformed entries are warned about and skipped, so one typo costs one pair, not the feature. |
+| `KDESKDASH_CARD_REDIS_HOST` | _(telemetry host → `rpi53`)_ | Where this instance publishes its own kpidash **service card** (`kpidash:services:deskdash:<host>`). Write-only — kdeskdash never reads that namespace. Defaults to the telemetry endpoint because the card lives on the same board Redis, so neither device needs a new line. |
+| `KDESKDASH_CARD_REDIS_PORT` | _(telemetry port → `6379`)_ | Falls back independently of the host. |
+| `KDESKDASH_CARD_REDISCLI_AUTH` | _(telemetry auth, **same instance only**)_ | Inherits the telemetry password *only when the card endpoint resolves to the same host:port* — the same rule, and the same reason, as `KDESKDASH_KVSCF_REDISCLI_AUTH`. **Secret**: install via `/etc/kdeskdash/secrets.env`. |
+| `KDESKDASH_CARD_NAME`  | `deskdash`           | The card's name segment. Card identity is `(name, host)`, so two panels on two hosts need nothing here; **two instances on one host** would otherwise clobber each other's key and must be given distinct names (`deskdash-left`). |
 | `KVSCF_TOKEN`          | _(unset)_            | Shared secret authenticating the commands `Remote` and `Launcher` send to that device's `kvscf` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → both modes still render but tapping cannot act ("view only"). Per kvscf instance, so each panel gets its own. **Secret** — install via `/etc/kdeskdash/secrets.env`, never a committed host file. |
 
 ## Redis (optional)

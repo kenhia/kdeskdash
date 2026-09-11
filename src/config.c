@@ -105,4 +105,38 @@ void config_load(kdeskdash_config_t *cfg) {
     /* Per-device mode set. NULL (unset or empty) means the full built-in set —
      * the modeset core owns the grammar and every degradation path. */
     cfg->modes_spec = env_or("KDESKDASH_MODES", NULL);
+
+    /* Double-tap quick switch. Unset is a working default, not a disabled
+     * feature: with no pairs the double-tap bounces to the previously active
+     * mode, which is the same thing for the Claude/Remote case that asked for
+     * it. A pair only pins the partner regardless of history. */
+    cfg->quick_pairs = env_or("KDESKDASH_QUICK_PAIRS", NULL);
+
+    /* kpidash service card (write-only). The board lives on the same Redis the
+     * telemetry feed reads, so unset means "reuse the telemetry values" and no
+     * device env needs a new line. Host and port fall back independently.
+     *
+     * Auth follows the ENDPOINT, not the variable — the same rule, and the same
+     * reason, as the kvscf/claude split above: inheriting a password is only
+     * ever right when it is the same instance, and a passwordless Redis answers
+     * AUTH with an ERROR rather than a shrug, so an inherited password reads on
+     * the panel as an endpoint that is simply down. */
+    cfg->card_redis_host =
+        env_or("KDESKDASH_CARD_REDIS_HOST", cfg->telemetry_redis_host);
+    int dport = atoi(env_or("KDESKDASH_CARD_REDIS_PORT", "0"));
+    cfg->card_redis_port =
+        (dport > 0 && dport <= 65535) ? dport : cfg->telemetry_redis_port;
+    const char *dauth = getenv("KDESKDASH_CARD_REDISCLI_AUTH");
+    bool card_same_instance =
+        cfg->card_redis_port == cfg->telemetry_redis_port &&
+        strcmp(cfg->card_redis_host, cfg->telemetry_redis_host) == 0;
+    cfg->card_redis_auth =
+        (dauth && dauth[0] != '\0')
+            ? dauth
+            : (card_same_instance ? cfg->telemetry_redis_auth : NULL);
+
+    /* The card's name segment. Identity on the board is (name, host), so two
+     * panels on two hosts need nothing here; two instances on ONE host would
+     * clobber each other's key and must be given distinct names. */
+    cfg->card_name = env_or("KDESKDASH_CARD_NAME", "deskdash");
 }

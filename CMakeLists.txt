@@ -51,6 +51,9 @@ add_executable(kdeskdash
     src/dev_telemetry.c
     src/telemetry.c
     src/telemetry_host.c
+    src/quickswitch.c
+    src/service_card.c
+    src/service_pub.c
     src/claude_feed.c
     src/claude_redis.c
     src/kvscf_feed.c
@@ -272,6 +275,28 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_include_directories(test_dev_view PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_dev_view PRIVATE -Wall -Wextra)
     add_test(NAME test_dev_view COMMAND test_dev_view)
+
+    # Pure double-tap quick-switch core: tap timing (including the LVGL tick
+    # wrap), configured pairs, and the most-recent fallback. LVGL 9.2.2 has no
+    # double-click event, so the timing is ours and is tested here.
+    add_executable(test_quickswitch
+        tests/test_quickswitch.c
+        src/quickswitch.c
+    )
+    target_include_directories(test_quickswitch PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_quickswitch PRIVATE -Wall -Wextra)
+    add_test(NAME test_quickswitch COMMAND test_quickswitch)
+
+    # Pure kpidash service-card builder: key shape, payload fields, escaping,
+    # and the publish throttle (no Redis/LVGL). The contract is kpidash's and it
+    # fails silently, so the shape is pinned here rather than on the board.
+    add_executable(test_service_card
+        tests/test_service_card.c
+        src/service_card.c
+    )
+    target_include_directories(test_service_card PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_service_card PRIVATE -Wall -Wextra)
+    add_test(NAME test_service_card COMMAND test_service_card)
 
     # Endpoint fallbacks, the kvscf-vs-claude auth rule in particular. config.c
     # is stdlib-only, so the test drives the real config_load() through setenv

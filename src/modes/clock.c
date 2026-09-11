@@ -12,7 +12,14 @@
 
 #include "lvgl.h"
 #include "stopwatch.h"
+/* "../palette.h": src/modes/palette.h shadows the core header from in here —
+ * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
+#include "../palette.h"
 
+
+/* Local alias onto the named palette (src/palette.h) — the palette is the
+ * single source of truth for every color here. */
+#define PAL(name) lv_color_hex(kd_pal_rgb(KD_PAL_##name))
 /* Timezone for the "local" clock, independent of the device's system TZ. */
 #define CLOCK_LOCAL_TZ "America/Los_Angeles"
 
@@ -78,7 +85,7 @@ static void build_screen(kd_mode_t *self) {
     clock_state_t *st = self->state;
 
     lv_obj_t *scr = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(scr, lv_color_hex(0x05070d), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(scr, PAL(VOID), LV_PART_MAIN);
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
     /* Centered large local time on two lines: HH:MM big, :SS smaller below.
@@ -86,7 +93,7 @@ static void build_screen(kd_mode_t *self) {
      * around its centre to make it "quite a bit bigger". */
     st->local_label = lv_label_create(scr);
     lv_obj_set_style_text_font(st->local_label, &lv_font_montserrat_48, LV_PART_MAIN);
-    lv_obj_set_style_text_color(st->local_label, lv_color_hex(0xffffff), LV_PART_MAIN);
+    lv_obj_set_style_text_color(st->local_label, PAL(PURE_WHITE), LV_PART_MAIN);
     lv_obj_set_style_transform_scale(st->local_label, 512, LV_PART_MAIN); /* 2.0x */
     lv_obj_set_style_transform_pivot_x(st->local_label, lv_pct(50), LV_PART_MAIN);
     lv_obj_set_style_transform_pivot_y(st->local_label, lv_pct(50), LV_PART_MAIN);
@@ -95,7 +102,7 @@ static void build_screen(kd_mode_t *self) {
 
     st->local_sec_label = lv_label_create(scr);
     lv_obj_set_style_text_font(st->local_sec_label, &lv_font_montserrat_36, LV_PART_MAIN);
-    lv_obj_set_style_text_color(st->local_sec_label, lv_color_hex(0xb9c6db), LV_PART_MAIN);
+    lv_obj_set_style_text_color(st->local_sec_label, PAL(DUSK_SILVER), LV_PART_MAIN);
     lv_label_set_text(st->local_sec_label, ":--");
     lv_obj_align(st->local_sec_label, LV_ALIGN_CENTER, 0, 60);
 
@@ -103,12 +110,12 @@ static void build_screen(kd_mode_t *self) {
     lv_obj_t *utc_caption = lv_label_create(scr);
     lv_label_set_text(utc_caption, "UTC");
     lv_obj_set_style_text_font(utc_caption, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(utc_caption, lv_color_hex(0x7c93b3), LV_PART_MAIN);
+    lv_obj_set_style_text_color(utc_caption, PAL(CAPTION_HAZE), LV_PART_MAIN);
     lv_obj_align(utc_caption, LV_ALIGN_LEFT_MID, 60, -50);
 
     st->utc_label = lv_label_create(scr);
     lv_obj_set_style_text_font(st->utc_label, &lv_font_montserrat_48, LV_PART_MAIN);
-    lv_obj_set_style_text_color(st->utc_label, lv_color_hex(0xcfe0f5), LV_PART_MAIN);
+    lv_obj_set_style_text_color(st->utc_label, PAL(UTC_FROST), LV_PART_MAIN);
     lv_label_set_text(st->utc_label, "--:--");
     lv_obj_align(st->utc_label, LV_ALIGN_LEFT_MID, 60, 10);
 
@@ -116,12 +123,12 @@ static void build_screen(kd_mode_t *self) {
     lv_obj_t *sw_caption = lv_label_create(scr);
     lv_label_set_text(sw_caption, "Stopwatch");
     lv_obj_set_style_text_font(sw_caption, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(sw_caption, lv_color_hex(0x7c93b3), LV_PART_MAIN);
+    lv_obj_set_style_text_color(sw_caption, PAL(CAPTION_HAZE), LV_PART_MAIN);
     lv_obj_align(sw_caption, LV_ALIGN_RIGHT_MID, -60, -110);
 
     st->sw_label = lv_label_create(scr);
     lv_obj_set_style_text_font(st->sw_label, &lv_font_montserrat_48, LV_PART_MAIN);
-    lv_obj_set_style_text_color(st->sw_label, lv_color_hex(0x6ddf6d), LV_PART_MAIN);
+    lv_obj_set_style_text_color(st->sw_label, PAL(STOPWATCH_LIME), LV_PART_MAIN);
     lv_label_set_text(st->sw_label, "0:00.0");
     lv_obj_align(st->sw_label, LV_ALIGN_RIGHT_MID, -60, -50);
 

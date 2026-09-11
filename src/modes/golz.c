@@ -18,7 +18,14 @@
 #include "golz.h"
 #include "lvgl.h"
 #include "redis.h"
+/* "../palette.h": src/modes/palette.h shadows the core header from in here —
+ * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
+#include "../palette.h"
 
+
+/* Local alias onto the named palette (src/palette.h) — the palette is the
+ * single source of truth for every color here. */
+#define PAL(name) lv_color_hex(kd_pal_rgb(KD_PAL_##name))
 /* How long the end-of-game banner holds before auto re-roll (a tap
  * short-circuits it). */
 #define GOLZ_BANNER_HOLD_MS 12000
@@ -365,7 +372,7 @@ static void show_banner(golz_mode_state_t *st) {
     lv_obj_t *scrim = lv_obj_create(scr);
     lv_obj_set_size(scrim, st->disp_w, st->disp_h);
     lv_obj_align(scrim, LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_set_style_bg_color(scrim, lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(scrim, PAL(TRUE_BLACK), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(scrim, LV_OPA_80, LV_PART_MAIN);
     lv_obj_set_style_border_width(scrim, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(scrim, 0, LV_PART_MAIN);
@@ -414,7 +421,7 @@ static void show_banner(golz_mode_state_t *st) {
     lv_obj_t *foot = lv_label_create(scrim);
     lv_label_set_text(foot, hist);
     lv_obj_set_style_text_font(foot, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_text_color(foot, lv_color_hex(0x8a929e), LV_PART_MAIN);
+    lv_obj_set_style_text_color(foot, PAL(ASH_MIST), LV_PART_MAIN);
     lv_obj_set_style_text_align(foot, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_align(foot, LV_ALIGN_BOTTOM_MID, 0, -10);
     lv_obj_add_flag(foot, LV_OBJ_FLAG_GESTURE_BUBBLE);
@@ -451,7 +458,7 @@ static void make_menu_button(lv_obj_t *parent, const char *text,
                              lv_event_cb_t cb, golz_mode_state_t *st) {
     lv_obj_t *btn = lv_button_create(parent);
     lv_obj_set_width(btn, lv_pct(100));
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0x2b3340), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(btn, PAL(PEWTER_ROW), LV_PART_MAIN);
     /* A swipe that begins on a button must still bubble to shell nav. */
     lv_obj_add_flag(btn, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, st);
@@ -459,7 +466,7 @@ static void make_menu_button(lv_obj_t *parent, const char *text,
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, text);
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lbl, lv_color_hex(0xeaf0fb), LV_PART_MAIN);
+    lv_obj_set_style_text_color(lbl, PAL(MOON_INK), LV_PART_MAIN);
     lv_obj_add_flag(lbl, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_center(lbl);
 }
@@ -480,7 +487,7 @@ static void open_menu(golz_mode_state_t *st) {
     lv_obj_t *panel = lv_obj_create(scr);
     lv_obj_set_size(panel, w, st->disp_h);
     lv_obj_align(panel, LV_ALIGN_TOP_RIGHT, 0, 0);
-    lv_obj_set_style_bg_color(panel, lv_color_hex(0x12151c), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(panel, PAL(PITCH_SLATE), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(panel, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(panel, 0, LV_PART_MAIN);
@@ -530,7 +537,7 @@ static void build_screen(kd_mode_t *self) {
     st->disp_h = lv_display_get_vertical_resolution(disp);
 
     lv_obj_t *scr = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(scr, lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(scr, PAL(TRUE_BLACK), LV_PART_MAIN);
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
     st->cbuf = malloc((size_t)st->disp_w * st->disp_h * sizeof(uint32_t));
