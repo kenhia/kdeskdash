@@ -57,6 +57,9 @@ connected, and the panel reported it the way it reports any dead endpoint.
 And there was no way to say otherwise. Empty means unset, and unset means
 inherit:
 
+(The variable was renamed to `KVSCF_REDISCLI_AUTH` in sprint 037 when the
+fleet took over the key names; the code below is quoted as it stood.)
+
 ```c
 const char *kauth = getenv("KDESKDASH_KVSCF_REDISCLI_AUTH");
 cfg->kvscf_redis_auth = (kauth && kauth[0] != '\0') ? kauth
@@ -114,3 +117,15 @@ The same failure, one layer down. That note is about enumerating the two
 *programs* in the path. This one is about enumerating the two *settings* in the
 path: sprint 031 verified that kvscf's endpoint was pinned, and the thing that
 had to authenticate was a field nobody had listed as changing.
+
+## A second instance, one variable to the left
+
+Sprint 037 hit the same *outcome* — a handle silently authenticating against a
+Redis that has no password — by a different route: not a fallback we wrote, but
+a fleet-wide file claiming a generic name the panel already read. See
+[a generic env var name is a namespace you
+joined](a-generic-env-name-is-a-namespace-you-joined.md). The shared symptom is
+worth memorising on its own: **`kvscf feed unavailable` / a dead-looking
+endpoint is what a *wrong or unwanted* password looks like on this panel**,
+because a Redis with none configured answers AUTH with an error rather than
+ignoring it.

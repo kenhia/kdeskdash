@@ -22,13 +22,14 @@
 static void clear_env(void) {
     unsetenv("KDESKDASH_CLAUDE_REDIS_HOST");
     unsetenv("KDESKDASH_CLAUDE_REDIS_PORT");
-    unsetenv("KDESKDASH_CLAUDE_REDISCLI_AUTH");
+    unsetenv("REDISCLI_AUTH");
+    unsetenv("KDESKDASH_CONTROL_REDISCLI_AUTH");
     unsetenv("KDESKDASH_KVSCF_REDIS_HOST");
     unsetenv("KDESKDASH_KVSCF_REDIS_PORT");
-    unsetenv("KDESKDASH_KVSCF_REDISCLI_AUTH");
+    unsetenv("KVSCF_REDISCLI_AUTH");
+    unsetenv("CLAUDE_REDISCLI_AUTH");
     unsetenv("KDESKDASH_TELEMETRY_REDIS_HOST");
     unsetenv("KDESKDASH_TELEMETRY_REDIS_PORT");
-    unsetenv("KDESKDASH_TELEMETRY_REDISCLI_AUTH");
     unsetenv("KDESKDASH_CARD_REDIS_HOST");
     unsetenv("KDESKDASH_CARD_REDIS_PORT");
     unsetenv("KDESKDASH_CARD_REDISCLI_AUTH");
@@ -47,7 +48,7 @@ static void test_same_instance_inherits_everything(void) {
     clear_env();
     setenv("KDESKDASH_CLAUDE_REDIS_HOST", "127.0.0.1", 1);
     setenv("KDESKDASH_CLAUDE_REDIS_PORT", "6380", 1);
-    setenv("KDESKDASH_CLAUDE_REDISCLI_AUTH", "secret", 1);
+    setenv("REDISCLI_AUTH", "secret", 1);
     load(&cfg);
     assert(strcmp(cfg.kvscf_redis_host, "127.0.0.1") == 0);
     assert(cfg.kvscf_redis_port == 6380);
@@ -62,7 +63,7 @@ static void test_different_endpoint_does_not_inherit_auth(void) {
     clear_env();
     setenv("KDESKDASH_CLAUDE_REDIS_HOST", "rpi53", 1);
     setenv("KDESKDASH_CLAUDE_REDIS_PORT", "6379", 1);
-    setenv("KDESKDASH_CLAUDE_REDISCLI_AUTH", "central-password", 1);
+    setenv("REDISCLI_AUTH", "central-password", 1);
     setenv("KDESKDASH_KVSCF_REDIS_HOST", "127.0.0.1", 1);
     setenv("KDESKDASH_KVSCF_REDIS_PORT", "6380", 1);
     load(&cfg);
@@ -79,7 +80,7 @@ static void test_same_host_different_port_does_not_inherit_auth(void) {
     clear_env();
     setenv("KDESKDASH_CLAUDE_REDIS_HOST", "127.0.0.1", 1);
     setenv("KDESKDASH_CLAUDE_REDIS_PORT", "6379", 1);
-    setenv("KDESKDASH_CLAUDE_REDISCLI_AUTH", "central-password", 1);
+    setenv("REDISCLI_AUTH", "central-password", 1);
     setenv("KDESKDASH_KVSCF_REDIS_PORT", "6380", 1);
     load(&cfg);
     assert(strcmp(cfg.kvscf_redis_host, "127.0.0.1") == 0);
@@ -95,10 +96,10 @@ static void test_explicit_auth_wins(void) {
     clear_env();
     setenv("KDESKDASH_CLAUDE_REDIS_HOST", "rpi53", 1);
     setenv("KDESKDASH_CLAUDE_REDIS_PORT", "6379", 1);
-    setenv("KDESKDASH_CLAUDE_REDISCLI_AUTH", "central-password", 1);
+    setenv("REDISCLI_AUTH", "central-password", 1);
     setenv("KDESKDASH_KVSCF_REDIS_HOST", "127.0.0.1", 1);
     setenv("KDESKDASH_KVSCF_REDIS_PORT", "6380", 1);
-    setenv("KDESKDASH_KVSCF_REDISCLI_AUTH", "kvscf-password", 1);
+    setenv("KVSCF_REDISCLI_AUTH", "kvscf-password", 1);
     load(&cfg);
     assert(cfg.kvscf_redis_auth != NULL &&
            strcmp(cfg.kvscf_redis_auth, "kvscf-password") == 0);
@@ -137,7 +138,7 @@ static void test_card_same_instance_inherits_auth(void) {
     clear_env();
     setenv("KDESKDASH_TELEMETRY_REDIS_HOST", "rpi53", 1);
     setenv("KDESKDASH_TELEMETRY_REDIS_PORT", "6379", 1);
-    setenv("KDESKDASH_TELEMETRY_REDISCLI_AUTH", "board-password", 1);
+    setenv("REDISCLI_AUTH", "board-password", 1);
     load(&cfg);
     assert(cfg.card_redis_auth != NULL &&
            strcmp(cfg.card_redis_auth, "board-password") == 0);
@@ -153,7 +154,7 @@ static void test_card_different_endpoint_does_not_inherit_auth(void) {
     clear_env();
     setenv("KDESKDASH_TELEMETRY_REDIS_HOST", "rpi53", 1);
     setenv("KDESKDASH_TELEMETRY_REDIS_PORT", "6379", 1);
-    setenv("KDESKDASH_TELEMETRY_REDISCLI_AUTH", "board-password", 1);
+    setenv("REDISCLI_AUTH", "board-password", 1);
     setenv("KDESKDASH_CARD_REDIS_HOST", "127.0.0.1", 1);
     load(&cfg);
     assert(strcmp(cfg.card_redis_host, "127.0.0.1") == 0);
@@ -167,7 +168,7 @@ static void test_card_different_endpoint_does_not_inherit_auth(void) {
 static void test_card_explicit_overrides(void) {
     kdeskdash_config_t cfg;
     clear_env();
-    setenv("KDESKDASH_TELEMETRY_REDISCLI_AUTH", "board-password", 1);
+    setenv("REDISCLI_AUTH", "board-password", 1);
     setenv("KDESKDASH_CARD_REDIS_HOST", "127.0.0.1", 1);
     setenv("KDESKDASH_CARD_REDIS_PORT", "6381", 1);
     setenv("KDESKDASH_CARD_REDISCLI_AUTH", "card-password", 1);
@@ -213,7 +214,145 @@ static void test_quick_pairs_three_states(void) {
     printf("ok  quick pairs: unset, \"none\" and pairs stay distinguishable\n");
 }
 
+/* Sprint 037's collision, and the reason the control handle has its own name.
+ *
+ * REDISCLI_AUTH is the fleet's name for the CENTRAL rpi53 password, and the
+ * unit now reads /etc/khomelab/secrets.env, so on both panels that variable is
+ * always set. The control Redis is this board's own passwordless instance on
+ * 6379 — a Redis with no password configured answers AUTH with an ERROR, so if
+ * this handle read the bare name it would stop connecting the moment the fleet
+ * file arrived, taking remote control, last-mode persistence, GoL injection and
+ * the screenshot trigger with it. Silently: the panel keeps drawing.
+ *
+ * This is the sprint-031 failure one variable to the left. That one cost a
+ * sprint to diagnose; this test is why this one did not. */
+static void test_control_ignores_the_fleet_password(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("REDISCLI_AUTH", "central-password", 1);
+    load(&cfg);
+    assert(cfg.redis_auth == NULL);
+    printf("ok  control Redis sends no AUTH just because the fleet file is read\n");
+}
+
+/* ...and it still authenticates when its OWN name says to, so the escape hatch
+ * for a board that one day password-protects its local instance is real. */
+static void test_control_reads_its_own_name(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("REDISCLI_AUTH", "central-password", 1);
+    setenv("KDESKDASH_CONTROL_REDISCLI_AUTH", "board-local", 1);
+    load(&cfg);
+    assert(cfg.redis_auth != NULL && strcmp(cfg.redis_auth, "board-local") == 0);
+    printf("ok  control Redis reads KDESKDASH_CONTROL_REDISCLI_AUTH\n");
+}
+
+/* The collapse this slice exists for: two keys that were one secret become one
+ * key. Telemetry and the claude feed are two connections to rpi53:6379, and the
+ * service card rides the telemetry endpoint, so one fleet variable must serve
+ * all three — with no per-panel line anywhere. */
+static void test_one_fleet_password_serves_all_three_central_handles(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("REDISCLI_AUTH", "central-password", 1);
+    load(&cfg);
+    assert(cfg.telemetry_redis_auth != NULL &&
+           strcmp(cfg.telemetry_redis_auth, "central-password") == 0);
+    assert(cfg.claude_redis_auth != NULL &&
+           strcmp(cfg.claude_redis_auth, "central-password") == 0);
+    /* The card inherits it only because it resolves to the same endpoint — the
+     * same-instance rule still does the work, it is just fed a fleet name. */
+    assert(cfg.card_redis_auth != NULL &&
+           strcmp(cfg.card_redis_auth, "central-password") == 0);
+    printf("ok  one REDISCLI_AUTH serves telemetry, claude and the card\n");
+}
+
+/* The kvscf slot is the OTHER secret, and must not pick up the central one. On
+ * both panels kvscf is the board's own 6380 instance, which has a different
+ * password from rpi53 — measured different on the two boards, too. */
+static void test_kvscf_reads_the_fleet_slot_name(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("REDISCLI_AUTH", "central-password", 1);
+    setenv("KDESKDASH_CLAUDE_REDIS_HOST", "rpi53", 1);
+    setenv("KDESKDASH_CLAUDE_REDIS_PORT", "6379", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_HOST", "127.0.0.1", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_PORT", "6380", 1);
+    setenv("KVSCF_REDISCLI_AUTH", "board-6380-password", 1);
+    load(&cfg);
+    assert(cfg.kvscf_redis_auth != NULL &&
+           strcmp(cfg.kvscf_redis_auth, "board-6380-password") == 0);
+    assert(strcmp(cfg.claude_redis_auth, "central-password") == 0);
+    printf("ok  kvscf reads KVSCF_REDISCLI_AUTH, distinct from the central one\n");
+}
+
+/* The two panels' 6380 instances are different services with different
+ * passwords, and k-homelab's bin/check-secrets refuses one key name pointing at
+ * two store entries — so the fleet publishes two names and each panel declares
+ * one. Both shapes must resolve, from the same binary, with no per-host build.
+ *
+ * rpidash3's shape: the slot name is the one its manifest declares. */
+static void test_kvscf_rpidash3_shape(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("REDISCLI_AUTH", "central-password", 1);
+    setenv("KDESKDASH_CLAUDE_REDIS_HOST", "rpi53", 1);
+    setenv("KDESKDASH_CLAUDE_REDIS_PORT", "6379", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_HOST", "127.0.0.1", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_PORT", "6380", 1);
+    setenv("KVSCF_REDISCLI_AUTH", "redis-kvscf-password", 1);
+    load(&cfg);
+    assert(cfg.kvscf_redis_auth != NULL &&
+           strcmp(cfg.kvscf_redis_auth, "redis-kvscf-password") == 0);
+    printf("ok  rpidash3 shape: kvscf reads KVSCF_REDISCLI_AUTH\n");
+}
+
+/* rpidash2's shape: its instance is called redis-claude for historical reasons,
+ * so its published key name is CLAUDE_REDISCLI_AUTH — and it is emphatically
+ * NOT the claude feed's password, which is central's REDISCLI_AUTH. Getting
+ * these two confused is the whole reason the fallback is commented as heavily
+ * as it is. */
+static void test_kvscf_rpidash2_shape(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("REDISCLI_AUTH", "central-password", 1);
+    setenv("KDESKDASH_CLAUDE_REDIS_HOST", "rpi53", 1);
+    setenv("KDESKDASH_CLAUDE_REDIS_PORT", "6379", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_HOST", "127.0.0.1", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_PORT", "6380", 1);
+    setenv("CLAUDE_REDISCLI_AUTH", "redis-claude-password", 1);
+    load(&cfg);
+    assert(cfg.kvscf_redis_auth != NULL &&
+           strcmp(cfg.kvscf_redis_auth, "redis-claude-password") == 0);
+    /* ...and the claude FEED still authenticates against central, not this. */
+    assert(strcmp(cfg.claude_redis_auth, "central-password") == 0);
+    printf("ok  rpidash2 shape: kvscf reads CLAUDE_REDISCLI_AUTH, feed unaffected\n");
+}
+
+/* The slot name wins when a host somehow declares both — a defined tie-break
+ * rather than whichever getenv happens to run first. */
+static void test_kvscf_slot_name_wins_over_the_historical_one(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KDESKDASH_CLAUDE_REDIS_HOST", "rpi53", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_HOST", "127.0.0.1", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_PORT", "6380", 1);
+    setenv("KVSCF_REDISCLI_AUTH", "slot-name", 1);
+    setenv("CLAUDE_REDISCLI_AUTH", "historical-name", 1);
+    load(&cfg);
+    assert(cfg.kvscf_redis_auth != NULL &&
+           strcmp(cfg.kvscf_redis_auth, "slot-name") == 0);
+    printf("ok  both declared: KVSCF_REDISCLI_AUTH wins\n");
+}
+
 int main(void) {
+    test_control_ignores_the_fleet_password();
+    test_control_reads_its_own_name();
+    test_one_fleet_password_serves_all_three_central_handles();
+    test_kvscf_reads_the_fleet_slot_name();
+    test_kvscf_rpidash3_shape();
+    test_kvscf_rpidash2_shape();
+    test_kvscf_slot_name_wins_over_the_historical_one();
     test_same_instance_inherits_everything();
     test_different_endpoint_does_not_inherit_auth();
     test_same_host_different_port_does_not_inherit_auth();

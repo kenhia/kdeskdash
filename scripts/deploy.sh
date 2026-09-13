@@ -228,6 +228,24 @@ case "$cmd" in
       sudo systemctl daemon-reload
       sudo systemctl enable kdeskdash
     "
+        # THE UNIT AND THE BINARY ARE NOT INDEPENDENTLY DEPLOYABLE, since
+        # sprint 037. The unit reads /etc/khomelab/secrets.env, which sets
+        # REDISCLI_AUTH — and a kdeskdash older than 037 reads that bare name as
+        # its CONTROL Redis password. The control instance is passwordless, and
+        # Redis answers AUTH-with-no-password-configured with an ERROR, so an
+        # old binary under a new unit silently loses remote mode control,
+        # last-mode persistence, GoL injection and the screenshot trigger while
+        # the panel carries on drawing.
+        #
+        # A warning, not a refusal: a fresh device legitimately has no binary
+        # yet, and this command is how it gets its first unit.
+        installed=$(probe_version "$target")
+        if [ -n "$installed" ] && [ "$installed" != "kdeskdash $v" ]; then
+            echo "deploy.sh: WARNING — this unit is from $v but $target is running '$installed'." >&2
+            echo "           Since 0.27.x the unit reads /etc/khomelab/secrets.env, and a binary" >&2
+            echo "           older than that reads REDISCLI_AUTH as its CONTROL password — which" >&2
+            echo "           breaks remote control silently. Run: just deploy ${target#*@} $v" >&2
+        fi
         echo "installed kdeskdash service on $target (unit from $v)"
         ;;
 

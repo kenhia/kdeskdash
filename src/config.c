@@ -34,7 +34,21 @@ void config_load(kdeskdash_config_t *cfg) {
     cfg->redis_host = env_or("KDESKDASH_REDIS_HOST", "127.0.0.1");
     int port = atoi(env_or("KDESKDASH_REDIS_PORT", "6379"));
     cfg->redis_port = (port > 0 && port <= 65535) ? port : 6379;
-    const char *auth = getenv("REDISCLI_AUTH");
+    /* The control Redis is this board's OWN instance on 6379 — loopback-only
+     * and passwordless on both panels. It reads KDESKDASH_CONTROL_REDISCLI_AUTH
+     * and deliberately NOT bare REDISCLI_AUTH, which since sprint 037 is the
+     * fleet-wide name for the CENTRAL rpi53 password that k-homelab renders
+     * into /etc/khomelab/secrets.env on every host.
+     *
+     * Reading the bare name here would be the sprint-031 failure with a new
+     * face: the unit gained the fleet file, this handle would suddenly send
+     * AUTH to a Redis that has no password configured, and Redis answers that
+     * with an ERROR rather than a shrug — so remote mode control, last-mode
+     * persistence, GoL injection and the screenshot trigger would all stop,
+     * reported on the panel as nothing at all. Measured on both boards before
+     * the change: `REDISCLI_AUTH=x redis-cli -p 6379 ping` ->
+     * "ERR AUTH <password> called without any password configured". */
+    const char *auth = getenv("KDESKDASH_CONTROL_REDISCLI_AUTH");
     cfg->redis_auth = (auth && auth[0] != '\0') ? auth : NULL;
 
     cfg->rotate_180 = env_flag("KDESKDASH_ROTATE_180");
@@ -44,7 +58,11 @@ void config_load(kdeskdash_config_t *cfg) {
     cfg->telemetry_redis_host = env_or("KDESKDASH_TELEMETRY_REDIS_HOST", "rpi53");
     int tport = atoi(env_or("KDESKDASH_TELEMETRY_REDIS_PORT", "6379"));
     cfg->telemetry_redis_port = (tport > 0 && tport <= 65535) ? tport : 6379;
-    const char *tauth = getenv("KDESKDASH_TELEMETRY_REDISCLI_AUTH");
+    /* REDISCLI_AUTH is the fleet's one name for the central rpi53 password
+     * (k-homelab sprint 059). Telemetry and the claude feed are two connections
+     * to that one endpoint, so they are one secret and read one name — which is
+     * what retired this panel's two private copies of it. */
+    const char *tauth = getenv("REDISCLI_AUTH");
     cfg->telemetry_redis_auth = (tauth && tauth[0] != '\0') ? tauth : NULL;
 
     /* Claude feed: agent activity + usage limits, published by the fleet to a
@@ -53,7 +71,9 @@ void config_load(kdeskdash_config_t *cfg) {
     cfg->claude_redis_host = env_or("KDESKDASH_CLAUDE_REDIS_HOST", "127.0.0.1");
     int cport = atoi(env_or("KDESKDASH_CLAUDE_REDIS_PORT", "6380"));
     cfg->claude_redis_port = (cport > 0 && cport <= 65535) ? cport : 6380;
-    const char *cauth = getenv("KDESKDASH_CLAUDE_REDISCLI_AUTH");
+    /* Same endpoint as telemetry, same secret, same name — a separate handle
+     * for failure isolation, not a separate credential. */
+    const char *cauth = getenv("REDISCLI_AUTH");
     cfg->claude_redis_auth = (cauth && cauth[0] != '\0') ? cauth : NULL;
 
     /* kvscf endpoint (foreground mode). On rpidash2 the kvscf keys live on the
@@ -81,7 +101,32 @@ void config_load(kdeskdash_config_t *cfg) {
      * stopped connecting. Pinning host and port was not enough, and no value
      * of KDESKDASH_KVSCF_REDISCLI_AUTH could say "this one takes none": empty
      * means unset, which means inherit. */
-    const char *kauth = getenv("KDESKDASH_KVSCF_REDISCLI_AUTH");
+    /* This board's own kvscf-feed Redis on 6380, and the one place the fleet's
+     * key names are per-host rather than universal.
+     *
+     * The two panels run different services with different passwords —
+     * rpidash2's `redis-claude` (the name is historical; it has served kvscf
+     * since sprint 031) and rpidash3's `redis-kvscf`. k-homelab's WI 2399 chose
+     * "one key name per SECRET" over "one key name per SLOT", and its
+     * bin/check-secrets actively REFUSES a tree where one key names different
+     * store entries on different hosts. So a single slot name mapped per host
+     * is not available to us, however much tidier it would read: the two
+     * secrets have two published names, and a consumer running on both panels
+     * reads the name its own host declares.
+     *
+     * Hence an ordered lookup over the two published fleet names rather than a
+     * config knob. Exactly one is set on each panel, so the order is a
+     * tie-break that never fires in practice:
+     *
+     *   KVSCF_REDISCLI_AUTH    -> redis-kvscf-auth-rpidash3   (rpidash3)
+     *   CLAUDE_REDISCLI_AUTH   -> redis-claude-auth-rpidash2  (rpidash2)
+     *
+     * The slot name is first because it is the one that describes what the
+     * handle is for. If rpidash2's key is ever renamed to match, the first
+     * lookup simply starts winning and the second becomes dead code. */
+    const char *kauth = getenv("KVSCF_REDISCLI_AUTH");
+    if (!kauth || kauth[0] == '\0')
+        kauth = getenv("CLAUDE_REDISCLI_AUTH");
     bool same_instance =
         cfg->kvscf_redis_port == cfg->claude_redis_port &&
         strcmp(cfg->kvscf_redis_host, cfg->claude_redis_host) == 0;

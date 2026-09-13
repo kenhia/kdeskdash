@@ -12,17 +12,17 @@ typedef struct {
     const char *touch_dev; /* KDESKDASH_TOUCH_DEV — default /dev/input/event1 (ILITEK) */
     const char *redis_host; /* KDESKDASH_REDIS_HOST — default 127.0.0.1 */
     int         redis_port; /* KDESKDASH_REDIS_PORT — default 6379 */
-    const char *redis_auth; /* REDISCLI_AUTH — NULL when unset (no AUTH) */
+    const char *redis_auth; /* KDESKDASH_CONTROL_REDISCLI_AUTH — NULL when unset (no AUTH). NOT bare REDISCLI_AUTH: that name is the fleet's central-Redis password since sprint 037, and this handle is the board's own passwordless local instance */
     bool        rotate_180; /* KDESKDASH_ROTATE_180 — flip the whole display 180° (case mounts the panel inverted) */
     const char *telemetry_redis_host; /* KDESKDASH_TELEMETRY_REDIS_HOST — kpidash telemetry source, default rpi53 */
     int         telemetry_redis_port; /* KDESKDASH_TELEMETRY_REDIS_PORT — default 6379 */
-    const char *telemetry_redis_auth; /* KDESKDASH_TELEMETRY_REDISCLI_AUTH — NULL when unset (no AUTH) */
+    const char *telemetry_redis_auth; /* REDISCLI_AUTH — the fleet's central-Redis password from /etc/khomelab/secrets.env; NULL when unset (no AUTH) */
     const char *claude_redis_host; /* KDESKDASH_CLAUDE_REDIS_HOST — claude-feed instance, default 127.0.0.1 (local on rpidash2) */
     int         claude_redis_port; /* KDESKDASH_CLAUDE_REDIS_PORT — default 6380 */
-    const char *claude_redis_auth; /* KDESKDASH_CLAUDE_REDISCLI_AUTH — NULL when unset (no AUTH) */
+    const char *claude_redis_auth; /* REDISCLI_AUTH — the same central password as telemetry, on its own connection; NULL when unset (no AUTH) */
     const char *kvscf_redis_host;  /* KDESKDASH_KVSCF_REDIS_HOST — foreground-mode kvscf; falls back to the claude-feed values */
     int         kvscf_redis_port;  /* KDESKDASH_KVSCF_REDIS_PORT — falls back to claude_redis_port */
-    const char *kvscf_redis_auth;  /* KDESKDASH_KVSCF_REDISCLI_AUTH — falls back to claude_redis_auth ONLY when the endpoint is the same instance; NULL otherwise */
+    const char *kvscf_redis_auth;  /* KVSCF_REDISCLI_AUTH — this board's own 6380 instance; falls back to claude_redis_auth ONLY when the endpoint is the same instance; NULL otherwise */
     const char *icons_ttf_path;    /* KDESKDASH_ICONS_TTF — Symbols Nerd Font read at runtime by the icons mode */
     const char *icons_favorites_path; /* KDESKDASH_ICONS_FAVORITES — icons-mode favourites file (load/save) */
     const char *kvscf_token;       /* KVSCF_TOKEN — shared secret for foreground-mode focus commands ("" when unset; trimmed at use) */

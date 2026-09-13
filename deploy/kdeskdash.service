@@ -6,8 +6,10 @@
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now kdeskdash
 #
-# Secrets (KVSCF_TOKEN) go in /etc/kdeskdash/secrets.env, hand-installed once per
-# device and never committed — see deploy/hosts/README.md.
+# Redis passwords come from /etc/khomelab/secrets.env, which k-homelab renders
+# on every host from the age store — this repo neither writes nor holds them.
+# KVSCF_TOKEN is still hand-installed in /etc/kdeskdash/secrets.env; see
+# deploy/hosts/README.md.
 #
 # The binary is deployed to /usr/local/bin/kdeskdash by `just deploy <host>`.
 [Unit]
@@ -30,10 +32,25 @@ ExecStart=/usr/local/bin/kdeskdash
 # Leading '-' makes the env file optional: every KDESKDASH_* var has a built-in
 # default, so a missing file must not block the appliance from starting.
 #
-# Two files, deliberately: the first is the device's committed config
-# (deploy/hosts/<host>.env, installed by install-service), the second holds
-# secrets that must never reach the repo — hand-installed, mode 0600. Later
-# EnvironmentFile= entries win, so a secret may also override a config value.
+# Three files, in precedence order — later entries win, so a device-local value
+# can always override the fleet one:
+#
+#   1. the fleet's per-host secrets file, rendered by k-homelab from the age
+#      store (root:khomelab 0640). Holds REDISCLI_AUTH (the central rpi53
+#      password, serving telemetry, the claude feed and the service card) and
+#      KVSCF_REDISCLI_AUTH (this board's own 6380 instance). Not ours to write.
+#   2. this device's committed config (deploy/hosts/<host>.env, installed by
+#      install-service) — endpoints and the mode set, no secrets.
+#   3. KVSCF_TOKEN, hand-installed, mode 0600. The one credential still without
+#      a store entry, because who issues it is an open question (korg WI 2479).
+#
+# No SupplementaryGroups=khomelab, and that is deliberate twice over: this unit
+# runs as root, and systemd reads EnvironmentFile= as PID 1 before dropping
+# privileges anyway — so the group buys nothing, while naming a group that does
+# not exist yet makes the unit FAIL TO START, turning the optional read below
+# into a hard dependency on k-homelab having converged. Measured on kstudio,
+# systemd 259 (korg handoff 2493).
+EnvironmentFile=-/etc/khomelab/secrets.env
 EnvironmentFile=-/etc/kdeskdash/kdeskdash.env
 EnvironmentFile=-/etc/kdeskdash/secrets.env
 Restart=always
