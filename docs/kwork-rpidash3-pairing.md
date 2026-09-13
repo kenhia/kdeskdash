@@ -86,7 +86,7 @@ dead, and they fail in opposite ways.
 
 | | Checked by | Wrong or missing looks like |
 |---|---|---|
-| `requirepass` / `KDESKDASH_KVSCF_REDISCLI_AUTH` / `KVSCF_REDIS_PASSWORD` | Redis, at connect | an **unreachable endpoint** — empty Remote list, greyed Launcher grid, `kvscf offline` |
+| `requirepass` / `KVSCF_REDISCLI_AUTH` / `KVSCF_REDIS_PASSWORD` | Redis, at connect | an **unreachable endpoint** — empty Remote list, greyed Launcher grid, `kvscf offline` |
 | `KVSCF_TOKEN` (both ends) | kvscf, per command | **nothing at all** — feeds render fine, taps silently do nothing |
 
 ## Bring-up
@@ -131,13 +131,20 @@ board; the `awk` takes the first. Confirm the result before trusting it — a
 ### 2. kdeskdash's side of it
 
 `deploy/hosts/rpidash3.env` already points the panel at `127.0.0.1:6380` and
-lists `launcher` first in its ops section. The password and token are secrets,
-so they go in `secrets.env` by hand — see
-[deploy/hosts/README.md](../deploy/hosts/README.md).
+lists `launcher` first in its ops section. The two secrets now come from two
+different places (sprint 037) — see
+[deploy/hosts/README.md](../deploy/hosts/README.md):
+
+- **The Redis password** is not installed by hand any more. Register it as this
+  board's store entry (`redis-kvscf-auth-rpidash3`) in k-homelab and let the
+  `khomelab-secrets` recipe render it as `KVSCF_REDISCLI_AUTH` into
+  `/etc/khomelab/secrets.env`, which the unit reads. One copy per host,
+  regenerated rather than maintained.
+- **The token** is still hand-installed, because it has no store entry and who
+  issues it is an open question (korg WI 2479).
 
 ```sh
 sudo tee -a /etc/kdeskdash/secrets.env > /dev/null <<EOF
-KDESKDASH_KVSCF_REDISCLI_AUTH=$PW
 KVSCF_TOKEN=kvscf-<kwork's own 64hex>
 EOF
 sudo systemctl restart kdeskdash

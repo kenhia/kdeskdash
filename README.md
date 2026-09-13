@@ -259,16 +259,15 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_TOUCH_DEV`  | `/dev/input/by-id/usb-ILITEK_ILITEK-TOUCH-event-if00` | evdev touch device; the by-id symlink is stable across replug/reboot |
 | `KDESKDASH_REDIS_HOST` | `127.0.0.1`          | Control Redis host (optional) |
 | `KDESKDASH_REDIS_PORT` | `6379`               | Control Redis port           |
-| `REDISCLI_AUTH`        | _(unset)_            | Control Redis password, if any (AUTH) |
+| `KDESKDASH_CONTROL_REDISCLI_AUTH` | _(unset)_ | Control Redis password, if any (AUTH). Unset on both panels — that instance is loopback-only and passwordless. Deliberately **not** bare `REDISCLI_AUTH`, which is the fleet's name for the central rpi53 password and is always set once the unit reads `/etc/khomelab/secrets.env`; a Redis with no password configured answers `AUTH` with an *error*, so reading the bare name here would silently kill remote control, last-mode persistence, GoL injection and screenshots. Guarded by `just unit-lint` and `test_config`. |
 | `KDESKDASH_TELEMETRY_REDIS_HOST` | `rpi53`    | Telemetry source Redis host (kpidash host metrics; read-only, separate from the control Redis). Used by `dev` mode. |
 | `KDESKDASH_TELEMETRY_REDIS_PORT` | `6379`     | Telemetry source Redis port |
-| `KDESKDASH_TELEMETRY_REDISCLI_AUTH` | _(unset)_ | Telemetry source Redis password (AUTH). **Secret** — rpi53's telemetry Redis requires it, so `dev` mode shows no host data without it. Install via `/etc/kdeskdash/secrets.env`, not a committed host file. |
+| `REDISCLI_AUTH`        | _(unset)_            | The **central rpi53 password**, and the one credential three handles share: telemetry, the Claude feed, and the service card. **Secret, and not this repo's to install** — k-homelab renders it into `/etc/khomelab/secrets.env` on every host from the age store, and the unit reads it there. One name, one secret, fleet-wide (sprint 037). |
 | `KDESKDASH_CLAUDE_REDIS_HOST` | `127.0.0.1`   | Claude-feed Redis host (agent activity + usage limits). Used by `claude` mode. The compiled-in default is a leftover from when the feed was loopback-local on rpidash2; the feed lives on the central Redis now (kdashdata CD-7) and both shipped panels set `rpi53` explicitly — see sprint 031. |
 | `KDESKDASH_CLAUDE_REDIS_PORT` | `6380`        | Claude-feed Redis port (both panels set `6379`) |
-| `KDESKDASH_CLAUDE_REDISCLI_AUTH` | _(unset)_  | Claude-feed Redis password (AUTH). **Required** on central, and the same string as the telemetry password — separate variable because it is a separate connection. **Secret**: install via `/etc/kdeskdash/secrets.env`. |
 | `KDESKDASH_KVSCF_REDIS_HOST` | _(claude-feed host)_ | kvscf instance the `Remote` and `Launcher` modes read and publish to. The fallback is legacy: kvscf stays with its workstation pair while the Claude feed has moved to central, so **both** panels now pin these explicitly (rpidash2 → its own `127.0.0.1:6380`, rpidash3 → its own second instance that kwork publishes to). Leaving them unset drags kvscf to central, which is the one thing the pin exists to prevent. |
 | `KDESKDASH_KVSCF_REDIS_PORT` | _(claude-feed port)_ | As above. Host and port fall back independently — set only the host and you inherit the Claude-feed port. |
-| `KDESKDASH_KVSCF_REDISCLI_AUTH` | _(claude-feed auth, **same instance only**)_ | The **transport** gate, distinct from `KVSCF_TOKEN`'s application one. **Secret**, needed on both panels since sprint 035 (each board's own 6380 instance has a `requirepass`): install via `/etc/kdeskdash/secrets.env`. Wrong or missing looks like an unreachable endpoint, not a permissions error. Unlike host and port, this inherits the Claude-feed value *only when the kvscf endpoint resolves to the same host:port* — sending a password to a Redis that has none configured is an error, not a shrug, so a differing endpoint gets no inherited password. |
+| `KVSCF_REDISCLI_AUTH` | _(claude-feed auth, **same instance only**)_ | The **transport** gate, distinct from `KVSCF_TOKEN`'s application one. **Secret, from `/etc/khomelab/secrets.env`**; needed on both panels since sprint 035 (each board's own 6380 instance has a `requirepass`). The two panels' instances are different services with different passwords, and k-homelab publishes **one key name per secret** (its `bin/check-secrets` refuses one key naming two store entries), so the name is per-host: `KVSCF_REDISCLI_AUTH` on rpidash3, `CLAUDE_REDISCLI_AUTH` on rpidash2 — the latter named for the *instance* (`redis-claude`), not the Claude feed, which reads central. kdeskdash tries them in that order. Wrong or missing looks like an unreachable endpoint, not a permissions error. Unlike host and port, this inherits the Claude-feed value *only when the kvscf endpoint resolves to the same host:port* — sending a password to a Redis that has none configured is an error, not a shrug. |
 | `KDESKDASH_MODES`      | _(unset → all modes)_ | Per-device mode set: `fun:<ids>;ops:<ids>`. See [Per-device mode sets](#per-device-mode-sets). |
 | `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
 | `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
@@ -276,9 +275,9 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_QUICK_PAIRS` | _(unset → previously active mode)_ | Double-tap partner pairs, `"<id>:<id>[,<id>:<id>]"`. Three states: **unset** → the partner is whichever mode was active before this one (a working default, not "off"); **`none`** (or `off`) → the double-tap is inert; **pairs** → the partner is pinned regardless of history. Malformed entries are warned about and skipped, so one typo costs one pair, not the feature. |
 | `KDESKDASH_CARD_REDIS_HOST` | _(telemetry host → `rpi53`)_ | Where this instance publishes its own kpidash **service card** (`kpidash:services:deskdash:<host>`). Write-only — kdeskdash never reads that namespace. Defaults to the telemetry endpoint because the card lives on the same board Redis, so neither device needs a new line. |
 | `KDESKDASH_CARD_REDIS_PORT` | _(telemetry port → `6379`)_ | Falls back independently of the host. |
-| `KDESKDASH_CARD_REDISCLI_AUTH` | _(telemetry auth, **same instance only**)_ | Inherits the telemetry password *only when the card endpoint resolves to the same host:port* — the same rule, and the same reason, as `KDESKDASH_KVSCF_REDISCLI_AUTH`. **Secret**: install via `/etc/kdeskdash/secrets.env`. |
+| `KDESKDASH_CARD_REDISCLI_AUTH` | _(telemetry auth, **same instance only**)_ | A local override, unset on both panels: the card rides the telemetry endpoint and so inherits `REDISCLI_AUTH` with no line anywhere. Inherits *only when the card endpoint resolves to the same host:port* — the same rule, and the same reason, as `KVSCF_REDISCLI_AUTH`. |
 | `KDESKDASH_CARD_NAME`  | `deskdash`           | The card's name segment. Card identity is `(name, host)`, so two panels on two hosts need nothing here; **two instances on one host** would otherwise clobber each other's key and must be given distinct names (`deskdash-left`). |
-| `KVSCF_TOKEN`          | _(unset)_            | Shared secret authenticating the commands `Remote` and `Launcher` send to that device's `kvscf` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → both modes still render but tapping cannot act ("view only"). Per kvscf instance, so each panel gets its own. **Secret** — install via `/etc/kdeskdash/secrets.env`, never a committed host file. |
+| `KVSCF_TOKEN`          | _(unset)_            | Shared secret authenticating the commands `Remote` and `Launcher` send to that device's `kvscf` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → both modes still render but tapping cannot act ("view only"). Per kvscf instance, so each panel gets its own. **Secret** — and the only one still hand-installed to `/etc/kdeskdash/secrets.env`, because the two panels hold different values, neither is in the age store, and who issues it is an open question (korg WI 2479). |
 
 ## Redis (optional)
 
@@ -332,12 +331,15 @@ but only if that file is absent, so hand edits on the panel are never clobbered.
 [deploy/kdeskdash.env.example](deploy/kdeskdash.env.example) stays the
 full-surface reference for every variable in the table above.
 
-**Secrets are a separate file.** The unit reads a second, optional
-`/etc/kdeskdash/secrets.env` after the config file. `KVSCF_TOKEN` and
-`KDESKDASH_TELEMETRY_REDISCLI_AUTH` live there, hand-installed once per device at
-mode 0600 and never committed — see [deploy/hosts/README.md](deploy/hosts/README.md).
-Without it the panel still boots; Remote reports "view only" and Dev shows no
-host data.
+**Passwords come from the fleet, not from here.** The unit reads three env
+files, later winning over earlier: `/etc/khomelab/secrets.env` (k-homelab
+renders it per host from the age store — `REDISCLI_AUTH` and
+`KVSCF_REDISCLI_AUTH`, and this repo neither writes nor holds them), then this
+host's committed config, then `/etc/kdeskdash/secrets.env` for the one
+hand-installed credential left, `KVSCF_TOKEN`. See
+[deploy/hosts/README.md](deploy/hosts/README.md). Every entry is optional, so a
+device missing any of them still boots — Remote reports "view only", Dev shows
+no host data, Claude shows nothing.
 
 `just deploy [host] [version]` stops the service, installs the fetched binary to
 `/usr/local/bin/kdeskdash`, asks it its version to prove the push landed, and

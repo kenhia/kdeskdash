@@ -54,7 +54,9 @@ kdeskdash is a multi-mode, touch-enabled desk dashboard for the Raspberry Pi, bu
 with LVGL v9.2.2. It runs fullscreen on an 11.26" 1920×440 capacitive touch panel. Two
 devices run the same generic-aarch64 build, both as user `ken`: `rpidash2` (Pi 5, dev
 desk) and `rpidash3` (Pi 4, work desk). Per-device config lives in `deploy/hosts/<host>.env`;
-secrets are hand-installed to `/etc/kdeskdash/secrets.env` and never committed. The
+Redis passwords come from `/etc/khomelab/secrets.env`, which k-homelab renders per host
+from the age store (sprint 037) — this repo neither writes nor holds them; `KVSCF_TOKEN` is
+still hand-installed to `/etc/kdeskdash/secrets.env` and never committed. The
 README is the canonical reference for hardware,
 modes, env vars, Redis keys, and the systemd service — read it for anything user-facing.
 This section covers what you need to *develop* here.
@@ -191,11 +193,12 @@ the mode rather than by a module main.c initialises.
    the `requirepass` in a hand-installed `/etc/redis/redis-*-local.conf` that the committed
    conf `include`s, so a missing local file fails to start rather than starting open. So
    both gates are live on both boards, and they fail in opposite ways — a bad
-   `KDESKDASH_KVSCF_REDISCLI_AUTH` looks like an unreachable endpoint, a bad `KVSCF_TOKEN`
+   kvscf Redis password looks like an unreachable endpoint, a bad `KVSCF_TOKEN`
    looks like nothing at all. See `docs/kwork-rpidash3-pairing.md` and
    `deploy/hosts/README.md`. These are the only modes
    that **write/act on another machine**, gated by `KVSCF_TOKEN` (byte-exact, trimmed, never
-   logged; per-kvscf-instance, so it lives in each device's `secrets.env`). PUBLISH rides the
+   logged; per-kvscf-instance, so it stays in each device's hand-installed `secrets.env` —
+   the one credential the fleet file does not carry, pending korg WI 2479). PUBLISH rides the
    ordinary command connection — kdeskdash never SUBSCRIBEs.
 
 5. **Service card** (`src/service_pub.c`, `KDESKDASH_CARD_REDIS_*`) — **write-only**, and the

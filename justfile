@@ -11,10 +11,14 @@ build:
     cmake -B build -DKD_VERSION="$(scripts/version.sh)"
     cmake --build build -j"$(nproc)"
 
-# CI gate: build the host tree and run every unit test
+# Static contract checks on the systemd unit and the secret key names it reads
+unit-lint:
+    scripts/unit-lint.sh
+
+# CI gate: build the host tree, run every unit test, lint the unit
 # --no-tests=error: bare ctest prints "No tests were found!!!" and exits 0, so a
 # refactor that stopped registering tests would leave this gate green.
-check: build
+check: build unit-lint
     ctest --test-dir build --output-on-failure --no-tests=error
 
 # Run one test by name, e.g. `just test golz`
