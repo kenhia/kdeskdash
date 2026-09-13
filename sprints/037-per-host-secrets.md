@@ -194,3 +194,51 @@ probed from the board itself; the code path its key name exercises is covered by
   The unit runs as root. The manifests' "each consumer slice adds its own"
   therefore has no work for this one — and a working service would have been no
   evidence either way.
+
+## Deployed
+
+**`0.27.0-7f67c50`** (squash `7f67c50`, PR #44) published to the package store
+and installed on **both** panels, 2026-09-12. Run from kai, which is the only
+host that can deploy — the Pis are unmanaged and hold no store credentials.
+
+**Unit first, then binary, on each board** — the order this sprint's own hazard
+requires, and the reason `install-service` now warns. Both warnings fired for
+real on the way through, which is the guard working on its author:
+
+```
+deploy.sh: WARNING — this unit is from 0.27.0-7f67c50 but ken@rpidash2 is
+           running 'kdeskdash 0.27.0-3c93d5f-dirty'.
+deploy.sh: WARNING — this unit is from 0.27.0-7f67c50 but ken@rpidash3 is
+           running 'kdeskdash 0.27.0-ece5bc8'.
+```
+
+`install-service` does not restart, so the old binary never ran under the new
+unit on either board; the deploy that followed seconds later is what restarted
+them.
+
+| | rpidash2 | rpidash3 |
+|---|---|---|
+| `--version` | `kdeskdash 0.27.0-7f67c50` | `kdeskdash 0.27.0-7f67c50` |
+| unit | active | active |
+| `EnvironmentFiles` | the three, in order | the three, in order |
+| `KDESKDASH_CONTROL_REDISCLI_AUTH` | absent — no AUTH to the local instance | absent |
+| fleet keys in the process | `REDISCLI_AUTH`, `CLAUDE_REDISCLI_AUTH` | `REDISCLI_AUTH`, `KVSCF_REDISCLI_AUTH` |
+| control round-trip | `claude → palette → claude` | `menu → palette → menu` |
+| service card on central | `ok`, 2 s fresh, `0.27.0-7f67c50` | `ok`, 6 s fresh, `0.27.0-7f67c50` |
+| frame | `deploy-037-rpidash2.png` | `deploy-037-rpidash3.png` |
+
+**Both per-host key shapes are live**, which is the thing only a real deploy
+could show: rpidash2 resolves its 6380 password from `CLAUDE_REDISCLI_AUTH` and
+rpidash3 from `KVSCF_REDISCLI_AUTH`, from one binary with no per-host build.
+
+**The collision test passed on both boards**, live: a remote mode change written
+to each board's own passwordless Redis round-tripped, so the control handle is
+connecting and sending no AUTH — with `REDISCLI_AUTH` set in its environment
+throughout. That is the failure this sprint existed to prevent, verified on the
+released build rather than argued.
+
+rpidash2's frame shows Claude mode rendering live fleet activity, so the central
+credential is authenticating end to end and not merely connecting.
+
+Nothing was left pending: both boards were reachable, and rpidash2 is off the
+`push-dev` build it was carrying for the pre-ship check.
