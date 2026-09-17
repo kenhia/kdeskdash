@@ -226,8 +226,99 @@ install), `klams-sync.json` byte-identical and mtime unmoved.
 **Probed from kai** — the host the publisher runs on and the host the work ran
 on.
 
+## Live acceptance: passed, after the block cleared
+
+The overseer ruled **hold, not ship** — the live criterion is the whole proof
+the publisher works end to end, and shipping without it risked a second sprint
+and a second bundle bump that 067 would have had to re-pin. The proposal was
+parked; the allowlist fix was inserted into the program as kdashdata 013.
+
+kdashdata 013 shipped and `kdash-pub 0.1.0-8d13cce` is deployed on kai, kubs0,
+komarchy and cleo. Re-run on the resumed leg, **from kai** — the host the
+publisher runs on.
+
+### Control first: the namespace, before trusting any negative
+
+The same three calls that were refused before the fix, so the difference is
+measured rather than assumed:
+
+| call | before (`0.1.0-83e5795`) | after (`0.1.0-8d13cce`) |
+|---|---|---|
+| `hset ghcp:session:kai:probe-038 …` | rc 1, off-contract | **rc 0** |
+| `hget … status` | — | **`working`** |
+| `expire … 7200` | rc 1 | **rc 0**, TTL read back as 7190 |
+
+Probe deleted afterwards; TTL `-2` confirmed the delete.
+
+TTL is read with `redis-cli`, because `kdash-pub` has `set/setex/hset/expire/
+del/lpush/ltrim/hget/batch/endpoint` and **no TTL reader** — 013 did not add
+one. The password goes into `REDISCLI_AUTH` in the environment, never onto a
+command line and never printed.
+
+### The acceptance run
+
+Real Copilot session, id pinned with `copilot --session-id "$(uuidgen)"` so the
+key was known before it existed, one 50-second tool call, polled every 5 s.
+
+```
+BEFORE           status=[]            ttl=-2
+t+5s   LIVE      status=working  ts=1789626783 (10 digits)  started_ts=1789626783
+                 host=kai  project=ghcp-accept  cwd=/tmp/ghcp-accept  ttl=7199
+t+10s  LIVE      status=working  ts=1789626788               started_ts=1789626783  ttl=7198
+t+15s…t+55s      status=working  ts=1789626788 (unchanged)   started_ts=1789626783  ttl=7193→7152
+AFTER exit       status=[]  ts=[]     ttl=-2
+```
+
+Every acceptance criterion, and three things the poll shows that a single
+snapshot would not:
+
+- **`ts` is ten digits.** The millisecond trap did not fire in the real path.
+- **`started_ts` never moved** — pinned at the sessionStart payload's own stamp
+  for the whole session while `ts` advanced past it. The out-of-order guarantee
+  holding on live data, not just on fixtures.
+- **`ts` stopped advancing after t+10s and the TTL decayed monotonically
+  7199 → 7152.** That is the 2-minute keepalive throttle working: the first
+  tool call published, and the remaining 50 seconds of that call published
+  nothing. A row that kept re-arming its TTL would have meant the throttle was
+  dead.
+- **`sessionEnd` DELed the key** — gone, TTL `-2`.
+
+### The complete record, verbatim
+
+A second short run, `HGETALL`ed live mid-session (`kdash-pub` cannot do this;
+`redis-cli` can):
+
+```
+host        kai
+project     ghcp-accept
+cwd         /tmp/ghcp-accept
+status      working
+ts          1789626873
+started_ts  1789626868
+```
+
+`type=hash`, `ttl=7195`. **Exactly six fields** — the schema's two required
+plus the four the publisher supplies. No `model`, no `title`, no strays riding
+`additionalProperties`. Published `ts` 1789626873 against a local clock of
+1789626877: four seconds old, which is the last keepalive, and unambiguously
+seconds rather than milliseconds or skew.
+
+**No prompt text anywhere in the record** — checked live, not just in the unit
+test, which matters because both `sessionStart` and `userPromptSubmitted`
+carry the prompt on stdin and this is the R20 rule the `user_named` finding
+above is also about.
+
+After exit: `type=none`, `ttl=-2`, and a full `--scan --pattern 'ghcp:*'` of
+rpi53 returns **nothing** — no leftovers from either run.
+
+### Host left clean
+
+Hand-install removed (`ghcp-pub.sh` copy and the hook file); the installed
+script's md5 was checked against the branch's before the run, so the test
+exercised this branch and not a stale copy. `klams-sync.json` byte-identical
+with its mtime unmoved, as before. korg:2756 owns the real install.
+
 ## Status
 
-Implementation complete and gated; live acceptance blocked on kdashdata.
-Awaiting the overseer's ruling on whether to ship on unit evidence and verify
-live once `kdash-pub` learns the namespace, or hold.
+**Complete.** `just check` green, live acceptance passed end to end on kai
+against rpi53. WI 2753 resolved. Ready to request the ship clearance.
