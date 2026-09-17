@@ -369,6 +369,10 @@ kdeskdash/
 ├── publisher/
 │   ├── claude-pub.sh               # hook/statusline/poll publisher — batches through kdash-pub
 │   ├── tests/batch-shape.sh        #   what it hands kdash-pub, pinned (ctest: test_publisher_batch)
+│   ├── ghcp-pub.sh                 # the same, for GitHub Copilot CLI sessions → ghcp:session:*
+│   ├── ghcp-hooks.json             #   ~/.copilot/hooks/ declaration — a deliverable, not a fragment
+│   ├── tests/ghcp-batch-shape.sh   #   pinned against real captured payloads (ctest: test_publisher_ghcp)
+│   ├── tests/fixtures/ghcp/        #   one hook payload per event, captured verbatim from a live session
 │   ├── settings-fragment.json      # ~/.claude/settings.json hook + statusline config
 │   ├── poll-hidden.vbs             # Windows shim: run `poll` from Task Scheduler windowless
 │   ├── kdeskdash-claude-poll.*     # systemd user unit pair for `poll` on headless hosts
