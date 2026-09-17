@@ -125,9 +125,16 @@ Anything that stays on a panel should be published and deployed.
 
 ## The publisher bundle — a second artifact, on its own clock
 
-The claude-feed publisher (`publisher/claude-pub.sh` + the two poll units) runs
-on *feed hosts* (kai, kubs0, cleo), not on the panels, and k-homelab's recipes
-are what install it there.
+The publishers (`publisher/claude-pub.sh`, `publisher/ghcp-pub.sh`, the two poll
+units and the Copilot hook template) run on *feed hosts* (kai, kubs0, cleo), not
+on the panels, and k-homelab's recipes are what install them there.
+
+**Two publishers, one bundle, one clock** since sprint 038: `ghcp-pub.sh`
+publishes GitHub Copilot CLI sessions to `ghcp:session:*` the way
+`claude-pub.sh` publishes Claude Code sessions to `claude:session:*`. It joined
+this artifact rather than getting one of its own — same feed, same transport,
+same hosts, same recipe — because a second version clock would only make "which
+publisher is on this host" a two-part question.
 
 Since sprint 031 the bundle has a **prerequisite it does not carry**:
 `kdash-pub`, kdashdata's publisher CLI, at `/usr/local/bin/kdash-pub` (or
@@ -140,7 +147,9 @@ no longer be installed by dropping the script alone. **2.1.0** is the CD-7
 close-out — the publisher writes one home instead of two, and its freshness
 guard reads through `kdash-pub hget` instead of a raw socket. Not an install
 change, but it is the version the k-homelab pin must reach for the dual-write
-to actually stop. It used to cross that machine boundary two interim
+to actually stop. **2.2.0** adds the second publisher (`ghcp-pub.sh` + its hook
+template), which *is* an install change — a pin that stays on 2.1.0 installs no
+Copilot publisher at all. It used to cross that machine boundary two interim
 ways — a copy vendored into k-homelab (which went eleven days stale, k-homelab
 #1313) and staging from kai's checkout (staleness traded for a checkout
 dependency). Cross-machine consumption goes through the store, so:
@@ -150,9 +159,17 @@ just publish-publisher      # → artifacts/kdeskdash-publisher/<version>/
 ```
 
 `artifacts/kdeskdash-publisher/<version>/`, flat, plus `SHA256SUMS`:
-`claude-pub.sh`, `kdeskdash-claude-poll.service`, `kdeskdash-claude-poll.timer`,
-and a generated `VERSION` holding the full version string so an installed copy
-can say what it is without the store path that delivered it.
+`claude-pub.sh`, `ghcp-pub.sh`, `ghcp-hooks.json`,
+`kdeskdash-claude-poll.service`, `kdeskdash-claude-poll.timer`, and a generated
+`VERSION` holding the full version string so an installed copy can say what it
+is without the store path that delivered it.
+
+`ghcp-hooks.json` is a **deliverable, not a reference fragment**, and that is
+the one asymmetry between the two publishers: Claude Code hooks are merged into
+a `settings.json` the host already owns (hence `settings-fragment.json`, which
+does *not* ship), while a Copilot hook declaration **is** its own file in
+`~/.copilot/hooks/`. There is nothing to merge it into, so the template has to
+reach the host.
 
 **The version is not the dashboard's.** The publisher changes on its own clock,
 so its version is `<publisher/VERSION>-<short sha of the last commit touching

@@ -346,5 +346,14 @@ if(NOT CMAKE_CROSSCOMPILING)
         add_test(NAME test_publisher_batch
                  COMMAND ${BASH_EXECUTABLE}
                          ${CMAKE_SOURCE_DIR}/publisher/tests/batch-shape.sh)
+
+        # The same, for the Copilot CLI publisher. It drives payloads captured
+        # verbatim from a live Copilot session (publisher/tests/fixtures/ghcp/)
+        # and also checks the shipped hook template's event names, because a
+        # mistyped Copilot event name fires nothing and warns nothing — there
+        # is no other place that drift would show up.
+        add_test(NAME test_publisher_ghcp
+                 COMMAND ${BASH_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/publisher/tests/ghcp-batch-shape.sh)
     endif()
 endif()
