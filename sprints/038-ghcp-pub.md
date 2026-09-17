@@ -322,3 +322,62 @@ with its mtime unmoved, as before. korg:2756 owns the real install.
 
 **Complete.** `just check` green, live acceptance passed end to end on kai
 against rpi53. WI 2753 resolved. Ready to request the ship clearance.
+
+## Deployed
+
+**`kdeskdash-publisher 2.2.0-c94598f`** published to the homelab package store,
+2026-09-17, from merged `main` (squash `c94598f`, PR #45). `latest` moved.
+
+**The step that ran was `just publish-publisher`, not the declared
+`deploy-panels`** — a deliberate divergence from `.sprint-deploy`, and the
+reason is the diff. This sprint touched **no panel source at all**: `git diff
+--name-only main...HEAD -- src lib` is empty. `deploy-panels` publishes the
+*panel* and installs it on both Pis, so running it here would have cut a new
+dashboard release and restarted two boards for a change containing no dashboard
+code. What this sprint changed is the publisher bundle, and that is what was
+published. The ship clearance names the same step.
+
+`.sprint-deploy` cannot express this today, which is filed rather than
+patched — see the follow-up below.
+
+```
+==> publishing kdeskdash-publisher 2.2.0-c94598f to kubsdb
+published artifacts/kdeskdash-publisher/2.2.0-c94598f/claude-pub.sh
+published artifacts/kdeskdash-publisher/2.2.0-c94598f/ghcp-hooks.json
+published artifacts/kdeskdash-publisher/2.2.0-c94598f/ghcp-pub.sh
+published artifacts/kdeskdash-publisher/2.2.0-c94598f/kdeskdash-claude-poll.service
+published artifacts/kdeskdash-publisher/2.2.0-c94598f/kdeskdash-claude-poll.timer
+published artifacts/kdeskdash-publisher/2.2.0-c94598f/VERSION
+latest -> 2.2.0-c94598f
+```
+
+### Verified in the store, by hash
+
+`SHA256SUMS` fetched over the store URL and compared against merged `main`.
+Every payload file matches byte for byte — which is the verification that means
+something for a publish, since the artifact *is* the bytes:
+
+| file | store vs `main` |
+|---|---|
+| `claude-pub.sh` | `2bcfa82…` — match |
+| `ghcp-pub.sh` | `9d32d75…` — match |
+| `ghcp-hooks.json` | `c36bbef…` — match |
+| `kdeskdash-claude-poll.service` | `b547f2b…` — match |
+| `kdeskdash-claude-poll.timer` | `a975069…` — match |
+
+`kpkg list` shows `2.2.0-c94598f` as the newest and as `latest`.
+
+### Nothing reached a host, and that is correct
+
+**Publishing moves nothing on the fleet.** k-homelab pins the version and its
+recipes install it, so no feed host is running the Copilot publisher yet — not
+even kai, whose hand-install was removed after the live acceptance. korg:2756
+(k-homelab 067) is the slice that pins `2.2.0-c94598f` and installs it on kai,
+kubs0 and komarchy; cleo is a hand install.
+
+A pin left on `2.1.0-581799b` installs **no Copilot publisher at all**, which is
+why 2.2.0 is an install-level bump rather than a content-only one.
+
+The panels were not touched and needed nothing: the dashboard binary on both
+boards is still `0.27.0-7f67c50` from sprint 037, correctly, since this sprint
+changed no panel code.
