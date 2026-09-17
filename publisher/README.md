@@ -20,11 +20,17 @@ one-key-many-writers pattern:
 `docs/solutions/best-practices/independent-writers-need-independent-stamps.md`.
 
 Managed Linux hosts don't install from this directory: `just
-publish-publisher` puts a versioned bundle (this script + the two poll units)
-in the homelab package store as `artifacts/kdeskdash-publisher/<version>/`,
-and k-homelab's recipes install from *that* (see `docs/deploying.md`, "The
-publisher bundle"). The manual steps below remain the path for unmanaged
-machines (cleo).
+publish-publisher` puts a versioned bundle (both publishers, the two poll
+units and the Copilot hook template) in the homelab package store as
+`artifacts/kdeskdash-publisher/<version>/`, and k-homelab's recipes install
+from *that* (see `docs/deploying.md`, "The publisher bundle"). The manual
+steps below remain the path for unmanaged machines (cleo).
+
+**Two publishers ship from this directory**, on one version clock. Everything
+above and below is about `claude-pub.sh`, the Claude Code feed. Its sibling
+`ghcp-pub.sh` does the same job for GitHub Copilot CLI sessions and has its
+own section at the end — read it before touching either, because the two
+feeds look identical and the Copilot one can say strictly less.
 
 ## Install (per machine, once)
 
@@ -398,3 +404,162 @@ Every event publishes fire-and-forget (backgrounded send) except `SessionEnd`,
 which sends synchronously and is registered `"async": false`: the CLI process
 is exiting, and a backgrounded DEL loses the race with process-group teardown
 (ghost session row until the TTL). The hook-level 5s timeout bounds the cost.
+
+---
+
+# GitHub Copilot CLI publisher (`ghcp-pub.sh`)
+
+Publishes GitHub Copilot CLI session activity to `ghcp:session:{host}:{sid}`,
+so kxeneon's Agents panel shows Copilot sessions beside Claude ones. Sibling of
+`claude-pub.sh`: same `kdash-pub` transport, same stem
+(`KDASH_CLAUDE_REDIS` carries both `claude:*` and `ghcp:*` by the registry's
+own row), same 2 h TTL, same 2-minute keepalive throttle, same
+fire-and-forget-and-exit-0 posture.
+
+Contract: kdashdata `contracts/schemas/ghcp-session.schema.json` (CD-21). The
+field names are `claude:session`'s on purpose, so every consumer's display
+ladder applies to both families unchanged.
+
+## The event name is an argument
+
+The one shape difference that matters. Claude Code puts `hook_event_name` in
+the payload; **Copilot puts the event name nowhere at all**. The only thing
+that knows which event fired is the hook declaration that invoked the script,
+so it passes the name:
+
+```
+ghcp-pub.sh sessionStart      # stdin = the hook payload
+```
+
+`ghcp-hooks.json` is the shipped template and wires all five. A declaration
+that passed the wrong name would publish one event under another, so the test
+reads the names back out of the template and checks each command passes its
+own.
+
+## What this feed cannot say, and why
+
+Measured on kai against Copilot CLI **1.0.85** (sprint 038), re-confirming
+sprint 012's probe of 1.0.83 — same six events, same order, same units.
+
+The complete user-level hook set is `sessionStart`, `sessionEnd`,
+`userPromptSubmitted`, `preToolUse`, `postToolUse`, `errorOccurred`.
+
+- **No turn-end event.** Nothing fires when the agent finishes replying and
+  hands control back. So this publisher raises `working` and clears the key,
+  and can never emit **`awaiting`**. A Copilot session genuinely waiting on its
+  user keeps saying `working` until the reader's freshness ladder ages it
+  (fresh → idle at 15 min → stale at 40 min). That window is the feed's known
+  blind spot, and it is why the ladder is not optional for this family.
+- **`blocked` has no source either**, and sprint 038 measured the approval path
+  rather than assuming it. A refused tool fires `preToolUse` and then **no
+  `postToolUse` at all** (3 pre / 0 post, measured) — so `preToolUse` fires
+  *before* the permission decision and is the last event before a session sits
+  on an approval dialog. It is equally the event before every auto-approved
+  tool, and carries nothing that separates the two.
+
+  The tempting move is therefore wrong: `claude-pub.sh` can publish `blocked`
+  because `AskUserQuestion` is one specific tool whose whole purpose is to block
+  on the user. Copilot's block is a property of the **permission system**, not
+  of a tool. Emitting `blocked` on `preToolUse` and `working` on `postToolUse`
+  would mark every long-running build as blocked — which is the busiest a
+  session ever is.
+
+- **No model and no title on any event.** Payloads carry `sessionId`,
+  `timestamp` and `cwd`, plus per-event extras (`source`/`initialPrompt` on
+  sessionStart, `toolName`/`toolArgs` on tool events, `toolResult` on
+  postToolUse, `reason` on sessionEnd). The schema marks both fields normally
+  absent and the view falls back to `project`.
+
+  Both values *do* exist on disk — `~/.copilot/session-state/<sid>/events.jsonl`
+  has `selectedModel` in its `session.start` record, and `workspace.yaml` has a
+  `name`. Reading them is deliberately **not** done here. `name` carries a
+  `user_named` flag, and when it is `false` — the default — the "name" is the
+  user's raw initial prompt, so publishing it would put prompt text in Redis
+  and break the rule `claude-pub.sh` keeps (R20). Anyone wiring these later has
+  to gate on `user_named` and should say so where the gate is.
+
+- **A mistyped event name fires nothing and warns nothing.** There is no error,
+  no log line, no startup validation. This is why the template's names are
+  asserted by a test rather than reviewed by eye.
+
+## Milliseconds — the trap on this feed
+
+Copilot's `timestamp` is in **milliseconds** (measured: `1789622590920`).
+Published unconverted it is a stamp about a thousand times further into the
+future than now, and because every reader treats a negative age as clock skew
+and therefore fresh, such a record reads as permanently, convincingly live —
+a session that ended weeks ago still showing green, with nothing anywhere
+reporting an error.
+
+`ts_of()` divides, and it decides by the **schema's own bound** (`1e11` seconds
+is the year 5138; every millisecond stamp after 1973 exceeds it) rather than by
+counting digits, so it stays correct if Copilot ever changes the unit. A stamp
+that is missing or still out of range falls back to the local clock — a worse
+answer than the payload's, and a far better one than a record the schema
+rejects silently.
+
+## `userPromptSubmitted` fires *before* `sessionStart`
+
+Reproducibly, by ~5 ms, in `-p` mode — on both 1.0.83 and 1.0.85. So
+`sessionStart` is **not** "the first write". `started_ts` is therefore taken
+from the sessionStart payload's own stamp and written only by that event;
+`hset` merges fields, so the record converges correctly whichever order the two
+arrive in.
+
+## What it does not write
+
+**No `ghcp:recent`.** The registry keeps that key optional and *unschema'd*.
+A publisher inventing it would be minting a contract this repo does not own, so
+`sessionEnd` is a bare `DEL` and nothing else.
+
+**No `errorOccurred` handling.** It is a real event and deliberately unwired:
+there is no status this feed could honestly publish from it. Silence beats a
+guess.
+
+## Install
+
+Copilot hooks are **user-level JSON files**, one per concern, in
+`~/.copilot/hooks/`. There is no `settings.json` to merge into — which is why
+`ghcp-hooks.json` ships in the bundle as a deliverable rather than as a
+reference fragment. Drop it in as `~/.copilot/hooks/kdeskdash-ghcp.json` and
+fix the paths to the machine's own.
+
+Files in that directory are independent: this one sits beside any others (kai
+has a `klams-sync.json`) and neither knows about the other.
+
+**No comment keys in that file.** `claude-pub.sh`'s `settings-fragment.json`
+carries `"//"` notes because Claude Code tolerates them. Copilot's hook file is
+not known to, and the failure mode here is the bad one — an unparseable hook
+file would disable every hook in it silently, exactly like a mistyped event
+name. Documentation lives in this README instead.
+
+On Windows, name the interpreter explicitly with forward slashes, for the same
+reason as the Claude hook (see "Windows: why the hook command names
+`bash.exe`"); the template's `powershell` variant already does.
+
+Managed hosts get this from k-homelab's `copilot-hooks` recipe (korg WI 2754),
+which installs from the store bundle. cleo installs by hand.
+
+## Smoke test
+
+`kdash-pub` is a publisher: it has `hget` but no `keys` and no `hgetall`, so
+you need the session id rather than a scan. `copilot --session-id <uuid>` sets
+it for a new session, which is what makes this a one-liner:
+
+```bash
+SID=$(uuidgen)
+copilot --session-id "$SID" -p 'run: sleep 40; echo hi' --allow-all-tools &
+
+# While it runs — status is `working`, ts is a TEN-digit number:
+P="kdash-pub --app kdeskdash --stem KDASH_CLAUDE_REDIS"
+$P hget "ghcp:session:$(hostname -s):$SID" status
+$P hget "ghcp:session:$(hostname -s):$SID" ts
+
+wait
+# After it exits — sessionEnd DELs the key, so both print nothing:
+$P hget "ghcp:session:$(hostname -s):$SID" status
+```
+
+**`ts` must be 10 digits.** Thirteen means the millisecond conversion is broken
+and the row will read as live forever. An empty `hget` is an answer, not an
+error — it means the key (or the field) is absent.

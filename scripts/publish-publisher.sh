@@ -29,12 +29,22 @@ cd "$repo"
 
 : "${KDESKDASH_STORE_HOST:?set KDESKDASH_STORE_HOST in .env (the host running kpkg, e.g. kubsdb)}"
 
-# What ships: the script and the two poll units — both halves of what
-# k-homelab consumes, so no recipe is left staging anything from a checkout.
-# publisher/VERSION rides in the tracked set (a base bump must move the sha)
-# but is not shipped as-is; the bundle gets the full version string instead.
+# What ships: both publishers, the two poll units, and the Copilot hook
+# template — everything k-homelab consumes, so no recipe is left staging
+# anything from a checkout. publisher/VERSION rides in the tracked set (a base
+# bump must move the sha) but is not shipped as-is; the bundle gets the full
+# version string instead.
+#
+# ghcp-pub.sh joined the bundle in sprint 038 rather than getting one of its
+# own: it is the same feed on the same transport, installed on the same hosts
+# by the same recipe, and a second version clock would only make "which
+# publisher is on this host" a two-part question. ghcp-hooks.json ships beside
+# it because for Copilot the hook declaration IS the config — there is no
+# settings.json to merge into, so the template is a deliverable, not a doc.
 payload=(
     publisher/claude-pub.sh
+    publisher/ghcp-pub.sh
+    publisher/ghcp-hooks.json
     publisher/kdeskdash-claude-poll.service
     publisher/kdeskdash-claude-poll.timer
 )

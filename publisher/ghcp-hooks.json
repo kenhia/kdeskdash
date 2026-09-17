@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "/home/ken/.copilot/kdeskdash-pub/ghcp-pub.sh sessionStart",
+        "powershell": "& 'C:/PROGRA~1/Git/bin/bash.exe' 'C:/Users/kenhi/.copilot/kdeskdash-pub/ghcp-pub.sh' sessionStart",
+        "timeoutSec": 5
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "/home/ken/.copilot/kdeskdash-pub/ghcp-pub.sh userPromptSubmitted",
+        "powershell": "& 'C:/PROGRA~1/Git/bin/bash.exe' 'C:/Users/kenhi/.copilot/kdeskdash-pub/ghcp-pub.sh' userPromptSubmitted",
+        "timeoutSec": 5
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "/home/ken/.copilot/kdeskdash-pub/ghcp-pub.sh preToolUse",
+        "powershell": "& 'C:/PROGRA~1/Git/bin/bash.exe' 'C:/Users/kenhi/.copilot/kdeskdash-pub/ghcp-pub.sh' preToolUse",
+        "timeoutSec": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "/home/ken/.copilot/kdeskdash-pub/ghcp-pub.sh postToolUse",
+        "powershell": "& 'C:/PROGRA~1/Git/bin/bash.exe' 'C:/Users/kenhi/.copilot/kdeskdash-pub/ghcp-pub.sh' postToolUse",
+        "timeoutSec": 5
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "/home/ken/.copilot/kdeskdash-pub/ghcp-pub.sh sessionEnd",
+        "powershell": "& 'C:/PROGRA~1/Git/bin/bash.exe' 'C:/Users/kenhi/.copilot/kdeskdash-pub/ghcp-pub.sh' sessionEnd",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}
