@@ -129,3 +129,53 @@ worth memorising on its own: **`kvscf feed unavailable` / a dead-looking
 endpoint is what a *wrong or unwanted* password looks like on this panel**,
 because a Redis with none configured answers AUTH with an error rather than
 ignoring it.
+
+## Closed — and the same shape found one field to the right (sprint 040)
+
+The endpoint fallback this note is about is **gone**. korg WI 2305 removed it:
+`KDESKDASH_KVSCF_REDIS_HOST`/`_PORT` now default to `127.0.0.1:6380` — the pin
+both panels had been setting by hand — and inherit nothing from the Claude
+feed. The sameness ended in sprint 031; the fallback outlived it by nine
+sprints, surviving because *every* device had worked around it, which is
+precisely what stops anyone noticing.
+
+Removing it was not the tidy-up it was filed as. Sprint 040 moved rpidash2's
+kvscf endpoint to central, and the fallback's default — "follow the Claude
+feed" — would then have been *accidentally right about the endpoint and wrong
+about everything else*. A dead default you are about to make live is more
+dangerous than one that has been plainly broken for months.
+
+### The second instance: a fallback **list** has a premise too
+
+The same sprint found the shape again one field over, in the code written to
+replace this fallback's auth half. The panel picked its kvscf password by an
+ordered lookup:
+
+```c
+kauth = getenv("KVSCF_REDISCLI_AUTH");        /* rpidash3's instance */
+if (!kauth || !kauth[0])
+    kauth = getenv("CLAUDE_REDISCLI_AUTH");   /* rpidash2's instance */
+```
+
+with a comment saying the order "never fires in practice" because exactly one
+of the two is set on each panel. That was true, and it was a **premise about
+the topology**, not about the code: each panel read its own board's instance,
+so only its own board's key was rendered. Repointing rpidash2 at central made
+both names present at once — `CLAUDE_REDISCLI_AUTH` still rendered because
+`redis-claude` runs until the cleanup slice, `REDISCLI_AUTH` newly needed — and
+the list would have sent the `:6380` password to rpi53. Same symptom as the
+original bug, arrived at from the opposite direction.
+
+The fix is the one the fleet already had a rule for (kxeneon WI 2734): **never
+list two names as fallbacks for one endpoint.** The board names the key it
+reads (`KDESKDASH_KVSCF_REDIS_AUTH_KEY`), and the same shape is used for the
+pairing token (`KDESKDASH_KVSCF_TOKEN_KEY`), where the failure is worse because
+it is silent — a panel holding the other desk's token renders every feed
+normally and does nothing at all on a tap.
+
+**The generalisation worth carrying:** a fallback is a claim about the world,
+and a *list* of fallbacks is a claim that at most one candidate exists. Both
+claims are invisible in the code that relies on them and neither is re-checked
+when the world moves. When you change an endpoint, a host or a file's contents,
+enumerate what now resolves that did not before — the danger is not the setting
+you edited, it is the one that silently started matching.

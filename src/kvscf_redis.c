@@ -14,10 +14,12 @@
 #include "redis_internal.h" /* embeds a redis_client_t by value + touches .ctx */
 #include "telemetry_host.h" /* host token contract (shared choke point) */
 
-#define KV_SCAN_MATCH "kvscf:instances:*"
-#define KV_EDGE_MATCH "kvscf:edge:*"
-#define KV_APPS_MATCH "kvscf:apps:*"
-#define KV_LAUNCHER_MATCH "kvscf:launcher:*"
+/* Key-family PREFIXES, not finished patterns: the trailing segment is either
+ * the configured pair host or `*`, decided per call by kvscf_scan_match. */
+#define KV_INSTANCES_PREFIX "kvscf:instances:"
+#define KV_EDGE_PREFIX      "kvscf:edge:"
+#define KV_APPS_PREFIX      "kvscf:apps:"
+#define KV_LAUNCHER_PREFIX  "kvscf:launcher:"
 #define KV_SCAN_COUNT 64
 #define KV_MAX_HOSTS  8      /* distinct publisher hosts (only cleo today) */
 /* Command payload: token + the largest possible id (a folder URI for a closed
@@ -31,13 +33,31 @@
 static redis_client_t g_kv;
 static bool           g_reachable;
 static char           g_token[KV_TOKEN_MAX];
+static char           g_pair[KV_HOST_MAX];
 
 void kvscf_redis_init(const char *host, int port, const char *auth,
-                      const char *token) {
+                      const char *token, const char *pair_host) {
     redis_client_init(&g_kv, host, port, auth);
     g_reachable = false;
     snprintf(g_token, sizeof(g_token), "%s", token ? token : "");
     kvscf_trim_trailing(g_token); /* byte-exact match — kill any CR/LF/space */
+
+    snprintf(g_pair, sizeof(g_pair), "%s", pair_host ? pair_host : "");
+    kvscf_trim_trailing(g_pair);
+    /* Say out loud which workstation this panel will read and command. On a
+     * shared server that is the whole of the scoping, so it is the line a
+     * cut-over is verified by — and a setting that failed the host contract
+     * has to be visible, because it degrades to the wildcard rather than
+     * stopping the panel. */
+    if (g_pair[0] != '\0' && !kvscf_pair_allows(g_pair, g_pair))
+        fprintf(stderr,
+                "kdeskdash: warning — KDESKDASH_KVSCF_PAIR_HOST \"%s\" is not a "
+                "legal host; reading every publisher on %s:%d\n",
+                g_pair, host ? host : "127.0.0.1", port);
+    else
+        printf("kdeskdash: kvscf pair %s (%s:%d)\n",
+               g_pair[0] != '\0' ? g_pair : "<any publisher>",
+               host ? host : "127.0.0.1", port);
 }
 
 void kvscf_redis_shutdown(void) {
@@ -45,6 +65,7 @@ void kvscf_redis_shutdown(void) {
     g_reachable = false;
     /* Clear the secret from memory on teardown. */
     memset(g_token, 0, sizeof(g_token));
+    memset(g_pair, 0, sizeof(g_pair));
 }
 
 bool kvscf_redis_reachable(void) {
@@ -101,7 +122,10 @@ int kvscf_redis_refresh(kvscf_instance_t *out, int max) {
         return 0;
     }
     char keys[KV_MAX_HOSTS][KV_KEY_MAX];
-    int nkeys = scan_keys(KV_SCAN_MATCH, keys, KV_MAX_HOSTS);
+    char match[KV_KEY_MAX];
+    if (kvscf_scan_match(KV_INSTANCES_PREFIX, g_pair, match, sizeof match) == 0)
+        return 0;
+    int nkeys = scan_keys(match, keys, KV_MAX_HOSTS);
     if (nkeys < 0)
         return 0;
 
@@ -129,7 +153,10 @@ int kvscf_redis_refresh_edge(kvscf_edge_t *out, int max) {
         return 0;
     }
     char keys[KV_MAX_HOSTS][KV_KEY_MAX];
-    int nkeys = scan_keys(KV_EDGE_MATCH, keys, KV_MAX_HOSTS);
+    char match[KV_KEY_MAX];
+    if (kvscf_scan_match(KV_EDGE_PREFIX, g_pair, match, sizeof match) == 0)
+        return 0;
+    int nkeys = scan_keys(match, keys, KV_MAX_HOSTS);
     if (nkeys < 0)
         return 0;
 
@@ -157,7 +184,10 @@ int kvscf_redis_refresh_apps(kvscf_appitem_t *out, int max) {
         return 0;
     }
     char keys[KV_MAX_HOSTS][KV_KEY_MAX];
-    int nkeys = scan_keys(KV_APPS_MATCH, keys, KV_MAX_HOSTS);
+    char match[KV_KEY_MAX];
+    if (kvscf_scan_match(KV_APPS_PREFIX, g_pair, match, sizeof match) == 0)
+        return 0;
+    int nkeys = scan_keys(match, keys, KV_MAX_HOSTS);
     if (nkeys < 0)
         return 0;
 
@@ -189,7 +219,10 @@ bool kvscf_redis_refresh_launcher(kvscf_launcher_t *out) {
         return false;
     }
     char keys[KV_MAX_HOSTS][KV_KEY_MAX];
-    int nkeys = scan_keys(KV_LAUNCHER_MATCH, keys, KV_MAX_HOSTS);
+    char match[KV_KEY_MAX];
+    if (kvscf_scan_match(KV_LAUNCHER_PREFIX, g_pair, match, sizeof match) == 0)
+        return false;
+    int nkeys = scan_keys(match, keys, KV_MAX_HOSTS);
     if (nkeys <= 0)
         return false;
     /* One panel is paired with one publishing host, but SCAN order is not
@@ -217,6 +250,13 @@ bool kvscf_redis_refresh_launcher(kvscf_launcher_t *out) {
 /* Publish a focus command with the given RESP-safe JSON `payload` to
  * kvscf:focus:<host>. Shared by the id-based focus and the key-based launch. */
 static bool publish_focus(const char *host, const char *payload) {
+    /* The write half of CD-8's pair scoping. The payload carries the pairing
+     * token, so publishing to a host that is not this panel's pair hands the
+     * token to a machine it does not belong to — on a shared server, reachable
+     * by a record this panel merely happened to read. Unpaired (rpidash3, a
+     * private instance) keeps the pre-fold behaviour. */
+    if (!kvscf_pair_allows(g_pair, host))
+        return false;
     if (!redis_client_ensure(&g_kv)) {
         g_reachable = false;
         return false;

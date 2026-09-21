@@ -553,6 +553,101 @@ static void test_label_filter(void) {
     check_str(out, "", "NULL in empties out");
 }
 
+/* ---- Pair-host scoping (CD-8) ---------------------------------------------
+ *
+ * Until the fold, every panel read a kvscf instance that only ONE workstation
+ * wrote to, so `kvscf:instances:*` was self-scoping and the wildcard was
+ * honest. On central it is not: the host segment is the only scoping left, so
+ * the pair becomes configuration. These pin both halves — the pattern the SCAN
+ * asks for, and the host a focus command is allowed to reach. */
+
+static void test_scan_match_wildcard_when_unpaired(void) {
+    char out[96];
+    size_t n = kvscf_scan_match("kvscf:instances:", NULL, out, sizeof out);
+    check((long)n, (long)strlen("kvscf:instances:*"), "unpaired match length");
+    if (strcmp(out, "kvscf:instances:*") != 0) {
+        fprintf(stderr, "FAIL unpaired match: got %s\n", out);
+        failures++;
+    }
+    /* Empty is the same as unset — an env var set to "" is not a pairing. */
+    n = kvscf_scan_match("kvscf:launcher:", "", out, sizeof out);
+    check((long)n, (long)strlen("kvscf:launcher:*"), "empty pair match length");
+    if (strcmp(out, "kvscf:launcher:*") != 0) {
+        fprintf(stderr, "FAIL empty pair match: got %s\n", out);
+        failures++;
+    }
+    printf("ok  no pair configured -> the wildcard, exactly as before\n");
+}
+
+static void test_scan_match_exact_when_paired(void) {
+    char out[96];
+    size_t n = kvscf_scan_match("kvscf:instances:", "cleo", out, sizeof out);
+    check((long)n, (long)strlen("kvscf:instances:cleo"), "paired match length");
+    if (strcmp(out, "kvscf:instances:cleo") != 0) {
+        fprintf(stderr, "FAIL paired match: got %s\n", out);
+        failures++;
+    }
+    printf("ok  a configured pair -> an exact key, no wildcard on central\n");
+}
+
+/* A malformed pair host must never become a literal SCAN pattern: "cle*o" or a
+ * host carrying a glob would widen the read rather than narrow it, which is the
+ * opposite of what the config is for. It degrades to the wildcard it would have
+ * used anyway, and kvscf_redis warns — the config is wrong, not the panel. */
+static void test_scan_match_rejects_a_bad_pair_host(void) {
+    char out[96];
+    /* Only what the shared host-token contract actually refuses: glob
+     * characters, the key separator, whitespace, and oversize. ".." and "-"
+     * are legal host tokens there and stay legal here — narrowing the charset
+     * for this one caller would fork a contract that exists to be one. */
+    char toolong[KV_HOST_MAX + 8];
+    memset(toolong, 'a', sizeof toolong - 1);
+    toolong[sizeof toolong - 1] = '\0';
+    const char *bad[] = {"cle*o", "cleo:extra", "a b", "cleo?", "", toolong};
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        size_t n = kvscf_scan_match("kvscf:apps:", bad[i], out, sizeof out);
+        if (strcmp(out, "kvscf:apps:*") != 0 || n != strlen("kvscf:apps:*")) {
+            fprintf(stderr, "FAIL bad pair %s: got %s\n", bad[i], out);
+            failures++;
+        }
+    }
+    printf("ok  a malformed pair host degrades to the wildcard, never a glob\n");
+}
+
+/* out too small: write nothing rather than a truncated pattern. A truncated
+ * "kvscf:instances:cle" matches no key at all and reads as an empty feed. */
+static void test_scan_match_refuses_to_truncate(void) {
+    char out[8];
+    memcpy(out, "SENTINEL", 8);
+    size_t n = kvscf_scan_match("kvscf:instances:", "cleo", out, sizeof out);
+    check((long)n, 0, "truncation returns 0");
+    if (memcmp(out, "SENTINEL", 8) != 0) {
+        fprintf(stderr, "FAIL truncation touched out\n");
+        failures++;
+    }
+    printf("ok  a pattern that would not fit writes nothing\n");
+}
+
+/* The write half. A focus command carries the pairing token, so publishing to
+ * the wrong host's channel hands it to a machine that is not this panel's
+ * pair. With no pair configured the old behaviour stands. */
+static void test_pair_allows(void) {
+    check(kvscf_pair_allows("cleo", "cleo"), 1, "pair allows its own host");
+    check(kvscf_pair_allows("cleo", "kwork"), 0, "pair refuses another host");
+    check(kvscf_pair_allows("cleo", "CLEO"), 0, "pair match is case-exact");
+    check(kvscf_pair_allows(NULL, "kwork"), 1, "unpaired allows any valid host");
+    check(kvscf_pair_allows("", "kwork"), 1, "empty pair allows any valid host");
+    /* An invalid host is refused whether or not a pair is configured — the
+     * host token contract is the choke point either way. */
+    check(kvscf_pair_allows(NULL, "bad host"), 0, "unpaired still validates");
+    check(kvscf_pair_allows(NULL, ""), 0, "unpaired refuses an empty host");
+    check(kvscf_pair_allows("cleo", NULL), 0, "NULL host is never allowed");
+    /* A malformed pair does not lock the panel out: it degrades to unpaired,
+     * matching the read half, so one typo cannot silently kill every tap. */
+    check(kvscf_pair_allows("cle*o", "cleo"), 1, "a bad pair degrades to open");
+    printf("ok  focus is published only to the configured pair host\n");
+}
+
 int main(void) {
     test_parse();
     test_display_host();
@@ -581,6 +676,11 @@ int main(void) {
     test_press_payload();
     test_button_rgb();
     test_label_filter();
+    test_scan_match_wildcard_when_unpaired();
+    test_scan_match_exact_when_paired();
+    test_scan_match_rejects_a_bad_pair_host();
+    test_scan_match_refuses_to_truncate();
+    test_pair_allows();
 
     if (failures) {
         fprintf(stderr, "%d test(s) failed\n", failures);

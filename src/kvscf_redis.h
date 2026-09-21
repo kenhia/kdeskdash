@@ -16,11 +16,17 @@
 #include "kvscf_feed.h"
 
 /* Initialise the handle (lazy — no connection). host NULL/empty -> "127.0.0.1";
- * port <= 0 -> 6380; auth NULL -> no AUTH. `token` is the shared secret used to
- * authenticate focus commands; it is copied and trailing whitespace/CR/LF is
- * trimmed (byte-exact match). NULL/empty token disables focusing. */
+ * port <= 0 -> 6380; auth NULL -> no AUTH. `token` is the pairing secret used
+ * to authenticate focus commands; it is copied and trailing whitespace/CR/LF is
+ * trimmed (byte-exact match). NULL/empty token disables focusing.
+ *
+ * `pair_host` is the one workstation this panel reads and commands (CD-8). It
+ * narrows every SCAN to that host's key and refuses to publish anywhere else.
+ * NULL/empty — or a host failing the host-token contract, which is warned about
+ * — keeps the pre-fold wildcard, still correct for a panel on a private
+ * instance only its own pair writes to. */
 void kvscf_redis_init(const char *host, int port, const char *auth,
-                      const char *token);
+                      const char *token, const char *pair_host);
 
 /* Close the handle and clear state. Safe when never connected. */
 void kvscf_redis_shutdown(void);

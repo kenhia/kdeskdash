@@ -55,20 +55,24 @@ cross-compile approach and adding touch input.
   runtime via LVGL's TinyTTF over the vendored `SymbolsNerdFont-Regular.ttf` — no static
   font bake. See [sprints/009-icons-nerdfont-browser](sprints/009-icons-nerdfont-browser/requirements.md).
 - **Remote** — the fleet's live editor/browser windows + configured apps (published by
-  [`kvscf`](https://github.com/kenhia/kvscf) on `cleo`) in a 4×7 grid. A left **app rail**
+  whichever deck runs on the paired workstation — [`kctrldeck`](https://github.com/kenhia/kctrldeck)
+  on `cleo`, [`kvscf`](https://github.com/kenhia/kvscf) on `kwork` until Ken replaces it;
+  the `kvscf:` key namespace is the contract's, and kctrldeck kept it deliberately)
+  in a 4×7 grid. A left **app rail**
   switches the view between **VS Code / Insiders** (`kvscf:instances:*`; open windows first
   with a ★ on favorites, then closed favorites dimmed with ○), **Microsoft Edge**
   (`kvscf:edge:*`, named windows first in teal, then unnamed with a tab count), and **Apps**
   (`kvscf:apps:*`, non-running apps greyed). **Tapping brings a window to the foreground on its
   host — or launches it** (a closed Code favorite relaunches the editor; a stopped app starts)
   — the dashboard's first *control-plane* mode, not just a view. Publishes to `kvscf:focus:<host>`
-  on its own endpoint (`KDESKDASH_KVSCF_REDIS_*` — each panel pins its own board's
-  authenticated 6380 instance; the Claude-feed fallback is legacy, CD-8); commands
-  (`{id}` for windows, `{app}` for apps) are authenticated with a per-instance
-  `KVSCF_TOKEN`. See
+  on its own endpoint (`KDESKDASH_KVSCF_REDIS_*`, defaulting to this board's own
+  `127.0.0.1:6380` — there is no Claude-feed fallback since sprint 040); commands
+  (`{id}` for windows, `{app}` for apps) are authenticated with a per-pair token,
+  and the panel reads and commands only the workstation named by
+  `KDESKDASH_KVSCF_PAIR_HOST`. See
   [sprints/011-remote-foreground-mode](sprints/011-remote-foreground-mode/requirements.md).
-- **Launcher** — the Stream Deck replacement: a touch grid of buttons published by
-  [`kvscf`](https://github.com/kenhia/kvscf) on `kvscf:launcher:<host>`, with a local + UTC
+- **Launcher** — the Stream Deck replacement: a touch grid of buttons published by that
+  same per-host deck on `kvscf:launcher:<host>`, with a local + UTC
   clock beside it. **Tapping a button opens its URL in the Edge window that button
   prefers** — the part a Stream Deck cannot do — by publishing `{button:<key>}` to
   `kvscf:focus:<host>`, the same authenticated channel Remote uses. The grid is 70% of the
@@ -270,9 +274,11 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `REDISCLI_AUTH`        | _(unset)_            | The **central rpi53 password**, and the one credential four handles share: telemetry, the Claude feed, the service card, and the command feed. **Secret, and not this repo's to install** — k-homelab renders it into `/etc/khomelab/secrets.env` on every host from the age store, and the unit reads it there. One name, one secret, fleet-wide (sprint 037). |
 | `KDESKDASH_CLAUDE_REDIS_HOST` | `127.0.0.1`   | Claude-feed Redis host (agent activity + usage limits). Used by `claude` mode. The compiled-in default is a leftover from when the feed was loopback-local on rpidash2; the feed lives on the central Redis now (kdashdata CD-7) and both shipped panels set `rpi53` explicitly — see sprint 031. |
 | `KDESKDASH_CLAUDE_REDIS_PORT` | `6380`        | Claude-feed Redis port (both panels set `6379`) |
-| `KDESKDASH_KVSCF_REDIS_HOST` | _(claude-feed host)_ | kvscf instance the `Remote` and `Launcher` modes read and publish to. The fallback is legacy: kvscf stays with its workstation pair while the Claude feed has moved to central, so **both** panels now pin these explicitly (rpidash2 → its own `127.0.0.1:6380`, rpidash3 → its own second instance that kwork publishes to). Leaving them unset drags kvscf to central, which is the one thing the pin exists to prevent. |
-| `KDESKDASH_KVSCF_REDIS_PORT` | _(claude-feed port)_ | As above. Host and port fall back independently — set only the host and you inherit the Claude-feed port. |
-| `KVSCF_REDISCLI_AUTH` | _(claude-feed auth, **same instance only**)_ | The **transport** gate, distinct from `KVSCF_TOKEN`'s application one. **Secret, from `/etc/khomelab/secrets.env`**; needed on both panels since sprint 035 (each board's own 6380 instance has a `requirepass`). The two panels' instances are different services with different passwords, and k-homelab publishes **one key name per secret** (its `bin/check-secrets` refuses one key naming two store entries), so the name is per-host: `KVSCF_REDISCLI_AUTH` on rpidash3, `CLAUDE_REDISCLI_AUTH` on rpidash2 — the latter named for the *instance* (`redis-claude`), not the Claude feed, which reads central. kdeskdash tries them in that order. Wrong or missing looks like an unreachable endpoint, not a permissions error. Unlike host and port, this inherits the Claude-feed value *only when the kvscf endpoint resolves to the same host:port* — sending a password to a Redis that has none configured is an error, not a shrug. |
+| `KDESKDASH_KVSCF_REDIS_HOST` | `127.0.0.1` | kvscf instance the `Remote` and `Launcher` modes read and publish to. **Its own default since sprint 040** (korg WI 2305): it used to fall back to the Claude-feed host, which stopped being the same place in sprint 031 and so pointed at a server with no kvscf on it. rpidash3 pins its own `127.0.0.1:6380`; rpidash2 points at central (`rpi53:6379`) now that cleo's deck publishes there. |
+| `KDESKDASH_KVSCF_REDIS_PORT` | `6380` | As above, and independent of the host. |
+| `KDESKDASH_KVSCF_REDIS_AUTH_KEY` | _(unset → legacy lookup)_ | **Which fleet key name holds this board's kvscf password.** Set it to `REDISCLI_AUTH` when the endpoint is central, `CLAUDE_REDISCLI_AUTH` on rpidash2's own 6380, `KVSCF_REDISCLI_AUTH` on rpidash3's. Naming it matters once the endpoint can be central: both published names are then in the panel's environment and they are **different secrets**, so the legacy ordered lookup picks the board-local password and AUTH fails — which shows up as "the endpoint is down", not as a permissions error. Unset keeps that ordered lookup, correct for a panel on its own board's instance. |
+| `KDESKDASH_KVSCF_PAIR_HOST` | _(unset → any publisher)_ | The one workstation this panel reads (`kvscf:*:<host>`) and will send a command to. Unset keeps the pre-fold wildcard, still right for a private instance only one workstation writes to (rpidash3). **On a shared server this is the only scoping there is** (kdashdata CD-8), so rpidash2 sets `cleo`. A value that is not a legal host token warns and degrades to the wildcard rather than stopping the panel. |
+| `KVSCF_REDISCLI_AUTH` | _(claude-feed auth, **same instance only**)_ | The **transport** gate, distinct from `KVSCF_TOKEN`'s application one. **Secret, from `/etc/khomelab/secrets.env`**; needed on both panels since sprint 035 (each board's own 6380 instance has a `requirepass`). The two panels' instances are different services with different passwords, and k-homelab publishes **one key name per secret** (its `bin/check-secrets` refuses one key naming two store entries), so the name is per-host: `KVSCF_REDISCLI_AUTH` on rpidash3, `CLAUDE_REDISCLI_AUTH` on rpidash2 — the latter named for the *instance* (`redis-claude`), not the Claude feed, which reads central. kdeskdash tries them in that order. Wrong or missing looks like an unreachable endpoint, not a permissions error. Since sprint 040 it inherits nothing from the Claude feed at all, and the preferred spelling is to name the key in `KDESKDASH_KVSCF_REDIS_AUTH_KEY` rather than rely on this two-name order. |
 | `KDESKDASH_MODES`      | _(unset → all modes)_ | Per-device mode set: `fun:<ids>;ops:<ids>`. See [Per-device mode sets](#per-device-mode-sets). |
 | `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
 | `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
@@ -282,7 +288,8 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_CARD_REDIS_PORT` | _(telemetry port → `6379`)_ | Falls back independently of the host. |
 | `KDESKDASH_CARD_REDISCLI_AUTH` | _(telemetry auth, **same instance only**)_ | A local override, unset on both panels: the card rides the telemetry endpoint and so inherits `REDISCLI_AUTH` with no line anywhere. Inherits *only when the card endpoint resolves to the same host:port* — the same rule, and the same reason, as `KVSCF_REDISCLI_AUTH`. |
 | `KDESKDASH_CARD_NAME`  | `deskdash`           | The card's name segment. Card identity is `(name, host)`, so two panels on two hosts need nothing here; **two instances on one host** would otherwise clobber each other's key and must be given distinct names (`deskdash-left`). |
-| `KVSCF_TOKEN`          | _(unset)_            | Shared secret authenticating the commands `Remote` and `Launcher` send to that device's `kvscf` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → both modes still render but tapping cannot act ("view only"). Per kvscf instance, so each panel gets its own. **Secret** — and the only one still hand-installed to `/etc/kdeskdash/secrets.env`, because the two panels hold different values, neither is in the age store, and who issues it is an open question (korg WI 2479). |
+| `KDESKDASH_KVSCF_TOKEN_KEY` | _(unset)_ | **Which fleet key name holds this pair's token.** `KCTRLDECK_TOKEN_CLEO_PAIR` on rpidash2, `KCTRLDECK_TOKEN_KWORK_PAIR` on rpidash3 — one name per *pair*, because the two desks hold different values and k-homelab's `bin/check-secrets` refuses one key name meaning two store entries. There is deliberately no shared name and no list spanning both desks: the failure a swap causes is silent, taps simply stop working. |
+| `KVSCF_TOKEN`          | _(unset)_            | The **deprecated** last rung for the above: the hand-installed `/etc/kdeskdash/secrets.env` each board still carries. Same secret, older home — k-homelab sprint 069 put both desks' tokens in the age store, and the file is deleted per board once the named read is proven there. Must byte-match the deck's copy (format `kvscf-<64hex>`); unset with nothing named → both modes still render but tapping cannot act ("view only"). **Secret.** |
 
 ## Remote control (from central)
 
@@ -379,10 +386,12 @@ full-surface reference for every variable in the table above.
 
 **Passwords come from the fleet, not from here.** The unit reads three env
 files, later winning over earlier: `/etc/khomelab/secrets.env` (k-homelab
-renders it per host from the age store — `REDISCLI_AUTH` and
-`KVSCF_REDISCLI_AUTH`, and this repo neither writes nor holds them), then this
-host's committed config, then `/etc/kdeskdash/secrets.env` for the one
-hand-installed credential left, `KVSCF_TOKEN`. See
+renders it per host from the age store — `REDISCLI_AUTH`, the board's own
+kvscf-instance password, and since k-homelab sprint 069 that desk's pairing
+token as `KCTRLDECK_TOKEN_<DESK>_PAIR`; this repo neither writes nor holds any
+of them), then this host's committed config, then `/etc/kdeskdash/secrets.env`
+for the legacy hand-installed `KVSCF_TOKEN` — the same pairing secret in its
+older home, kept only until the fleet-file read is proven on that board. See
 [deploy/hosts/README.md](deploy/hosts/README.md). Every entry is optional, so a
 device missing any of them still boots — Remote reports "view only", Dev shows
 no host data, Claude shows nothing.

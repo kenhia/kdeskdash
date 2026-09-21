@@ -198,14 +198,20 @@ int main(int argc, char **argv) {
      */
 
     /* kvscf feed (foreground + launcher modes — one handle, two readers): its
-     * own endpoint. The claude-feed fallback is legacy (CD-8): both panels pin
-     * their own board's authenticated 6380 instance while the claude feed lives
-     * on rpi53, so the fallback no longer resolves anywhere useful. Own handle
-     * either way, for failure isolation. The token comes from KVSCF_TOKEN (empty -> the
-     * modes render read-only and refuse to send commands). */
+     * own endpoint, its own password and its own pairing token, none of them
+     * inherited from another feed any more (korg WI 2305). Own handle either
+     * way, for failure isolation.
+     *
+     * `kvscf_pair_host` is what makes this safe on a SHARED server: until the
+     * fold the endpoint itself scoped the panel to one workstation, because
+     * only that workstation wrote to it. Reading kvscf from central removes
+     * that, so the pair is stated rather than discovered (CD-8). An empty
+     * token leaves both modes read-only rather than sending unauthenticated
+     * commands. */
     if (modeset_enabled(&modes, "foreground") || modeset_enabled(&modes, "launcher"))
         kvscf_redis_init(cfg.kvscf_redis_host, cfg.kvscf_redis_port,
-                         cfg.kvscf_redis_auth, cfg.kvscf_token);
+                         cfg.kvscf_redis_auth, cfg.kvscf_token,
+                         cfg.kvscf_pair_host);
 
     /* The kpidash service card: this instance's own liveness, write-only, on
      * its own handle. Deliberately NOT mode-gated — "this panel is alive" is

@@ -77,6 +77,43 @@ typedef struct {
  * this — the secret can originate CRLF on Windows). Returns the new length. */
 size_t kvscf_trim_trailing(char *s);
 
+/* ---- Pair-host scoping (CD-8) ---------------------------------------------
+ *
+ * A panel talks to exactly one workstation. That used to be enforced by the
+ * topology — each panel read a Redis instance only its own pair wrote to — so
+ * `kvscf:instances:*` could not match anyone else and the wildcard was honest.
+ * Folding the dev pair onto central removes that guarantee: the host segment is
+ * the only scoping left, so the pair becomes configuration
+ * (KDESKDASH_KVSCF_PAIR_HOST). Both halves matter — which keys are read, and
+ * which host may be sent a command carrying the pairing token. */
+
+/**
+ * Build the SCAN match pattern for a kvscf key family.
+ *
+ * `prefix` is the family prefix including its trailing colon, e.g.
+ * "kvscf:instances:". A contract-valid `pair_host` yields an exact key
+ * ("kvscf:instances:cleo"); NULL, empty, or a host failing the host-token
+ * contract yields the wildcard ("kvscf:instances:*") — the pre-fold behaviour,
+ * so a malformed setting degrades rather than inventing a glob from user text.
+ *
+ * Returns the length written. Returns 0 and leaves `out` untouched if the
+ * pattern would not fit: a truncated pattern matches nothing and would read as
+ * an empty feed rather than as the configuration error it is.
+ */
+size_t kvscf_scan_match(const char *prefix, const char *pair_host, char *out,
+                        size_t cap);
+
+/**
+ * Whether a focus/launch/press command may be published to `host`.
+ *
+ * `host` must always satisfy the host-token contract. When `pair_host` names a
+ * valid host it is additionally the only host this panel will command, so a
+ * stray record on a shared server cannot be handed this panel's token. An
+ * absent or malformed `pair_host` allows any valid host — one typo dims a feed,
+ * it does not silently disable every tap.
+ */
+bool kvscf_pair_allows(const char *pair_host, const char *host);
+
 /* Parse one host's `{host,instances:[…]}` JSON String, appending each valid
  * instance to `arr` (already holding `count`, capacity `max`). Tolerates null
  * `active_file`/`remote_host`, missing optional fields, and skips malformed
