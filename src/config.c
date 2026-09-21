@@ -94,63 +94,62 @@ void config_load(kdeskdash_config_t *cfg) {
     const char *cauth = getenv("REDISCLI_AUTH");
     cfg->claude_redis_auth = (cauth && cauth[0] != '\0') ? cauth : NULL;
 
-    /* kvscf endpoint (foreground mode). On rpidash2 the kvscf keys live on the
-     * same instance as the claude feed, so unset means "reuse the claude-feed
-     * values" and that device's env needs no change. A second panel reads the
-     * same fleet claude feed but drives a *different* kvscf, which is what this
-     * split exists for. Host and port fall back independently — set only the
-     * host and you inherit the claude port. Auth does NOT; see below. */
-    cfg->kvscf_redis_host =
-        env_or("KDESKDASH_KVSCF_REDIS_HOST", cfg->claude_redis_host);
-    int kport = atoi(env_or("KDESKDASH_KVSCF_REDIS_PORT", "0"));
-    cfg->kvscf_redis_port =
-        (kport > 0 && kport <= 65535) ? kport : cfg->claude_redis_port;
-    /* The auth fallback follows the ENDPOINT, not the variable. Inheriting the
-     * claude password is only ever right when kvscf is the *same instance* —
-     * which is the entire reason the fallback exists. Once the two endpoints
-     * differ, inheriting is actively wrong, and wrong in the way that reads
-     * worst: a Redis with no password configured answers AUTH with an ERROR,
-     * not a shrug, so the handle never connects and the panel reports "kvscf
-     * feed unavailable" as though the endpoint were down.
+    /* kvscf endpoint (foreground + launcher modes). Its OWN endpoint, with its
+     * own defaults — the claude-feed inheritance that used to live here is
+     * gone (korg WI 2305).
      *
-     * Sprint 031 hit exactly that. Repointing the claude feed to central gave
-     * that handle a password for the first time, and rpidash2's kvscf — the
-     * same loopback instance as always, still passwordless — inherited it and
-     * stopped connecting. Pinning host and port was not enough, and no value
-     * of KDESKDASH_KVSCF_REDISCLI_AUTH could say "this one takes none": empty
-     * means unset, which means inherit. */
-    /* This board's own kvscf-feed Redis on 6380, and the one place the fleet's
-     * key names are per-host rather than universal.
+     * It existed because rpidash2 once kept both feeds on one loopback
+     * instance, so "unset" honestly meant "the same place". Sprint 031 moved
+     * the claude feed to central and the sameness ended; from then on an unset
+     * kvscf endpoint followed the claude feed to rpi53 and found no kvscf
+     * there, which is a default that cannot be right on any board. Both panels
+     * had already pinned 127.0.0.1:6380 by hand, so those pins ARE the honest
+     * default and are now compiled in.
+     * See docs/solutions/best-practices/a-fallback-outlives-the-sameness-that-justified-it.md */
+    cfg->kvscf_redis_host = env_or("KDESKDASH_KVSCF_REDIS_HOST", "127.0.0.1");
+    int kport = atoi(env_or("KDESKDASH_KVSCF_REDIS_PORT", "6380"));
+    cfg->kvscf_redis_port = (kport > 0 && kport <= 65535) ? kport : 6380;
+
+    /* Which fleet key holds THIS board's kvscf password — named by the device's
+     * own config, never guessed.
      *
-     * The two panels run different services with different passwords —
-     * rpidash2's `redis-claude` (the name is historical; it has served kvscf
-     * since sprint 031) and rpidash3's `redis-kvscf`. k-homelab's WI 2399 chose
-     * "one key name per SECRET" over "one key name per SLOT", and its
-     * bin/check-secrets actively REFUSES a tree where one key names different
-     * store entries on different hosts. So a single slot name mapped per host
-     * is not available to us, however much tidier it would read: the two
-     * secrets have two published names, and a consumer running on both panels
-     * reads the name its own host declares.
+     * k-homelab's WI 2399 chose "one key name per SECRET", and bin/check-secrets
+     * refuses one name meaning two store entries, so the two desks' passwords
+     * have two published names. Until now this was an ordered lookup over both
+     * (KVSCF_REDISCLI_AUTH then CLAUDE_REDISCLI_AUTH), which worked only
+     * because the endpoint was always the board's own instance.
      *
-     * Hence an ordered lookup over the two published fleet names rather than a
-     * config knob. Exactly one is set on each panel, so the order is a
-     * tie-break that never fires in practice:
+     * The fold breaks that, and measurably: on rpidash2 BOTH names are present
+     * in the panel's environment and they are different secrets —
+     * CLAUDE_REDISCLI_AUTH is redis-claude's (:6380) and must stay until the
+     * k-homelab cleanup retires that server, while REDISCLI_AUTH is central's.
+     * An ordered lookup would send the :6380 password to rpi53, and AUTH with
+     * the wrong password is an ERROR, not a shrug — the handle never opens and
+     * the panel reports "kvscf feed unavailable" as though central were down.
+     * That is sprint 031's failure with a new face, which is precisely why the
+     * fleet rule (kxeneon WI 2734) is to never list two names for one endpoint.
      *
-     *   KVSCF_REDISCLI_AUTH    -> redis-kvscf-auth-rpidash3   (rpidash3)
-     *   CLAUDE_REDISCLI_AUTH   -> redis-claude-auth-rpidash2  (rpidash2)
-     *
-     * The slot name is first because it is the one that describes what the
-     * handle is for. If rpidash2's key is ever renamed to match, the first
-     * lookup simply starts winning and the second becomes dead code. */
-    const char *kauth = getenv("KVSCF_REDISCLI_AUTH");
-    if (!kauth || kauth[0] == '\0')
-        kauth = getenv("CLAUDE_REDISCLI_AUTH");
-    bool same_instance =
-        cfg->kvscf_redis_port == cfg->claude_redis_port &&
-        strcmp(cfg->kvscf_redis_host, cfg->claude_redis_host) == 0;
-    cfg->kvscf_redis_auth = (kauth && kauth[0] != '\0')
-                                ? kauth
-                                : (same_instance ? cfg->claude_redis_auth : NULL);
+     * So the board says which name is its own. The legacy ordered lookup stays
+     * as the unset path so a device whose env file predates this still works —
+     * it is correct for exactly the case it was written for, a panel reading
+     * its own board's instance. */
+    const char *kauth_key = getenv("KDESKDASH_KVSCF_REDIS_AUTH_KEY");
+    const char *kauth;
+    if (kauth_key && kauth_key[0] != '\0') {
+        kauth = getenv(kauth_key);
+    } else {
+        kauth = getenv("KVSCF_REDISCLI_AUTH");   /* redis-kvscf-auth-rpidash3  */
+        if (!kauth || kauth[0] == '\0')
+            kauth = getenv("CLAUDE_REDISCLI_AUTH"); /* redis-claude-auth-rpidash2 */
+    }
+    cfg->kvscf_redis_auth = (kauth && kauth[0] != '\0') ? kauth : NULL;
+
+    /* The one workstation this panel is paired with. Empty/unset keeps the
+     * pre-fold wildcard, which is still right for a panel reading a private
+     * instance only its own pair writes to (rpidash3). On central the host
+     * segment is the only scoping left, so rpidash2 names `cleo` — kdashdata
+     * CD-8's obligation on this slice. kvscf_feed.c owns the semantics. */
+    cfg->kvscf_pair_host = env_or("KDESKDASH_KVSCF_PAIR_HOST", NULL);
 
     /* Icons mode: the runtime Symbols Nerd Font (deployed as a file) and the
      * favourites list it curates. Both default to system paths the deploy sets
@@ -160,10 +159,32 @@ void config_load(kdeskdash_config_t *cfg) {
     cfg->icons_favorites_path =
         env_or("KDESKDASH_ICONS_FAVORITES", "/var/lib/kdeskdash/icon-favorites.txt");
 
-    /* Foreground mode: shared secret authenticating window-focus commands to
-     * kvscf on cleo. Empty when unset (focusing disabled); kvscf_redis trims any
-     * trailing CR/LF before use, since it must byte-match the cleo-side secret. */
-    cfg->kvscf_token = env_or("KVSCF_TOKEN", "");
+    /* The pairing token authenticating focus/launch/press commands to this
+     * panel's workstation. Empty when unset (the modes render read-only and
+     * refuse to send); kvscf_redis trims any trailing CR/LF before use, since
+     * it must byte-match the workstation-side secret.
+     *
+     * Since k-homelab sprint 069 both desks' tokens are age-store entries
+     * rendered into the fleet's per-host /etc/khomelab/secrets.env — under a
+     * name PER PAIR, not one shared name (KCTRLDECK_TOKEN_CLEO_PAIR on
+     * rpidash2, KCTRLDECK_TOKEN_KWORK_PAIR on rpidash3), because the two desks
+     * hold different values and bin/check-secrets refuses one name meaning two
+     * secrets. As with the password, the board names its own key rather than
+     * this reading a list that spans both desks: a fallback across two names
+     * whose values must never be swapped is the failure that shows up as taps
+     * quietly doing nothing.
+     *
+     * KVSCF_TOKEN is the deprecated last rung — the hand-installed
+     * /etc/kdeskdash/secrets.env each board still carries. It is deleted per
+     * board once the named read is proven there, and this rung goes with the
+     * last one. */
+    const char *ktok_key = getenv("KDESKDASH_KVSCF_TOKEN_KEY");
+    const char *ktok = NULL;
+    if (ktok_key && ktok_key[0] != '\0')
+        ktok = getenv(ktok_key);
+    if (!ktok || ktok[0] == '\0')
+        ktok = getenv("KVSCF_TOKEN");
+    cfg->kvscf_token = (ktok && ktok[0] != '\0') ? ktok : "";
 
     /* Per-device mode set. NULL (unset or empty) means the full built-in set —
      * the modeset core owns the grammar and every degradation path. */

@@ -25,12 +25,13 @@ typedef struct {
     const char *claude_redis_host; /* KDESKDASH_CLAUDE_REDIS_HOST — claude-feed instance, default 127.0.0.1 (local on rpidash2) */
     int         claude_redis_port; /* KDESKDASH_CLAUDE_REDIS_PORT — default 6380 */
     const char *claude_redis_auth; /* REDISCLI_AUTH — the same central password as telemetry, on its own connection; NULL when unset (no AUTH) */
-    const char *kvscf_redis_host;  /* KDESKDASH_KVSCF_REDIS_HOST — foreground-mode kvscf; falls back to the claude-feed values */
-    int         kvscf_redis_port;  /* KDESKDASH_KVSCF_REDIS_PORT — falls back to claude_redis_port */
-    const char *kvscf_redis_auth;  /* KVSCF_REDISCLI_AUTH — this board's own 6380 instance; falls back to claude_redis_auth ONLY when the endpoint is the same instance; NULL otherwise */
+    const char *kvscf_redis_host;  /* KDESKDASH_KVSCF_REDIS_HOST — foreground/launcher kvscf endpoint; default 127.0.0.1 (no claude-feed inheritance since WI 2305) */
+    int         kvscf_redis_port;  /* KDESKDASH_KVSCF_REDIS_PORT — default 6380 */
+    const char *kvscf_redis_auth;  /* password for that endpoint, read from the fleet key named by KDESKDASH_KVSCF_REDIS_AUTH_KEY (legacy: KVSCF_REDISCLI_AUTH then CLAUDE_REDISCLI_AUTH); NULL when unset (no AUTH) */
+    const char *kvscf_pair_host;   /* KDESKDASH_KVSCF_PAIR_HOST — the one workstation this panel reads and commands; NULL keeps the pre-fold wildcard (CD-8) */
     const char *icons_ttf_path;    /* KDESKDASH_ICONS_TTF — Symbols Nerd Font read at runtime by the icons mode */
     const char *icons_favorites_path; /* KDESKDASH_ICONS_FAVORITES — icons-mode favourites file (load/save) */
-    const char *kvscf_token;       /* KVSCF_TOKEN — shared secret for foreground-mode focus commands ("" when unset; trimmed at use) */
+    const char *kvscf_token;       /* pairing token for focus/launch/press, read from the fleet key named by KDESKDASH_KVSCF_TOKEN_KEY (deprecated last rung: KVSCF_TOKEN); "" when unset, trimmed at use */
     const char *modes_spec;        /* KDESKDASH_MODES — per-device mode set; NULL when unset (modeset falls back to the full default) */
     const char *card_redis_host;   /* KDESKDASH_CARD_REDIS_HOST — kpidash service-card target; falls back to the telemetry values */
     int         card_redis_port;   /* KDESKDASH_CARD_REDIS_PORT — falls back to telemetry_redis_port */

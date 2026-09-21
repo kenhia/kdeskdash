@@ -1,14 +1,22 @@
 /**
  * @file test_config.c
- * config_load()'s endpoint fallbacks — the kvscf-vs-claude auth rule above all.
+ * config_load()'s endpoint resolution — how the kvscf handle finds its password
+ * above all.
  *
- * The rule is not a nicety. rpidash2 ran one Redis serving both the claude feed
- * and kvscf, so kvscf inheriting the claude endpoint (including its password)
- * was right. Sprint 031 moved the claude feed to the central Redis, which has a
- * password, and kvscf stayed on the local instance, which has none — and a
+ * The history is the design. rpidash2 once ran one Redis serving both the
+ * claude feed and kvscf, so kvscf inheriting the claude endpoint (password and
+ * all) was right. Sprint 031 moved the claude feed to central, which HAS a
+ * password, while kvscf stayed on the local instance, which had none — and a
  * Redis with no password configured answers AUTH with an ERROR, so the
  * inherited password silently broke the handle. Pinning host and port was not
  * enough, because nothing an env file could say meant "this one takes none".
+ *
+ * Sprint 040 removed the inheritance entirely (korg WI 2305) and replaced the
+ * ordered guess over two desks' key names with a name the board states itself.
+ * The fold is what forced it: on rpidash2 BOTH published names are now in the
+ * panel's environment and they are different secrets, so a guess picks the
+ * wrong one and reports it as an endpoint being down. These cases pin the new
+ * rule and keep the old failure it was built from.
  */
 #include "config.h"
 
@@ -40,6 +48,12 @@ static void clear_env(void) {
     unsetenv("KDESKDASH_CMD_REDISCLI_AUTH");
     unsetenv("KDESKDASH_PANEL_HOST");
     unsetenv("KDESKDASH_STATE_FILE");
+    unsetenv("KDESKDASH_KVSCF_REDIS_AUTH_KEY");
+    unsetenv("KDESKDASH_KVSCF_TOKEN_KEY");
+    unsetenv("KDESKDASH_KVSCF_PAIR_HOST");
+    unsetenv("KVSCF_TOKEN");
+    unsetenv("KCTRLDECK_TOKEN_CLEO_PAIR");
+    unsetenv("KCTRLDECK_TOKEN_KWORK_PAIR");
 }
 
 static void load(kdeskdash_config_t *cfg) {
@@ -47,8 +61,28 @@ static void load(kdeskdash_config_t *cfg) {
     config_load(cfg);
 }
 
-/* The historical rpidash2: one instance, both feeds, unset kvscf vars. */
-static void test_same_instance_inherits_everything(void) {
+/* WI 2305. An unset kvscf endpoint is its OWN default — the pin both panels
+ * already carried by hand — and never follows the claude feed. The case that
+ * matters is the claude feed pointing at central with a password: before this,
+ * an unset kvscf silently dialled rpi53 and inherited that password; now it
+ * stays on the board and takes none. */
+static void test_unset_kvscf_endpoint_does_not_follow_claude(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KDESKDASH_CLAUDE_REDIS_HOST", "rpi53", 1);
+    setenv("KDESKDASH_CLAUDE_REDIS_PORT", "6379", 1);
+    setenv("REDISCLI_AUTH", "central-password", 1);
+    load(&cfg);
+    assert(strcmp(cfg.kvscf_redis_host, "127.0.0.1") == 0);
+    assert(cfg.kvscf_redis_port == 6380);
+    assert(cfg.kvscf_redis_auth == NULL);
+    printf("ok  unset kvscf endpoint defaults to 127.0.0.1:6380, not the claude feed\n");
+}
+
+/* The other half of the same removal: even when the claude feed IS the old
+ * loopback instance, kvscf no longer inherits its password. Nothing is shared
+ * by accident of the two happening to match. */
+static void test_no_inheritance_even_when_endpoints_match(void) {
     kdeskdash_config_t cfg;
     clear_env();
     setenv("KDESKDASH_CLAUDE_REDIS_HOST", "127.0.0.1", 1);
@@ -57,8 +91,43 @@ static void test_same_instance_inherits_everything(void) {
     load(&cfg);
     assert(strcmp(cfg.kvscf_redis_host, "127.0.0.1") == 0);
     assert(cfg.kvscf_redis_port == 6380);
-    assert(cfg.kvscf_redis_auth != NULL && strcmp(cfg.kvscf_redis_auth, "secret") == 0);
-    printf("ok  same instance: kvscf inherits host, port and auth\n");
+    assert(cfg.kvscf_redis_auth == NULL);
+    printf("ok  matching endpoints no longer make kvscf inherit a password\n");
+}
+
+/* The fold's own shape, and the bug it would have caused. rpidash2 after the
+ * repoint: kvscf on central, and BOTH published key names present because
+ * redis-claude is still running until the k-homelab cleanup. The board names
+ * REDISCLI_AUTH, so that is what it sends — the ordered guess would have
+ * picked CLAUDE_REDISCLI_AUTH, the :6380 password, and failed AUTH. */
+static void test_named_auth_key_beats_the_ordered_guess(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KDESKDASH_CLAUDE_REDIS_HOST", "rpi53", 1);
+    setenv("KDESKDASH_CLAUDE_REDIS_PORT", "6379", 1);
+    setenv("REDISCLI_AUTH", "central-password", 1);
+    setenv("CLAUDE_REDISCLI_AUTH", "rpidash2-6380-password", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_HOST", "rpi53", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_PORT", "6379", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_AUTH_KEY", "REDISCLI_AUTH", 1);
+    load(&cfg);
+    assert(cfg.kvscf_redis_auth != NULL &&
+           strcmp(cfg.kvscf_redis_auth, "central-password") == 0);
+    printf("ok  the named auth key wins over the legacy ordered lookup\n");
+}
+
+/* A named key that resolves to nothing means no AUTH — not "fall back and
+ * guess". Falling through here is what would resurrect the bug above on a
+ * board whose fleet file has not rendered yet. */
+static void test_named_auth_key_absent_means_no_auth(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("CLAUDE_REDISCLI_AUTH", "rpidash2-6380-password", 1);
+    setenv("KVSCF_REDISCLI_AUTH", "rpidash3-6380-password", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_AUTH_KEY", "NOT_RENDERED_YET", 1);
+    load(&cfg);
+    assert(cfg.kvscf_redis_auth == NULL);
+    printf("ok  a named key that is unset sends no password rather than guessing\n");
 }
 
 /* Sprint 031's rpidash2: claude moved to an authenticated central Redis, kvscf
@@ -75,7 +144,7 @@ static void test_different_endpoint_does_not_inherit_auth(void) {
     assert(strcmp(cfg.kvscf_redis_host, "127.0.0.1") == 0);
     assert(cfg.kvscf_redis_port == 6380);
     assert(cfg.kvscf_redis_auth == NULL);
-    printf("ok  different endpoint: kvscf sends no inherited password\n");
+    printf("ok  an explicitly pinned board-local endpoint sends no password\n");
 }
 
 /* A differing PORT alone is a different instance — rpidash3's shape before it
@@ -109,6 +178,87 @@ static void test_explicit_auth_wins(void) {
     assert(cfg.kvscf_redis_auth != NULL &&
            strcmp(cfg.kvscf_redis_auth, "kvscf-password") == 0);
     printf("ok  an explicit kvscf password wins over both fallbacks\n");
+}
+
+/* The unset path is the legacy ordered lookup, kept so a device whose env file
+ * predates sprint 040 still authenticates. It is correct for exactly the case
+ * it was written for: a panel reading its OWN board's instance, where only one
+ * of the two names is ever present. */
+static void test_legacy_ordered_lookup_still_serves_an_old_env_file(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KDESKDASH_KVSCF_REDIS_HOST", "127.0.0.1", 1);
+    setenv("KDESKDASH_KVSCF_REDIS_PORT", "6380", 1);
+    setenv("CLAUDE_REDISCLI_AUTH", "rpidash2-6380-password", 1);
+    load(&cfg);
+    assert(cfg.kvscf_redis_auth != NULL &&
+           strcmp(cfg.kvscf_redis_auth, "rpidash2-6380-password") == 0);
+    /* and the slot name wins when both are somehow present */
+    setenv("KVSCF_REDISCLI_AUTH", "rpidash3-6380-password", 1);
+    load(&cfg);
+    assert(cfg.kvscf_redis_auth != NULL &&
+           strcmp(cfg.kvscf_redis_auth, "rpidash3-6380-password") == 0);
+    printf("ok  with no key named, the legacy ordered lookup still resolves\n");
+}
+
+/* ---- The pairing token: named per pair, KVSCF_TOKEN as the last rung ------ */
+
+static void test_token_read_from_the_named_pair_key(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KCTRLDECK_TOKEN_CLEO_PAIR", "cleo-pair-token", 1);
+    setenv("KCTRLDECK_TOKEN_KWORK_PAIR", "kwork-pair-token", 1);
+    setenv("KDESKDASH_KVSCF_TOKEN_KEY", "KCTRLDECK_TOKEN_CLEO_PAIR", 1);
+    load(&cfg);
+    assert(strcmp(cfg.kvscf_token, "cleo-pair-token") == 0);
+    /* The same build on the other desk reads the other name — no shared name,
+     * and no list spanning both, which is how a panel would get the other
+     * desk's token and have every tap silently do nothing. */
+    setenv("KDESKDASH_KVSCF_TOKEN_KEY", "KCTRLDECK_TOKEN_KWORK_PAIR", 1);
+    load(&cfg);
+    assert(strcmp(cfg.kvscf_token, "kwork-pair-token") == 0);
+    printf("ok  the token comes from the key this board names, per pair\n");
+}
+
+/* The deprecated rung: a board whose fleet file has no pair key yet still
+ * works off the hand-installed /etc/kdeskdash/secrets.env. */
+static void test_token_falls_back_to_the_legacy_file(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KVSCF_TOKEN", "legacy-token", 1);
+    load(&cfg);
+    assert(strcmp(cfg.kvscf_token, "legacy-token") == 0);
+    /* named but not yet rendered -> still the legacy rung, not empty */
+    setenv("KDESKDASH_KVSCF_TOKEN_KEY", "KCTRLDECK_TOKEN_CLEO_PAIR", 1);
+    load(&cfg);
+    assert(strcmp(cfg.kvscf_token, "legacy-token") == 0);
+    /* once rendered, the named key wins */
+    setenv("KCTRLDECK_TOKEN_CLEO_PAIR", "cleo-pair-token", 1);
+    load(&cfg);
+    assert(strcmp(cfg.kvscf_token, "cleo-pair-token") == 0);
+    printf("ok  KVSCF_TOKEN is the last rung and the named key overtakes it\n");
+}
+
+/* No token anywhere disables commanding rather than sending an empty one. */
+static void test_token_absent_is_empty(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KDESKDASH_KVSCF_TOKEN_KEY", "KCTRLDECK_TOKEN_CLEO_PAIR", 1);
+    load(&cfg);
+    assert(cfg.kvscf_token != NULL && cfg.kvscf_token[0] == '\0');
+    printf("ok  no token anywhere leaves the modes read-only\n");
+}
+
+/* The pair host is plain configuration here; kvscf_feed owns the semantics. */
+static void test_pair_host_passes_through(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    load(&cfg);
+    assert(cfg.kvscf_pair_host == NULL);
+    setenv("KDESKDASH_KVSCF_PAIR_HOST", "cleo", 1);
+    load(&cfg);
+    assert(cfg.kvscf_pair_host != NULL && strcmp(cfg.kvscf_pair_host, "cleo") == 0);
+    printf("ok  the pair host is read and defaults to unset\n");
 }
 
 /* Same instance and neither has a password: nothing is invented. */
@@ -459,7 +609,15 @@ int main(void) {
     test_kvscf_rpidash3_shape();
     test_kvscf_rpidash2_shape();
     test_kvscf_slot_name_wins_over_the_historical_one();
-    test_same_instance_inherits_everything();
+    test_unset_kvscf_endpoint_does_not_follow_claude();
+    test_no_inheritance_even_when_endpoints_match();
+    test_named_auth_key_beats_the_ordered_guess();
+    test_named_auth_key_absent_means_no_auth();
+    test_legacy_ordered_lookup_still_serves_an_old_env_file();
+    test_token_read_from_the_named_pair_key();
+    test_token_falls_back_to_the_legacy_file();
+    test_token_absent_is_empty();
+    test_pair_host_passes_through();
     test_different_endpoint_does_not_inherit_auth();
     test_same_host_different_port_does_not_inherit_auth();
     test_explicit_auth_wins();

@@ -6,13 +6,26 @@ publishing machine is **not part of the homelab**: `kwork` is Ken's day-job
 machine, deliberately off the tailnet, and every decision below follows from
 keeping it that way.
 
-The home-desk pairing is the simple case for comparison — `cleo` publishes to
-the open instance on rpidash2 and rpidash2 reads it over loopback. Read this
-document only for the work desk.
+The home-desk pairing used to be the simple case for comparison — `cleo`
+published to an instance on rpidash2 and rpidash2 read it over loopback. **It is
+no longer a comparison at all.** Sprint 040 folded that pair onto the central
+Redis on rpi53, so `rpidash3:6380` is now the fleet's **only** pair instance and
+everything below describes the only one of its kind.
 
-(That instance was the claude feed's home too, until sprint 031 moved the feed
-to the central Redis and the CD-7 close-out retired the old keys. It serves
-`kvscf:*` alone now. Nothing below changes: the kvscf side was always the reason
+What did *not* change, and is the reason this document still stands on its own:
+the kwork pair stays here, on its own server, with its own password (kdashdata
+CD-8 as amended). kwork is off the tailnet and not part of the homelab, so it
+cannot reach central and must not be made to — the whole point of the split. The
+panel side reflects that: rpidash3 pins `127.0.0.1:6380`, names its own password
+key (`KVSCF_REDISCLI_AUTH`) and its own pairing-token key
+(`KCTRLDECK_TOKEN_KWORK_PAIR`), and never falls through to central, which would
+put the work desk's launcher on the home feed. Sprint 040 removed the
+claude-feed fallback that made such a fall-through possible at all.
+
+(rpidash2's old instance was the claude feed's home too, until sprint 031 moved the feed
+to the central Redis and the CD-7 close-out retired the old keys. It served
+`kvscf:*` alone after that, and nothing after the fold: it is left running but
+unused until the k-homelab cleanup slice retires it. Nothing below changes: the kvscf side was always the reason
 for the split, and pinning it is now enforced by `config.c` rather than by
 remembering.)
 
@@ -60,9 +73,11 @@ exists for exactly this case.
 *Written 2026-08-09, when rpidash2's 6380 instance was open on the trusted home
 LAN. That is no longer so: sprint 035 (korg WI 2216) gave rpidash2's instance
 the same `requirepass` and loopback-plus-LAN bind, after kmon's nightly reported
-it answering unauthenticated across the tailnet. The asymmetry below is history;
-the three reasons still explain why rpidash3 went first, and the bring-up for
-rpidash2's instance is in `deploy/hosts/README.md`.*
+it answering unauthenticated across the tailnet — and sprint 040 retired that
+instance's last consumer, leaving this the only pair instance in the fleet. The
+asymmetry below is history; the three reasons still explain why rpidash3 went
+first, and the bring-up for rpidash2's instance is in
+`deploy/hosts/README.md`.*
 
 This one was different in three ways:
 

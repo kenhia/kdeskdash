@@ -40,6 +40,35 @@ size_t kvscf_trim_trailing(char *s) {
     return n;
 }
 
+/* A pair host is usable only if it satisfies the same host-token contract every
+ * key segment does. Anything else — empty, oversize, or carrying a glob or a
+ * separator — is treated as "no pair configured". */
+static bool pair_is_set(const char *pair_host) {
+    return pair_host && pair_host[0] != '\0' &&
+           telemetry_host_token_ok(pair_host, strlen(pair_host));
+}
+
+size_t kvscf_scan_match(const char *prefix, const char *pair_host, char *out,
+                        size_t cap) {
+    if (!prefix || !out || cap == 0)
+        return 0;
+    const char *seg = pair_is_set(pair_host) ? pair_host : "*";
+    size_t need = strlen(prefix) + strlen(seg);
+    if (need + 1 > cap)
+        return 0; /* never a truncated pattern — it would match nothing */
+    memcpy(out, prefix, strlen(prefix));
+    memcpy(out + strlen(prefix), seg, strlen(seg) + 1);
+    return need;
+}
+
+bool kvscf_pair_allows(const char *pair_host, const char *host) {
+    if (!host || !telemetry_host_token_ok(host, strlen(host)))
+        return false;
+    if (!pair_is_set(pair_host))
+        return true;
+    return strcmp(pair_host, host) == 0;
+}
+
 kv_app_t kvscf_app_from_str(const char *s) {
     if (!s)
         return KV_APP_UNKNOWN;

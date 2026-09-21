@@ -28,7 +28,8 @@ fleet-wide — so nothing about them is set in a committed host file:
 | Key | What it unlocks | Missing ⇒ |
 |---|---|---|
 | `REDISCLI_AUTH` | the **central** rpi53 Redis: Dev-mode telemetry, the Claude feed, and the service card that puts this panel on the kpidash board. Three connections, one secret | Dev shows no host data, Claude mode shows nothing, and the panel goes missing from the board |
-| `KVSCF_REDISCLI_AUTH` *or* `CLAUDE_REDISCLI_AUTH` | this board's **own** 6380 instance — the *transport* gate for Remote and Launcher. Which name, see below | Remote and Launcher never connect: empty list, cached-and-dimmed grid, `kvscf offline` |
+| the board's kvscf password, under the name its own `<host>.env` gives in `KDESKDASH_KVSCF_REDIS_AUTH_KEY` | the endpoint Remote and Launcher read and command — the *transport* gate. Which name, see below | Remote and Launcher never connect: empty list, cached-and-dimmed grid, `kvscf offline` |
+| `KCTRLDECK_TOKEN_<DESK>_PAIR` | Remote and Launcher **taps** — the *application* gate. Named per board in `KDESKDASH_KVSCF_TOKEN_KEY` | list and grid still show, taps do nothing (Remote says "view only") |
 
 ### The one place the key name is per-host
 
@@ -45,12 +46,38 @@ declares the name of the secret it actually holds:
 | rpidash2 | `redis-claude` (the name is historical; it has served kvscf since sprint 031) | `CLAUDE_REDISCLI_AUTH` | `redis-claude-auth-rpidash2` |
 | rpidash3 | `redis-kvscf` | `KVSCF_REDISCLI_AUTH` | `redis-kvscf-auth-rpidash3` |
 
-kdeskdash therefore reads the two published names **in order** —
-`KVSCF_REDISCLI_AUTH`, then `CLAUDE_REDISCLI_AUTH` — rather than carrying a
-per-host build or a config knob. Exactly one is set on each panel, so the order
-is a tie-break that never fires in practice; the slot name is first because it
-describes what the handle is for. If rpidash2's key is ever renamed to match,
-the first lookup starts winning and the second becomes dead code.
+| rpidash2, since sprint 040 | **central** (`rpi53:6379`) — cleo's deck publishes there now | `REDISCLI_AUTH` | the central password |
+
+Each panel therefore **names the key it reads**, in its own
+`deploy/hosts/<host>.env` under `KDESKDASH_KVSCF_REDIS_AUTH_KEY`, rather than
+kdeskdash guessing from a list.
+
+It used to guess: an ordered lookup of `KVSCF_REDISCLI_AUTH`, then
+`CLAUDE_REDISCLI_AUTH`, which was safe only because exactly one of the two was
+ever set on a board. **The fold ended that.** rpidash2 now has
+`CLAUDE_REDISCLI_AUTH` (redis-claude's own :6380 password, still rendered
+because that server runs until the k-homelab cleanup slice retires it) *and*
+`REDISCLI_AUTH` (central's) in the panel's environment at once, and they are
+different secrets — so the guess picks the board-local password, sends it to
+central, and AUTH with a wrong password is an **error**, not a shrug. The handle
+never opens and the panel reports "kvscf feed unavailable" as though central
+were down. That is sprint 031's failure one layer over, and it is the fleet rule
+behind it (kxeneon WI 2734): never list two names as fallbacks for one endpoint.
+
+The ordered lookup remains as the *unset* path so a board whose env file
+predates sprint 040 still authenticates. It is correct for exactly the case it
+was written for — a panel reading its own board's instance.
+
+### The pair, and why it is configuration now
+
+A panel talks to exactly one workstation, and that used to be enforced by the
+topology: each panel read an instance only its own pair wrote to, so
+`kvscf:instances:*` could not match anyone else. Reading kvscf from **central**
+removes that guarantee — the host segment is the only scoping left (kdashdata
+CD-8) — so each `<host>.env` states its pair in `KDESKDASH_KVSCF_PAIR_HOST`
+(`cleo` on rpidash2, `kwork` on rpidash3). It narrows every SCAN to that host's
+key *and* refuses to publish a command anywhere else, which matters because the
+command carries the pairing token.
 
 On rpidash2, note carefully that `CLAUDE_REDISCLI_AUTH` is **not** the Claude
 feed's password. It is named after the *instance*, and the Claude feed has read
@@ -70,18 +97,28 @@ last-mode persistence, GoL injection and the screenshot trigger with it, while
 the panel carried on drawing. `scripts/unit-lint.sh` fails the build if that
 name comes back; `tests/test_config.c` fails if the behaviour does.
 
-## The one hand-installed secret
+## The pairing token, and the file it is leaving
 
-`KVSCF_TOKEN` is still hand-installed, and is the only thing left in
-`/etc/kdeskdash/secrets.env`:
+Both desks' pairing tokens are **age-store entries** since k-homelab sprint 069
+(korg WI 2479), rendered into `/etc/khomelab/secrets.env` like every other
+password — under a name per **pair**, because the two desks hold different
+values and `bin/check-secrets` refuses one key name meaning two store entries:
 
-| Var | What it unlocks | Missing ⇒ |
-|---|---|---|
-| `KVSCF_TOKEN` | Remote and Launcher taps — the *application* gate on focus/launch/press commands | list and grid still show, taps do nothing (Remote says "view only") |
+| pair | store entry | key in the fleet file | named by |
+|---|---|---|---|
+| cleo ↔ rpidash2 | `kctrldeck-token-cleo-pair` | `KCTRLDECK_TOKEN_CLEO_PAIR` | rpidash2's `KDESKDASH_KVSCF_TOKEN_KEY` |
+| kwork ↔ rpidash3 | `kctrldeck-token-kwork-pair` | `KCTRLDECK_TOKEN_KWORK_PAIR` | rpidash3's `KDESKDASH_KVSCF_TOKEN_KEY` |
 
-It is not in the age store and not in the fleet file, because the two panels
-hold **different values** and who issues it is an open question — korg WI 2479,
-awaiting Ken. Until that is answered this file stays, holding this one key.
+There is deliberately **no shared name and no fallback list spanning both**. A
+panel handed the other desk's token renders every feed normally and silently
+does nothing on a tap, so a name that could resolve to either value is the one
+mistake this arrangement exists to make impossible.
+
+`KVSCF_TOKEN` in `/etc/kdeskdash/secrets.env` is the **deprecated last rung** —
+the same secret in its older, hand-installed home, read only when the named key
+resolves to nothing. Delete it on a board once the named read is proven *on that
+board*; it is still in place on rpidash3, whose proof needs Ken at the work
+desk. The legacy install, for reference:
 
 ```bash
 sudo install -d -m755 /etc/kdeskdash
@@ -116,7 +153,20 @@ which holds it as `KVSCF_REDIS_PASSWORD` (cleo / kwork). The work pairing is in
 [docs/kwork-rpidash3-pairing.md](../../docs/kwork-rpidash3-pairing.md); the dev
 desk's instance is below.
 
-## rpidash2's kvscf-feed instance (`redis-claude`)
+## rpidash2's kvscf-feed instance (`redis-claude`) — retired in place
+
+> **Nothing reads or writes this instance as of sprint 040.** The dev pair's
+> channel moved to central: cleo's deck publishes `kvscf:*:cleo` to
+> `rpi53:6379` and rpidash2's panel reads it there. The server is deliberately
+> left **running but unused** — k-homelab's manifest still declares it, so
+> stopping it here would make kmon's nightly report a declared service missing.
+> The k-homelab cleanup slice (korg:2934) retires the unit, the conf, the store
+> entry and the krot row together. `deploy/redis-claude.conf` is kept for the
+> same reason and goes with them.
+>
+> The section below is the history and the runbook that still applies to
+> **rpidash3's** equivalent (`redis-kvscf`), which is unchanged and is now the
+> fleet's only pair instance — see [docs/kwork-rpidash3-pairing.md](../../docs/kwork-rpidash3-pairing.md).
 
 `deploy/redis-claude.conf` + `deploy/redis-claude.service`, hand-installed (there
 is no `just` recipe for the Redis instances — they change once a year). Sprint
@@ -131,13 +181,13 @@ it changes:
 
 | consumer | where the copy lives | restart |
 |---|---|---|
-| cleo's kvscf (publishes `kvscf:*:cleo`, subscribes `kvscf:focus:cleo`, from the LAN) | `HKCU\Software\kenhia\kvscf` → `KVSCF_REDIS_PASSWORD` (registry first, then env / `.env`; kvscf sprint 018) | relaunch `kvscf.exe` in the console session — from ssh, `Start-ScheduledTask -TaskName kvscf-relaunch` (an interactive-logon task with no triggers, left registered for this purpose) |
-| rpidash2's kdeskdash (Launcher + Remote, over loopback) | `/etc/khomelab/secrets.env` → `CLAUDE_REDISCLI_AUTH`, rendered by k-homelab from `redis-claude-auth-rpidash2` | `sudo systemctl restart kdeskdash` |
+| ~~cleo's deck (published `kvscf:*:cleo`, subscribed `kvscf:focus:cleo`, from the LAN)~~ | ~~`HKCU\Software\kenhia\kctrldeck` → `KVSCF_REDIS_PASSWORD`~~ | **moved to central in sprint 040** — relaunch is `Start-ScheduledTask -TaskName kctrldeck-relaunch`, an interactive-logon task with no triggers left registered for this purpose |
+| ~~rpidash2's kdeskdash (Launcher + Remote, over loopback)~~ | ~~`/etc/khomelab/secrets.env` → `CLAUDE_REDISCLI_AUTH`~~ | **moved to central in sprint 040** — the panel now names `REDISCLI_AUTH` |
 
-Nothing else reads it: the `claude:*` publishers and both panels' Claude modes
-moved to rpi53:6379 in sprint 031 (kdashdata CD-7), rpidash3 reads its own
-instance, and kwork publishes to rpidash3 — a kwork that falls back to kvscf's
-compiled-in default (`192.168.1.144:6380`, rpidash2) is now refused here.
+`CLAUDE_REDISCLI_AUTH` is still rendered to rpidash2 and still unlocks this
+server; it is simply no longer reached for, and it is *why* the panel has to
+name its key explicitly now (above). It is retired by the cleanup slice with
+everything else here.
 
 ```bash
 # On rpidash2. The host-local half: this board's LAN address + the password.

@@ -55,8 +55,11 @@ with LVGL v9.2.2. It runs fullscreen on an 11.26" 1920×440 capacitive touch pan
 devices run the same generic-aarch64 build, both as user `ken`: `rpidash2` (Pi 5, dev
 desk) and `rpidash3` (Pi 4, work desk). Per-device config lives in `deploy/hosts/<host>.env`;
 Redis passwords come from `/etc/khomelab/secrets.env`, which k-homelab renders per host
-from the age store (sprint 037) — this repo neither writes nor holds them; `KVSCF_TOKEN` is
-still hand-installed to `/etc/kdeskdash/secrets.env` and never committed. The
+from the age store (sprint 037) — this repo neither writes nor holds them, and since
+k-homelab sprint 069 that file carries each desk's pairing token too
+(`KCTRLDECK_TOKEN_<DESK>_PAIR`). The hand-installed `/etc/kdeskdash/secrets.env`
+`KVSCF_TOKEN` is the deprecated fallback, deleted per board once the fleet-file read is
+proven there, and never committed either way. The
 README is the canonical reference for hardware,
 modes, env vars, Redis keys, and the systemd service — read it for anything user-facing.
 This section covers what you need to *develop* here.
@@ -194,24 +197,51 @@ than by a module main.c initialises, and the command feed since sprint 039.
 4. **kvscf feed** (`src/kvscf_redis.c`) — one handle, **two** readers: the `foreground`
    ("Remote") mode reads `kvscf:instances:*` / `kvscf:edge:*` / `kvscf:apps:*`, and `launcher`
    reads `kvscf:launcher:*`. Both **publish** to `kvscf:focus:<host>` (`{id}`, `{app}` or
-   `{button}` — kvscf's precedence is `button` > `app` > `id`). Its own handle *and* its own
-   endpoint config (`KDESKDASH_KVSCF_REDIS_*`), each field falling back independently to the
-   Claude feed's — a legacy of the days both lived on rpidash2:6380. Today both panels read
-   the Claude feed from rpi53 and pin kvscf to `127.0.0.1:6380`, **their own board's second
-   Redis instance**: rpidash2's `redis-claude` (cleo publishes to it; the name is historical)
-   and rpidash3's `redis-kvscf` (kwork's). Both instances require AUTH and listen on loopback
-   + the LAN address only — rpidash3's since sprint 026, rpidash2's since sprint 035 (korg WI
-   2216 closed the tailnet-reachable unauthenticated listener kmon's nightly reported) — with
-   the `requirepass` in a hand-installed `/etc/redis/redis-*-local.conf` that the committed
-   conf `include`s, so a missing local file fails to start rather than starting open. So
-   both gates are live on both boards, and they fail in opposite ways — a bad
-   kvscf Redis password looks like an unreachable endpoint, a bad `KVSCF_TOKEN`
-   looks like nothing at all. See `docs/kwork-rpidash3-pairing.md` and
-   `deploy/hosts/README.md`. These are the only modes
-   that **write/act on another machine**, gated by `KVSCF_TOKEN` (byte-exact, trimmed, never
-   logged; per-kvscf-instance, so it stays in each device's hand-installed `secrets.env` —
-   the one credential the fleet file does not carry, pending korg WI 2479). PUBLISH rides the
-   ordinary command connection — kdeskdash never SUBSCRIBEs.
+   `{button}` — the deck's precedence is `button` > `app` > `id`). The publisher is
+   per host now: `kctrldeck` on cleo, `kvscf` on kwork until Ken replaces it; the `kvscf:`
+   key namespace is the contract's and stays.
+
+   **The two panels no longer agree about where this feed lives, and that is the point.**
+   Since sprint 040 (korg:2932) rpidash2 reads it from **central** (`rpi53:6379`) — cleo's
+   deck publishes there — while rpidash3 keeps its own board's `redis-kvscf` on
+   `127.0.0.1:6380`, because kwork is off the tailnet, cannot reach central, and must not be
+   made to. rpidash2's old `redis-claude` instance is left running but unused until the
+   k-homelab cleanup slice (korg:2934) retires unit, conf, store entry and krot row together;
+   stopping it early makes kmon's nightly report a declared service missing.
+
+   Three things follow, and all three are **named in `deploy/hosts/<host>.env`** rather than
+   guessed — this is the slice's whole shape:
+
+   - `KDESKDASH_KVSCF_REDIS_AUTH_KEY` — which fleet key holds this board's kvscf password.
+     There used to be an ordered lookup (`KVSCF_REDISCLI_AUTH`, then `CLAUDE_REDISCLI_AUTH`),
+     safe only while exactly one of the two was set per board. rpidash2 now has **both**, and
+     they are different secrets, so the guess sends redis-claude's `:6380` password to central
+     — and AUTH with a wrong password is an *error*, not a shrug, so the handle never opens
+     and the panel reports "kvscf feed unavailable" as though central were down. That is
+     sprint 031's failure one layer over; the fleet rule behind it (kxeneon WI 2734) is never
+     to list two names for one endpoint. The ordered lookup survives only as the unset path,
+     for a board whose env file predates the change.
+   - `KDESKDASH_KVSCF_PAIR_HOST` — the one workstation this panel reads and commands. The
+     endpoint used to do this scoping for free, because only one workstation wrote to it; on a
+     shared server the host segment is all that is left (kdashdata CD-8). It narrows every
+     SCAN *and* refuses to publish elsewhere, since the command carries the token.
+   - `KDESKDASH_KVSCF_TOKEN_KEY` — which fleet key holds this pair's token
+     (`KCTRLDECK_TOKEN_CLEO_PAIR` / `_KWORK_PAIR`, k-homelab sprint 069). One name per
+     **pair**, never shared and never a list spanning both: a panel holding the other desk's
+     token renders every feed normally and silently does nothing on a tap. `KVSCF_TOKEN` from
+     the hand-installed `/etc/kdeskdash/secrets.env` is the deprecated last rung, deleted per
+     board once the named read is proven *there*.
+
+   The endpoint's claude-feed fallback is **gone** (korg WI 2305) — its defaults are its own
+   (`127.0.0.1:6380`). It survived years past the sameness that justified it, and by the end
+   an unset endpoint meant "follow the claude feed to rpi53", where no kvscf existed;
+   `docs/solutions/best-practices/a-fallback-outlives-the-sameness-that-justified-it.md` is
+   the write-up. Both gates are live on both boards and they fail in **opposite** ways — a bad
+   Redis password looks like an unreachable endpoint, a bad pairing token looks like nothing
+   at all — so "data is flowing" tests only one of them. See `docs/kwork-rpidash3-pairing.md`
+   (now the only pair instance) and `deploy/hosts/README.md`. These are the only modes that
+   **write/act on another machine**; the token is byte-exact, trimmed and never logged.
+   PUBLISH rides the ordinary command connection — kdeskdash never SUBSCRIBEs.
 
 5. **Service card** (`src/service_pub.c`, `KDESKDASH_CARD_REDIS_*`) — **write-only**, and the
    only handle that is *not* mode-gated. Publishes this instance's own liveness to
