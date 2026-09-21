@@ -28,6 +28,8 @@ just deploy [host] [version]          # install a published version on a board
 just deploy rpidash2 0.24.0-1a2b3c4   # ...an older one. This is the rollback.
 just install-service [host] [version] # unit (from the artifact) + host env
 just versions                         # published / cached here / running where
+just published [version]              # is it already in the store? (exit code is the answer)
+just published-publisher [version]    # the same question for the publisher bundle
 just push-dev [host]                  # dev loop — NOT a deploy, see below
 ```
 
@@ -53,14 +55,61 @@ The consequence worth knowing: a board cannot update itself, and there is no
 ```
 
 The minor tracks the sprint number — bump `VERSION` in the sprint that changes
-what ships. The commit means **every commit is a new version**, so publishing
-never needs a version bump of its own (`kpkg` refuses to overwrite a published
-version, and this is how that rule stays out of the way).
+what ships. The commit is the last one touching the **payload**, not `HEAD`:
+
+```
+src/  lib/  lv_conf.h  CMakeLists.txt  cmake/
+fonts/ttf/SymbolsNerdFont-Regular.ttf
+deploy/kdeskdash.service  deploy/kdeskdash.env.example
+scripts/deploy.sh  VERSION
+```
+
+So the version moves exactly when the shipped content does, and a sprint that
+changed only docs, the publisher or the justfile reproduces the version already
+in the store. That is what makes `just publish` **self-skipping** (korg WI
+2801) and therefore safe to declare in `.sprint-deploy` — see below. It is the
+same derivation the publisher bundle has always used, and the same rule
+klaude-top adopted.
+
+**The one gap, and its remedy.** The payload names the files that *ship*, not
+the machinery that ships them, so `scripts/publish.sh`, `scripts/version.sh`
+and the `justfile` are deliberately excluded (Ken's decision, 2026-09-17).
+Changing **only** the build flags in publish.sh's own `cmake` invocation would
+therefore alter the binary without moving the version, and `publish` would
+correctly skip a build that genuinely differs. The remedy is a `VERSION` bump.
+(The toolchain file and its compiler options live in `cmake/`, which *is* a
+payload path, so the gap is that one invocation line.)
 
 The recipe passes the version to CMake (`-DKD_VERSION`); CMake never derives it.
 A cached CMake variable freezes at whatever it was configured with, and a stamp
 that lies about the commit is worse than no stamp at all. A build configured by
 hand with no flag stamps `unknown`, and `just deploy` refuses to install one.
+
+### Publishing is self-skipping, and refuses to guess
+
+Before building, `publish` asks the store whether it already has this version.
+`scripts/store-has.sh` is that question, and it has **three** answers, because
+two of them are not the same fact:
+
+| exit | meaning | what publish does |
+|---|---|---|
+| 0 | present — the store has it | prints `nothing to publish: …`, exits **0** |
+| 1 | absent | builds and publishes |
+| 2 | could-not-ask | **refuses** (exit 1) |
+
+`ssh … test -d` is the tempting one-liner and it is the trap: an absent
+version, a downed store host, a missing host key and a refused login all exit
+non-zero, and reading any of them as "absent" would republish over a store
+nobody could see — a false claim about the world rather than a failed command.
+So the remote answers with a **word** it prints itself, and nothing is
+concluded from an exit status alone. An unset `KDESKDASH_STORE_HOST` is a
+could-not-ask for the same reason, not an absence.
+
+Exit 0 on the no-op is the shape `sprint-ship`'s Phase 7 needs: it reads a
+non-zero step as a loud deploy failure, so a recipe that let `kpkg`'s
+immutability guard refuse the republish would end every unrelated sprint on a
+false alarm. That is why the guard's refusal — the correct *answer* — was the
+wrong *shape*, and why both artifacts can now be declared unconditionally.
 
 `publish` refuses a dirty tree, and off `main` it publishes **without** moving
 the `latest` pointer — a branch commit vanishes from history at squash-merge, so
@@ -177,8 +226,11 @@ the payload>` (e.g. `1.0.0-47f7c49`). Scoping the sha to the payload files —
 rather than HEAD — means the version moves exactly when the shipped content
 does: a publisher change can never leave `latest` silently stale, and
 republishing an *unchanged* publisher reproduces a version the store already
-has, which `kpkg` refuses. That refusal is the correct answer ("already
-published"), not a bug to work around. Bump the `publisher/VERSION` base when
+has. `kpkg` would refuse it, which is the correct answer ("already published")
+in the wrong shape — so since WI 2801 the recipe asks first, via the same
+three-outcome predicate the dashboard uses, and answers `nothing to publish`
+with exit 0. `scripts/version-publisher.sh` is the one place that version is
+derived. Bump the `publisher/VERSION` base when
 the publisher's contract meaningfully changes; forgetting to is harmless,
 because the sha moves regardless.
 

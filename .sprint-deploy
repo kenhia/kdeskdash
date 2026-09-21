@@ -1,6 +1,17 @@
 # Declares that this repo deploys as part of /sprint-ship (Phase 7).
-# One skill name per line; sprint-ship invokes each in order after the merge
-# and local cleanup, so what ships is published from the merged main.
+# Each line is one step, run in the order written after the merge and local
+# cleanup, so what ships is published from the merged main:
+#   `recipe: <name>`  -> run `just <name>`
+#   anything else     -> the name of a skill to invoke
 #
-# See .claude/skills/deploy-panels/SKILL.md
+# BOTH artifacts are declared, unconditionally, because this repo ships two on
+# two independent version clocks — the panel and the claude-feed publisher
+# bundle (korg WI 2801). Neither line needs a condition: each recipe derives its
+# version from its OWN payload and asks the store whether that version is
+# already there, so a sprint that touched only one of them makes the other
+# answer "nothing to publish" and exit 0. Change detection lives in the
+# recipes, not here and not in the skill.
+#
+# See .claude/skills/deploy-panels/SKILL.md and docs/deploying.md.
 deploy-panels
+recipe: publish-publisher

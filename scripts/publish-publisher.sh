@@ -56,13 +56,37 @@ if [ -n "$(git status --porcelain)" ]; then
     exit 1
 fi
 
-base=$(head -n1 publisher/VERSION | tr -d '[:space:]')
-sha=$(git log -1 --format=%h -- "${payload[@]}" publisher/VERSION)
-if [ -z "$sha" ]; then
-    echo "publish-publisher: no commit touches the payload — is this a git checkout?" >&2
-    exit 1
-fi
-v="$base-$sha"
+# Derived by scripts/version-publisher.sh, which owns the payload list for
+# versioning purposes; the `payload` array above owns it for staging. They name
+# the same files on purpose and each says so.
+v=$(scripts/version-publisher.sh)
+
+# Self-skipping, the same rule as scripts/publish.sh (korg WI 2801). The
+# version has always been payload-scoped here, so an unchanged publisher
+# reproduces the version already in the store; what changed is that the recipe
+# now answers "nothing to publish" and exits 0 instead of letting kpkg's
+# immutability guard refuse it. The refusal was the correct ANSWER but the
+# wrong SHAPE — sprint-ship's Phase 7 reads a non-zero step as a loud deploy
+# failure, so every panel-only sprint would have ended on a false alarm.
+#
+# A store that could not be asked is a refusal, not an assumed absence.
+# `|| rc=$?` and not a bare call: this script runs under `set -e`, where a
+# non-zero exit from an untested command kills it before the case below ever
+# sees the code. A predicate whose three outcomes are the entire point must be
+# in a tested context.
+rc=0
+scripts/store-has.sh kdeskdash-publisher "$v" || rc=$?
+case $rc in
+    0)
+        echo "nothing to publish: kdeskdash-publisher $v already in the store"
+        exit 0
+        ;;
+    1) ;;   # absent — go
+    *)
+        echo "publish-publisher: could not ask the store whether $v is already published — refusing" >&2
+        exit 1
+        ;;
+esac
 
 # A branch commit vanishes from history at squash-merge, so a branch build may
 # exist in the store (to prove the path works) but must never become `latest`.

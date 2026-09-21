@@ -171,5 +171,69 @@ else
   ok "no hand-rolled sockets remain"
 fi
 
+# A substring assertion, for the cases below where two fields in one batch are
+# both 10-digit epochs and the blanket TS normalisation would erase the very
+# difference under test.
+has() {
+  if bodies | grep -qF -- "$2"; then ok "$1"
+  else fail "$1" "missing: $2
+     got:  $(bodies)"; fi
+}
+
+# A transcript that has already carried a turn, and one that has not. Written
+# here rather than committed as fixtures: what is under test is two lines of
+# shape, and a fixture file would invite it being read as a real transcript.
+tr_used="$work/used.jsonl"
+printf '%s\n' \
+  '{"type":"user","timestamp":"2026-09-01T10:00:00.000Z"}' \
+  '{"type":"assistant","timestamp":"2026-09-01T10:00:05.000Z"}' > "$tr_used"
+tr_new="$work/new.jsonl"
+printf '%s\n' '{"type":"user","timestamp":"2026-09-01T10:00:00.000Z"}' > "$tr_new"
+
+# ---- 9. a RE-ATTACH does not latch `working`, and keeps the real start ----
+# The desktop app re-opening a finished session fires a genuine SessionStart
+# carrying the old uuid, so `source` cannot tell it from a cold start (WI 2719).
+# Publishing `working` there pinned two finished sessions on the panel for the
+# full 2h TTL. The transcript is the discriminator that is actually available.
+printf '1756720800' > "$KDD_STATE_DIR/s5.start"
+run hook central 1 \
+  "{\"hook_event_name\":\"SessionStart\",\"session_id\":\"s5\",\"cwd\":\"/tmp/proj\",\"transcript_path\":\"$tr_used\"}"
+has "a re-attached session publishes awaiting, not working" "status${TAB}awaiting"
+has "a re-attached session keeps its original started_ts" "started_ts${TAB}1756720800"
+
+# ---- 10. a genuinely new session is unchanged ----
+# The narrow fix (the WI's option 2): `working` still means working on a cold
+# start, so no consumer's display ladder changes.
+run hook central 1 \
+  "{\"hook_event_name\":\"SessionStart\",\"session_id\":\"s6\",\"cwd\":\"/tmp/proj\",\"transcript_path\":\"$tr_new\"}"
+has "a new session still publishes working" "status${TAB}working"
+
+# ---- 11. a re-attach whose .start was swept still reports a real start ----
+# STATE_DIR is swept at two days, which is exactly the age of a session worth
+# re-attaching. Falling back to NOW would put the bogus dur_s back on
+# claude:recent by another route, so the transcript's first stamp is used.
+want_start=$(date -u -d '2026-09-01T10:00:00.000Z' +%s 2>/dev/null)
+run hook central 1 \
+  "{\"hook_event_name\":\"SessionStart\",\"session_id\":\"s7\",\"cwd\":\"/tmp/proj\",\"transcript_path\":\"$tr_used\"}"
+has "a swept .start falls back to the transcript's first stamp" \
+  "started_ts${TAB}${want_start}"
+
+# ---- 12. Stop is delivered before the hook returns ----
+# In print mode the CLI fires SessionEnd ~15 ms after Stop and exits. A
+# backgrounded Stop sender loses that race two ways (WI 2809): torn down with
+# the process before it publishes, or landing AFTER SessionEnd's DEL and
+# re-creating the row that DEL just closed. Measured: 3 of 3 headless sessions
+# left `working` before this, 6 of 6 deleted cleanly after.
+#
+# No poll and no sleep here on purpose — that IS the assertion. A backgrounded
+# sender makes this flaky-to-failing, which is the regression to catch.
+export KDD_CAPTURE_DIR="$work/cap"
+rm -rf "$KDD_CAPTURE_DIR"; mkdir -p "$KDD_CAPTURE_DIR"
+printf '%s' '{"hook_event_name":"Stop","session_id":"s8","cwd":"/tmp/proj"}' \
+  | KDD_LEGS=central "$script" hook >/dev/null 2>&1
+expect "Stop's batch is delivered before the hook returns" "1" \
+"$(find "$KDD_CAPTURE_DIR" -type f | wc -l)"
+has "Stop still publishes awaiting" "status${TAB}awaiting"
+
 [ "$fails" -eq 0 ] || { printf '\n%d assertion(s) failed\n' "$fails"; exit 1; }
 printf '\nall batch-shape assertions passed\n'
