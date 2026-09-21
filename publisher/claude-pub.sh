@@ -243,6 +243,36 @@ title_from_transcript() {
           -e 's/\\"/"/g' -e 's/\\\\/\\/g' -e 's/\\\//\//g'
 }
 
+# Has this transcript already carried a turn? The discriminator SessionStart's
+# own payload cannot supply (WI 2719): the desktop app re-opening an old session
+# spawns a FRESH CLI with the old uuid and no --resume, so `source` is "startup"
+# for a re-attach exactly as it is for a new session — and the emit site is
+# skipped on a real --resume, so `source` can never carry the distinction.
+#
+# grep exits at the first match, so a re-attached transcript costs the bytes up
+# to its first assistant record and a genuinely new one costs the whole file —
+# which is a few KB, because it is new. Once per session, never on the hot path.
+has_turns() {
+  local t="$1"
+  t=$(printf '%s' "$t" | tr '\\' '/')
+  [ -n "$t" ] && [ -f "$t" ] || return 1
+  grep -qE '"type":"assistant"' "$t" 2>/dev/null
+}
+
+# Epoch of the transcript's first timestamped record — the session's real start,
+# used when the local .start file is gone (the STATE_DIR sweep deletes it after
+# two days, and a re-attach of something older is precisely the case this is
+# for). Prints nothing if the transcript has no parseable stamp; the caller
+# falls back to NOW rather than publishing a guess.
+first_turn_ts() {
+  local t="$1" iso
+  t=$(printf '%s' "$t" | tr '\\' '/')
+  [ -n "$t" ] && [ -f "$t" ] || return 0
+  iso=$(grep -oE '"timestamp":"[0-9]{4}-[^"]*"' "$t" 2>/dev/null | head -n1 | cut -d'"' -f4)
+  [ -n "$iso" ] || return 0
+  date -u -d "$iso" +%s 2>/dev/null
+}
+
 # Keepalive for a session that is working but not emitting lifecycle events.
 # Between UserPromptSubmit and Stop a long turn publishes nothing at all, so
 # `ts` sits at prompt-submit time and the panel greys the row to IDLE at
@@ -296,9 +326,25 @@ hook_mode() {
 
   case "$event" in
     SessionStart)
-      printf '%s' "$NOW" > "${STATE_DIR}/${sid}.start" 2>/dev/null
+      # A SessionStart whose transcript already has turns is a RE-ATTACH, and
+      # nothing has been asked of it — `awaiting` is the honest value, where
+      # `working` latches a finished session for the full 2h TTL and re-arms
+      # every time it is re-opened (WI 2719). `awaiting` is a status the feed
+      # already publishes at Stop, so no consumer learns a new word for this.
+      #
+      # started_ts must survive the re-attach too: overwriting it made session
+      # age wrong and had SessionEnd compute dur_s from the re-attach, pushing
+      # a bogus short entry onto claude:recent.
+      local st=working sts="$NOW"
+      if has_turns "$tpath"; then
+        st=awaiting
+        sts=$(cat "${STATE_DIR}/${sid}.start" 2>/dev/null | tr -cd '0-9')
+        [ -n "$sts" ] || sts=$(first_turn_ts "$tpath")
+        [ -n "$sts" ] || sts="$NOW"
+      fi
+      printf '%s' "$sts" > "${STATE_DIR}/${sid}.start" 2>/dev/null
       cmd hset "$key" host "$HOST" project "$project" cwd "$cwd" \
-                 status working ts "$NOW" started_ts "$NOW"
+                 status "$st" ts "$NOW" started_ts "$sts"
       cmd expire "$key" "$KDD_TTL_S"
       ;;
     UserPromptSubmit|Stop)
@@ -359,7 +405,18 @@ hook_mode() {
     cmd hset "$key" title "$(plain "$sname")"
     printf '%s' "$sname" > "${STATE_DIR}/${sid}.title" 2>/dev/null
   fi
-  send
+  # Stop is the last event of a turn, and in print mode the CLI fires SessionEnd
+  # ~15 ms later and exits. A backgrounded sender loses that race two ways, both
+  # measured in WI 2809: the disowned child is torn down with the process before
+  # it publishes at all, and when it does survive it can land AFTER SessionEnd's
+  # DEL and re-create the row that DEL just closed — which is how a finished
+  # headless leg came to read `working` for the full 2h TTL. Same reason
+  # SessionEnd is synchronous. One write per turn end; the cost is milliseconds,
+  # and it is paid where nothing is waiting on it.
+  case "$event" in
+    Stop) send_sync ;;
+    *)    send ;;
+  esac
 }
 
 statusline_mode() {
