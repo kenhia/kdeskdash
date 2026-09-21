@@ -158,3 +158,85 @@ on rpidash2's launcher.
 ## Follow-ups
 
 None filed. Both covered items are resolved by the work.
+
+## Deployed
+
+`just publish` → **`0.27.0-245ad8a`** in the package store; `deploy-panels`
+(declared in `.sprint-deploy`) installed it on **both** panels. `just versions`
+reports `kdeskdash 0.27.0-245ad8a` on rpidash2 and rpidash3, both units active.
+`install-service` was **not** run: this sprint did not touch
+`deploy/kdeskdash.service`.
+
+The cut-over ran in this same turn, on the overseer's ruling (handoff
+korg:2956) — flip both ends together rather than leaving the desk launcher
+split across two slices.
+
+### The order, and why
+
+The new binary with each board's *existing* env behaves exactly as the old one
+did — endpoint already pinned, no `AUTH_KEY` means the legacy ordered lookup,
+no `TOKEN_KEY` means `KVSCF_TOKEN`, no pair means the wildcard — so deploying
+before the env edits was a safe intermediate state on both boards.
+
+**1. rpidash3 first** (lowest risk, endpoint unchanged). Env hand-edited:
+`KDESKDASH_KVSCF_REDIS_AUTH_KEY=KVSCF_REDISCLI_AUTH`,
+`KDESKDASH_KVSCF_PAIR_HOST=kwork`,
+`KDESKDASH_KVSCF_TOKEN_KEY=KCTRLDECK_TOKEN_KWORK_PAIR`. Its pair token verified
+by fingerprint **before** pointing at it — `6fb85264dbe4`, the value the
+overseer named, byte-identical to the legacy file's `KVSCF_TOKEN`; and a
+cross-desk control confirmed `KCTRLDECK_TOKEN_CLEO_PAIR` is **absent** there, so
+no swap is possible. Log line after restart:
+
+```
+kdeskdash: kvscf pair kwork (127.0.0.1:6380)
+```
+
+Screenshot shows the clock drawing and "no launcher configured" — **kwork is
+off** (`DBSIZE 0` on rpidash3:6380, no `kvscf:*` keys at all), so that is the
+correct render and not a regression. Its `/etc/kdeskdash/secrets.env` is
+**left in place**: only a tap at the work desk can prove the new read.
+
+**2. rpidash2.** Env hand-edited to the table above (`rpi53:6379`,
+`REDISCLI_AUTH`, `cleo`, `KCTRLDECK_TOKEN_CLEO_PAIR`):
+
+```
+kdeskdash: kvscf pair cleo (rpi53:6379)
+```
+
+**3. cleo.** The deck had *no* config source at all — no `.env`, no registry
+endpoint values, no environment variables — so it was running on compiled-in
+defaults (`192.168.1.144:6380`, `CLAUDE_REDISCLI_AUTH`). It links `dotenvy` and
+the relaunch task's `WorkingDirectory` is `C:\tools\bin`, so the three values
+went into a new `C:\tools\bin\.env` (UTF-8, no BOM, verified byte-wise).
+Relaunched **via the `kctrldeck-relaunch` task only**.
+
+### Proofs
+
+| proof | result |
+|---|---|
+| deck publishing to central | all four `kvscf:*:cleo` keys present on `rpi53:6379`, TTL 9–10s — live republishing |
+| deck authenticated on central | implied by the writes: it could not publish otherwise |
+| panel renders from central | launcher screenshot shows both of cleo's buttons ("GH Repos", "Wowhead"); the payload defines exactly 2, so the sparse grid is faithful |
+| old server vacated | `rpidash2:6380` — `CLIENT LIST` holds only the probing `redis-cli`; no cleo, no panel. **`DBSIZE 0`** |
+| probe keys cleaned | `EXISTS` = 0 for every `kdash:panelmode:*` / `panelshot:*` on both hosts |
+
+The deck's own startup line could not be read: it is a GUI binary with no log
+file, and launching it any way but the task was ruled out. The central keys are
+the stronger evidence anyway — they prove connect, AUTH and publish together,
+which the log line only asserts.
+
+Central's `kvscf:*:cleo` keys were checked **from rpidash2**, the host whose
+panel has to read them.
+
+### Not done here, deliberately
+
+rpidash2's `/etc/kdeskdash/secrets.env` is **not** deleted. Ken's physical tap
+is the control for that, and it comes after this leg is terminal; the overseer
+removes it once the tap succeeds, folded into slice korg:2934's removals.
+
+### Rollback
+
+Each board keeps `/etc/kdeskdash/kdeskdash.env.pre040` (byte-verified against
+the pre-edit file). Reverting is `cp` it back plus `systemctl restart
+kdeskdash`; on cleo, delete `C:\tools\bin\.env` and relaunch via the task. Exact
+commands are in the ship handoff.
