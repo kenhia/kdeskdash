@@ -398,12 +398,35 @@ table in `recipes/claude-hooks/settings_merge.py` — so a hand edit to
 `settings.json` there is reverted by the next apply, and a matcher change has
 to land in both places (korg #1362).
 
-## SessionEnd is synchronous by design
+## SessionEnd and Stop are synchronous by design
 
-Every event publishes fire-and-forget (backgrounded send) except `SessionEnd`,
-which sends synchronously and is registered `"async": false`: the CLI process
-is exiting, and a backgrounded DEL loses the race with process-group teardown
-(ghost session row until the TTL). The hook-level 5s timeout bounds the cost.
+Every event publishes fire-and-forget (backgrounded `send`) except **`Stop` and
+`SessionEnd`**, which use `send_sync`.
+
+`SessionEnd` has always been synchronous, and is registered `"async": false`.
+**The reason first given for it — that a backgrounded DEL loses the race with
+process-group teardown — is not what was happening**, and WI 2809 measured it:
+a `SessionEnd` hook that sleeps 6 s runs to completion, and the `SessionEnd`
+branch driven by hand deletes a seeded key correctly. The hook is not killed.
+
+The real hazard is **ordering**. A disowned sender makes a session's events
+*concurrent* writers against one key with no ordering between them, so
+`SessionEnd`'s DEL can land and then be undone by a straggler queued earlier —
+leaving a row reading `working` for the full 2h TTL. Three headless `claude -p`
+sessions reproduced it 3 of 3, and the surviving rows named their own cause:
+each carried `started_ts` (written only by SessionStart) and `title` (written
+only by the enrichment block SessionEnd never reaches).
+
+`Stop` is synchronous for that reason, not for the teardown one. It is the only
+straggler close enough to overtake the DEL — in print mode `SessionEnd` follows
+it by 13–19 ms — and being backgrounded it was frequently torn down before it
+published at all, which is why a finished turn so often failed to reach
+`awaiting`. With it synchronous: 0 of 6 sessions left a row behind.
+
+The cost is one extra synchronous write per turn end, paid where nothing is
+waiting on it. The interactive events stay fire-and-forget on purpose: a dead
+Redis must never slow a Claude session down. The hook-level 5 s timeout bounds
+the worst case, and `kdash-pub`'s own is 1.5 s per leg.
 
 ---
 
