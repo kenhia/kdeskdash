@@ -231,7 +231,15 @@ just deploy                      # install the newest published version on rpida
 just deploy rpidash3             # ...on any other dashboard
 just deploy rpidash2 0.24.0-1a2b3c4    # ...a specific version — this is the rollback
 just versions                    # what is published / cached / running where
+just published                   # is this version already in the store? (exit code is the answer)
 ```
+
+`just publish` is **self-skipping**: the version is derived from the payload
+(the files that ship), so a sprint that changed only docs or the publisher
+reproduces the version already in the store and the recipe answers `nothing to
+publish` and exits 0 rather than cutting an identical release. See
+[docs/deploying.md](docs/deploying.md) for the three-outcome store predicate
+behind it — an unreachable store is never read as "not published".
 
 Set `KDESKDASH_STORE_URL` and `KDESKDASH_STORE_HOST` in `.env` first (see
 [docs/deploying.md](docs/deploying.md)). The fetch happens on the dev box, not
@@ -406,8 +414,8 @@ starts it.
 kdeskdash/
 ├── CMakeLists.txt                  # LVGL + libdrm + hiredis + pthread; version stamp
 ├── VERSION                         # base version; minor tracks the sprint number
-├── .sprint-deploy                  # declares the deploy skill /sprint-ship runs
-├── .claude/skills/deploy-panels/   #   ...that skill: publish from main, roll the boards
+├── .sprint-deploy                  # declares BOTH deploy steps /sprint-ship runs (panel + publisher bundle)
+├── .claude/skills/deploy-panels/   #   ...the skill half: publish from main, roll the boards
 ├── lv_conf.h                       # LVGL config: DRM + EVDEV + Montserrat fonts
 ├── cmake/aarch64-toolchain.cmake   # aarch64 cross-compile toolchain (one build, every Pi)
 ├── deploy/
@@ -434,8 +442,12 @@ kdeskdash/
 │   └── README.md                   # per-machine install, source decision table, key contract
 ├── scripts/
 │   ├── sync-sysroot.sh             # rsync a Pi sysroot for cross-compilation
-│   ├── version.sh                  # the one place a version string is derived
-│   ├── publish.sh                  # release: build + kpkg into the package store
+│   ├── version.sh                  # the one place the PANEL version is derived (payload-scoped, not HEAD)
+│   ├── version-publisher.sh        # ...and the one place the BUNDLE version is; separate clocks
+│   ├── store-has.sh                # is a version already in the store? present / absent / could-not-ask
+│   ├── publish.sh                  # release: build + kpkg into the package store (self-skipping)
+│   ├── publish-publisher.sh        # the same for the claude-feed publisher bundle
+│   ├── unit-lint.sh                # static contract checks on the systemd unit + its secret key names
 │   ├── deploy.sh                   # fetch a published version + install it on a board
 │   └── kddss                       # trigger + fetch a device screenshot as PNG
 ├── src/
