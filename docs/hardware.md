@@ -120,6 +120,17 @@ Black**, starting from the `0.20mm Standard @BBL H2D` profile:
 
 Estimated print time: **12 h 9 m**.
 
+The full working notes — both trial measurements, the fixed slot offset, the
+`Precise Z height` arithmetic, and what Bambu Studio's **Shrinkage** field
+actually does (it is XY-only, and it takes the shrink rather than the scale, so
+it is *not* where the 100.545 % goes) — are in
+**[`stl/README_ABS.md`](../stl/README_ABS.md)**.
+
+Read them as working notes, not as a recommendation: they record the shrinkage
+half of the problem only, the dimensional result of a compensated print was
+never measured, and the blind overhang above is untouched by any of it. ABS is
+still not recommended here.
+
 Note what did *not* change: infill stays at the profile default. It is tempting
 to reach for 40% gyroid when moving to ABS, but the PLA case was already strong
 enough in bulk, and ABS at the same parameters will be stronger still. The two
