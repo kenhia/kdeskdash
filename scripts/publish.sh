@@ -43,6 +43,33 @@ case "$v" in
         ;;
 esac
 
+# Self-skipping: the version is derived from the payload (scripts/version.sh),
+# so a sprint that changed no dashboard code reproduces the version already in
+# the store. Publishing it again would cut a release and restart both panels
+# for a diff with no dashboard code in it — which is exactly what made this
+# recipe unsafe to declare in `.sprint-deploy` (korg WI 2801).
+#
+# The predicate has three outcomes and only one of them is "go". A store that
+# could not be asked is a REFUSAL, never an assumed absence: republishing over
+# a store nobody could see is the failure this is built to avoid.
+# `|| rc=$?` and not a bare call: this script runs under `set -e`, where a
+# non-zero exit from an untested command kills it before the case below ever
+# sees the code. A predicate whose three outcomes are the entire point must be
+# in a tested context.
+rc=0
+scripts/store-has.sh kdeskdash "$v" || rc=$?
+case $rc in
+    0)
+        echo "nothing to publish: kdeskdash $v already in the store"
+        exit 0
+        ;;
+    1) ;;   # absent — go
+    *)
+        echo "publish: could not ask the store whether $v is already published — refusing" >&2
+        exit 1
+        ;;
+esac
+
 # A branch commit vanishes from history at squash-merge, so a branch build may
 # exist in the store (to prove the path works) but must never become what the
 # fleet gets when it asks for `latest`.

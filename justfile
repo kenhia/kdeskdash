@@ -41,6 +41,19 @@ publish:
 publish-publisher:
     scripts/publish-publisher.sh
 
+# Is a version already in the store? Defaults to the version `just publish`
+# would produce, which is the question worth asking before cutting a release.
+# Exit code IS the answer: 0 present, 1 absent, 2 could-not-ask — an
+# unreachable store is never reported as absent (scripts/store-has.sh).
+published version="":
+    @v="{{ version }}"; [ -n "$v" ] || v="$(scripts/version.sh)"; \
+     scripts/store-has.sh --say kdeskdash "$v"
+
+# The same question for the publisher bundle, which has its own version clock.
+published-publisher version="":
+    @v="{{ version }}"; [ -n "$v" ] || v="$(scripts/version-publisher.sh)"; \
+     scripts/store-has.sh --say kdeskdash-publisher "$v"
+
 # Install a published version on a Pi (default: the newest published).
 # Naming an older version IS the rollback — there is no second verb.
 deploy host="rpidash2" version="":

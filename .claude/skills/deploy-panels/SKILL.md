@@ -81,6 +81,21 @@ cd ~/src/tools/kdeskdash && just publish
 
 Stop and ask if the tree is dirty or the branch is not `main`. Never stash.
 
+**`nothing to publish: kdeskdash <version> already in the store` is a SUCCESS,
+not a failure.** The version is derived from the payload — `src/`, `lib/`,
+`lv_conf.h`, `CMakeLists.txt`, `cmake/`, the font, the unit, the env example
+and `scripts/deploy.sh` — so a sprint that changed only docs, the publisher or
+the justfile reproduces the version already in the store, and there is no new
+release to cut (korg WI 2801). Do not retry it, do not force it, and do not
+report it as a deploy failure.
+
+When that happens, **read the version out of the message and go to step 2 — but
+skip any board already running it.** `just versions` says what each board is
+on. The point of the no-op is not to avoid installing; it is to avoid
+restarting both panels for a diff with no dashboard code in it. A board that is
+*behind* (rpidash3 was off for the last deploy) still gets installed, which is
+the case that makes this worth checking rather than skipping wholesale.
+
 `publish` prints the version — capture it and pin every board to it explicitly
 rather than letting each resolve `latest` on its own:
 
