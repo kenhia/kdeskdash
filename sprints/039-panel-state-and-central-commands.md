@@ -205,3 +205,103 @@ consecutive good `kddss` shots against a deployed panel (overseer comment 2653).
 It needs the build on a board, which is the deploy step of the ship — not a
 `check_after` date.
 
+
+## Deployed
+
+**`0.27.0-13e01e4`** (squash `13e01e4`, PR #46) published to the package store
+and installed on **both** panels, 2026-09-20, via the `deploy-panels` skill
+declared in `.sprint-deploy`. Run from kai, the only host that can deploy — the
+Pis are unmanaged and hold no store credentials.
+
+**`just install-service` on both boards**, because this sprint changed
+`deploy/kdeskdash.service`. Both kept their existing
+`/etc/kdeskdash/kdeskdash.env` (`install-service` never overwrites it), which is
+correct here: the env-file edits were comments plus the new command-feed note,
+and **no device needs a new variable** — the command feed falls back to the
+telemetry endpoint, which is already `rpi53:6379` on both.
+
+| | rpidash2 | rpidash3 |
+|---|---|---|
+| `--version` | `kdeskdash 0.27.0-13e01e4` | `kdeskdash 0.27.0-13e01e4` |
+| unit | active | active |
+| `Wants=` redis | *(none — the removal landed)* | *(none)* |
+| `After=` redis | `redis-server.service` | `redis-server.service` |
+| `{host}` chosen | `rpidash2` | `rpidash3` |
+
+### The four proofs, fired the same day
+
+All four are **triggers**, not soaks — the cleared sequence in handoff
+korg:2950 — and all four passed.
+
+**1. Migration.** Each panel wrote `/var/lib/kdeskdash/state` on first start and
+its contents equal the Redis values it copied from, field for field:
+
+| | rpidash2 state file | rpidash2 Redis |
+|---|---|---|
+| `golz.human_wins` | 1347 | 1347 |
+| `golz.zombie_wins` | 1343 | 1343 |
+| `golz.ties` | 3871 | 3871 |
+| `golz.gens_to_win` | 262 | 262 |
+| `golz.wins` | 13883 | 13883 |
+| `dev.left` / `dev.right` | `kai` / `kubs0` | `kai` / `kubs0` |
+| `active_mode` | `golz` | `golz` |
+
+**The Redis keys are all still there** — copy, never move, so a rollback finds
+its state where it left it. rpidash3 carries no GoLZ keys (its mode set omits
+the simulations), and its three keys copied exactly: `dev.left=kai`,
+`dev.right=kubs0`, `active_mode=launcher`.
+
+*(The GoLZ counters moved between the pre-deploy capture and the copy —
+`zombie_wins` 1342→1343, `gens_to_win` 265→262 — because the panel kept playing
+right up to the restart. The proof is that the file equals what it copied, and
+it does. From here the file is the authority and the two will diverge, which is
+the point.)*
+
+**The `{host}` question, settled live in one journal line:**
+
+```
+Sep 20 20:09:47 rpiDash2 kdeskdash[8586]: kdeskdash: migrated panel state from 127.0.0.1:6379 (copied, not moved)
+Sep 20 20:09:47 rpiDash2 kdeskdash[8586]: kdeskdash: central commands as "rpidash2" (rpi53:6379)
+```
+
+systemd's own prefix says `rpiDash2` and the panel says `rpidash2` — korg
+WI 2277 and the reason the name is lowercased, in adjacent columns of one line.
+
+**2. Mode command, and put back.** rpidash2 was on `golz`.
+`kdash-pub set kdash:panelmode:rpidash2 '{"mode":"clock"}'` switched it within
+one poll; `.scratch/039/mode-proof-clock.png` is the clock face on the panel,
+captured through the rewritten `kddss`. The state file read `active_mode=clock`,
+which proves the switch *and* the change callback persisting it.
+**Restored to `golz`** the same way and confirmed. **rpidash3's screen was not
+touched** — it is Ken's work desk, and its journal line plus state file are
+proof enough there.
+
+**3. WI 2308 — five consecutive `kddss` shots from rpidash2, all complete.**
+Each opened and `load()`ed with PIL, which is the exact check that rejected 3 of
+5 in sprint 035:
+
+```
+  shot 1: OK   1920x440  RGB
+  shot 2: OK   1920x440  RGB
+  shot 3: OK   1920x440  RGB
+  shot 4: OK   1920x440  RGB
+  shot 5: OK   1920x440  RGB
+```
+
+No `.tmp` debris left in `/var/lib/kdeskdash/` afterwards.
+
+**4. Path guard, live.** One command naming a path outside the state directory —
+and deliberately one the service *could* write, since `PrivateTmp=yes` gives it
+a writable `/tmp`, so only the guard stops it:
+
+```
+Sep 20 20:11:18 rpiDash2 kdeskdash[8586]: kdeskdash: refusing screenshot path "/tmp/kdeskdash-guard-probe.bmp" — outside /var/lib/kdeskdash/
+```
+
+The file was never created, and `kdeskdash-shot.bmp`'s mtime was **unchanged** —
+a refusal is a refusal, not a silent fall back to the default.
+
+**Probe keys deleted and the deletion verified**: `kdash:panelmode:*` and
+`kdash:panelshot:*` for `rpidash2`, `rpidash3` and `kai` all return `0` from
+`EXISTS` on central. These families are ts-owned with no TTL, so one left behind
+would sit there forever.
