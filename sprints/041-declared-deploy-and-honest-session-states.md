@@ -249,3 +249,48 @@ recipes run from. The measurement sessions used `--setting-sources ''` so the
 live publisher hooks could not be disturbed; the three runs that deliberately
 used the real publisher left rows in the live feed and were deleted afterwards
 (verified absent). Scratch under `.scratch/2809/`, gitignored.
+
+## Deployed
+
+**The first run of the two-step declaration this sprint added**, from merged
+`main` (`69cad0d`), in the order `.sprint-deploy` writes them.
+
+**1. `deploy-panels` (skill) — a deliberate no-op, which is the deliverable.**
+`just publish` answered `nothing to publish: kdeskdash 0.27.0-245ad8a already
+in the store` and exited 0 without building. Correct: this sprint touched no
+panel payload, so the payload-scoped version did not move. `just versions`
+reports **both** boards already on `kdeskdash 0.27.0-245ad8a` with units
+`active`, so **neither board was installed or restarted** — precisely the harm
+WI 2801 existed to prevent, avoided on the first real occasion it could have
+happened. A `kddss` frame from rpidash2 confirms the running app is drawing and
+reading its commands from central. `install-service` was **not** run: this
+sprint did not touch `deploy/kdeskdash.service`.
+
+**2. `recipe: publish-publisher` — published.** `kdeskdash-publisher`
+**`2.3.0-69cad0d`**, `latest` moved to it. The publisher *did* change, so its
+own clock moved while the panel's did not — the two-clock case the declaration
+was written for, exercised in both directions in a single ship.
+
+Re-running the whole declaration afterwards produces `nothing to publish` for
+**both** steps. The declaration is idempotent.
+
+### What the deploy surfaced, and the repair
+
+`deploy-panels`'s verification screenshot is written by `scripts/kddss` as
+`./<name>.png` — the repo root when run from a deploy — and nothing ignored it.
+So step 1 dirtied the tree and **step 2 refused to publish from it**, exactly as
+`publish-publisher.sh` is written to. The refusal was correct behaviour catching
+a real defect: any ship that both screenshots a panel and publishes would have
+hit it, and this was the first `.sprint-deploy` to declare both.
+
+Repaired here rather than filed: `/*.png` added to `.gitignore`, root-anchored
+so `docs/images/*.png` stay tracked. The screenshot itself was moved to
+`.scratch/ship-041.png`. Proof is the retry — step 2 published cleanly from the
+now-clean tree.
+
+### Not this sprint's to do
+
+The 2719/2809 publisher fixes reach a host only when k-homelab installs
+`kdeskdash-publisher 2.3.0-69cad0d` from the store. The overseer is carrying
+that to the k-homelab slice in flight (korg:2982); until it lands, every host's
+hooks still run 2.2.0 and finished legs keep reading `working`.

@@ -16,6 +16,13 @@ compile_commands.json
 
 .korg-sprint-proposal
 
+# Device screenshots. `scripts/kddss <name>` writes ./<name>.png in the cwd,
+# which is the repo root when it is run from a deploy — so a verification
+# screenshot dirtied the tree and the NEXT declared deploy step refused to
+# publish from it (sprint 041's own Phase 7, on its first declared run).
+# Anchored to the root on purpose: docs/images/*.png are tracked and stay so.
+/*.png
+
 .env
 
 build-*/
