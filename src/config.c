@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <unistd.h>
+
+#include "panel_cmd.h"
+#include "panel_state.h"
 
 #define DEFAULT_DRM_DEV   "/dev/dri/card1"
 /* Stable by-id symlink survives replug/reboot; event node numbers do not. */
@@ -31,11 +35,13 @@ void config_load(kdeskdash_config_t *cfg) {
     cfg->drm_dev = env_or("KDESKDASH_DRM_DEV", DEFAULT_DRM_DEV);
     cfg->touch_dev = env_or("KDESKDASH_TOUCH_DEV", DEFAULT_TOUCH_DEV);
 
-    cfg->redis_host = env_or("KDESKDASH_REDIS_HOST", "127.0.0.1");
-    int port = atoi(env_or("KDESKDASH_REDIS_PORT", "6379"));
-    cfg->redis_port = (port > 0 && port <= 65535) ? port : 6379;
-    /* The control Redis is this board's OWN instance on 6379 — loopback-only
-     * and passwordless on both panels. It reads KDESKDASH_CONTROL_REDISCLI_AUTH
+    /* The board's OWN Redis on 6379 — loopback-only and passwordless on both
+     * panels. Since sprint 039 the panel reads it EXACTLY ONCE, on a first run
+     * with no state file, to copy the durable values it used to keep there
+     * into /var/lib/kdeskdash/state. Nothing else dials it, and after the
+     * k-homelab cleanup slice it will not be there to dial.
+     *
+     * It reads KDESKDASH_CONTROL_REDISCLI_AUTH
      * and deliberately NOT bare REDISCLI_AUTH, which since sprint 037 is the
      * fleet-wide name for the CENTRAL rpi53 password that k-homelab renders
      * into /etc/khomelab/secrets.env on every host.
@@ -43,18 +49,30 @@ void config_load(kdeskdash_config_t *cfg) {
      * Reading the bare name here would be the sprint-031 failure with a new
      * face: the unit gained the fleet file, this handle would suddenly send
      * AUTH to a Redis that has no password configured, and Redis answers that
-     * with an ERROR rather than a shrug — so remote mode control, last-mode
-     * persistence, GoL injection and the screenshot trigger would all stop,
-     * reported on the panel as nothing at all. Measured on both boards before
-     * the change: `REDISCLI_AUTH=x redis-cli -p 6379 ping` ->
-     * "ERR AUTH <password> called without any password configured". */
+     * with an ERROR rather than a shrug, so the connection never opens.
+     * Measured on both boards before the change:
+     * `REDISCLI_AUTH=x redis-cli -p 6379 ping` ->
+     * "ERR AUTH <password> called without any password configured".
+     *
+     * What that costs has SHRUNK, and the name is still the right one. Until
+     * sprint 039 it was remote mode control, last-mode persistence, GoL
+     * injection and the screenshot trigger, reported on the panel as nothing
+     * at all; now it is one migration that finds no old scores to copy. The
+     * failure is quieter, not gone, and unit-lint still pins the name. */
+    cfg->redis_host = env_or("KDESKDASH_REDIS_HOST", "127.0.0.1");
+    int port = atoi(env_or("KDESKDASH_REDIS_PORT", "6379"));
+    cfg->redis_port = (port > 0 && port <= 65535) ? port : 6379;
     const char *auth = getenv("KDESKDASH_CONTROL_REDISCLI_AUTH");
     cfg->redis_auth = (auth && auth[0] != '\0') ? auth : NULL;
+
+    /* Where the durable state lives. The unit's StateDirectory=kdeskdash makes
+     * this the one writable path under ProtectSystem=strict. */
+    cfg->state_path = env_or("KDESKDASH_STATE_FILE", PANEL_STATE_DEFAULT_PATH);
 
     cfg->rotate_180 = env_flag("KDESKDASH_ROTATE_180");
 
     /* Telemetry source: kpidash publishes host metrics to a (typically remote)
-     * Redis. Separate endpoint + auth from the local control Redis. */
+     * Redis. Its own endpoint and handle, independent of every other feed. */
     cfg->telemetry_redis_host = env_or("KDESKDASH_TELEMETRY_REDIS_HOST", "rpi53");
     int tport = atoi(env_or("KDESKDASH_TELEMETRY_REDIS_PORT", "6379"));
     cfg->telemetry_redis_port = (tport > 0 && tport <= 65535) ? tport : 6379;
@@ -190,4 +208,54 @@ void config_load(kdeskdash_config_t *cfg) {
      * panels on two hosts need nothing here; two instances on ONE host would
      * clobber each other's key and must be given distinct names. */
     cfg->card_name = env_or("KDESKDASH_CARD_NAME", "deskdash");
+
+    /* --- commands from central (sprint 039) --------------------------------
+     *
+     * `kdash:panelmode:<host>` / `kdash:panelshot:<host>` live on the CENTRAL
+     * Redis, which is where the telemetry feed already points — so unset means
+     * "reuse the telemetry values" and neither device's env file needs a new
+     * endpoint line. Host and port fall back independently; auth follows the
+     * ENDPOINT, not the variable, which is the sprint-031 rule the kvscf and
+     * service-card blocks above both carry and for the same reason. */
+    cfg->cmd_redis_host =
+        env_or("KDESKDASH_CMD_REDIS_HOST", cfg->telemetry_redis_host);
+    int mport = atoi(env_or("KDESKDASH_CMD_REDIS_PORT", "0"));
+    cfg->cmd_redis_port =
+        (mport > 0 && mport <= 65535) ? mport : cfg->telemetry_redis_port;
+    const char *mauth = getenv("KDESKDASH_CMD_REDISCLI_AUTH");
+    bool cmd_same_instance =
+        cfg->cmd_redis_port == cfg->telemetry_redis_port &&
+        strcmp(cfg->cmd_redis_host, cfg->telemetry_redis_host) == 0;
+    cfg->cmd_redis_auth =
+        (mauth && mauth[0] != '\0')
+            ? mauth
+            : (cmd_same_instance ? cfg->telemetry_redis_auth : NULL);
+
+    /* The `{host}` segment this panel answers to. Derived, not configured, in
+     * the normal case — one fewer line per device to get wrong, and a wrong
+     * one here means the panel silently answers another panel's commands or
+     * nobody's.
+     *
+     * Derived by LOWERCASING the first label, because gethostname() on
+     * rpidash2 returns `rpiDash2` (korg WI 2277 — it is why that board's
+     * service-card key is mixed-case) while the fleet inventory, k-homelab and
+     * kdash-pub all say `rpidash2`. The panel must answer to the name people
+     * and tools actually write.
+     *
+     * "" when the hostname is unreadable or not a legal token: panel_feed
+     * treats that as "disable the command feed" rather than guessing. */
+    static char panel_host[PANEL_CMD_HOST_MAX];
+    const char *forced = env_or("KDESKDASH_PANEL_HOST", NULL);
+    if (forced) {
+        if (!panel_cmd_host(forced, panel_host, sizeof(panel_host)))
+            panel_host[0] = '\0';
+    } else {
+        char raw[256];
+        if (gethostname(raw, sizeof(raw)) != 0)
+            raw[0] = '\0';
+        raw[sizeof(raw) - 1] = '\0';
+        if (!panel_cmd_host(raw, panel_host, sizeof(panel_host)))
+            panel_host[0] = '\0';
+    }
+    cfg->panel_host = panel_host;
 }

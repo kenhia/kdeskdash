@@ -27,7 +27,8 @@
 #include "modes/menu.h"
 #include "modes/palette.h"
 #include "modeset.h"
-#include "redis.h"
+#include "panel_feed.h"
+#include "panel_store.h"
 #include "shell.h"
 #include "telemetry.h"
 #include "src/drivers/display/drm/lv_linux_drm.h"
@@ -163,16 +164,20 @@ int main(int argc, char **argv) {
     }
     shell_register_menu(menu_mode_create("menu", "Menu", &modes));
 
-    /* Optional Redis: remote control + last-mode persistence. Safe when absent.
-     * Register the persistence hook before starting so the restored/initial
-     * mode is written back, then restore the last active mode if one exists. */
-    redis_init(cfg.redis_host, cfg.redis_port, cfg.redis_auth);
-    shell_set_change_cb(redis_set_active_mode);
+    /* Durable panel state: one file, and on a first run the one-time migration
+     * out of the board's own Redis (copy, never move). Safe when neither
+     * exists. Register the persistence hook before starting so the
+     * restored/initial mode is written back, then restore the last active mode
+     * if one exists. */
+    panel_store_init(cfg.state_path, cfg.redis_host, cfg.redis_port,
+                     cfg.redis_auth);
+    shell_set_change_cb(panel_store_set_active_mode);
     /* Before shell_start, so the restored mode is the first history entry. */
     shell_set_quick_pairs(cfg.quick_pairs);
     char last_mode[64];
     const char *restore =
-        redis_get_active_mode(last_mode, sizeof(last_mode)) ? last_mode : NULL;
+        panel_store_get_active_mode(last_mode, sizeof(last_mode)) ? last_mode
+                                                                  : NULL;
     shell_start(restore);
 
     /* Feeds are initialised only for modes this panel actually registered. The
@@ -202,12 +207,21 @@ int main(int argc, char **argv) {
         kvscf_redis_init(cfg.kvscf_redis_host, cfg.kvscf_redis_port,
                          cfg.kvscf_redis_auth, cfg.kvscf_token);
 
-    /* The kpidash service card: this instance's own liveness, write-only, on a
-     * fifth handle. Deliberately NOT mode-gated — "this panel is alive" is true
-     * whatever modes it registered, so a Fun-only panel still shows up on the
-     * board. */
+    /* The kpidash service card: this instance's own liveness, write-only, on
+     * its own handle. Deliberately NOT mode-gated — "this panel is alive" is
+     * true whatever modes it registered, so a Fun-only panel still shows up on
+     * the board. */
     service_pub_init(cfg.card_redis_host, cfg.card_redis_port,
                      cfg.card_redis_auth, cfg.card_name, KD_VERSION);
+
+    /* Commands from central (kdash:panelmode / kdash:panelshot). The OTHER
+     * deliberate exception to the mode gate, and for the same reason as the
+     * card: remote control addresses the INSTANCE, not a mode — a panel that
+     * could not be told to switch modes unless it already carried some
+     * particular mode would be an odd appliance. Read-only, lazy, and a down
+     * central costs nothing but the absence of remote control. */
+    panel_feed_init(cfg.cmd_redis_host, cfg.cmd_redis_port, cfg.cmd_redis_auth,
+                    cfg.panel_host);
 
     /* Capacitive touch via evdev (ILITEK, default /dev/input/event1).
      * Touch is optional: if it cannot be opened, the display still runs. */
@@ -224,9 +238,9 @@ int main(int argc, char **argv) {
     uint32_t last_poll = lv_tick_get();
     while (g_running) {
         shell_tick();
-        /* Poll Redis ~once per second (remote control + reconnect). */
+        /* Poll central ~once per second (remote control + reconnect). */
         if (lv_tick_elaps(last_poll) >= 1000) {
-            redis_poll();
+            panel_feed_poll();
             /* Self-published service card; throttles itself to 15 s. */
             service_pub_tick();
             last_poll = lv_tick_get();
@@ -239,7 +253,7 @@ int main(int argc, char **argv) {
 
     printf("\nkdeskdash: shutting down\n");
     service_pub_shutdown();
-    redis_shutdown();
+    panel_feed_shutdown();
     telemetry_shutdown();
     claude_mode_shutdown(claude_mode);
     kvscf_redis_shutdown();

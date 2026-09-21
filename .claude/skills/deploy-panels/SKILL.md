@@ -130,11 +130,16 @@ ssh ken@rpidash2 'systemctl is-active kdeskdash'
 KDD_HOST=ken@rpidash2 scripts/kddss deploy-$V
 ```
 
-`kddss` is the strongest check available for a panel: it round-trips through the
-control Redis and the running LVGL app and comes back with what is actually on
-the screen. A unit being active only proves *a* kdeskdash is running; a rendered
-frame proves this one is drawing. If the sprint changed anything visual, open
+`kddss` is the strongest check available for a panel: it round-trips through
+**central** and the running LVGL app and comes back with what is actually on the
+screen. A unit being active only proves *a* kdeskdash is running; a rendered
+frame proves this one is drawing, AND that it is reading its commands from
+central under the right host name. If the sprint changed anything visual, open
 the PNG and look at it.
+
+Since sprint 039 the trigger is `kdash-pub set kdash:panelshot:<host>` rather
+than `redis-cli` on the panel, so **`kdash-pub` must be on the deploying host's
+PATH** and able to reach central. `kddss` says so and exits 1 if it is not.
 
 ### 4. Report
 

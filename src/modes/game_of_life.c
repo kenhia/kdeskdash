@@ -16,7 +16,7 @@
 
 #include "gol.h"
 #include "lvgl.h"
-#include "redis.h"
+#include "panel_feed.h"
 /* "../palette.h": src/modes/palette.h shadows the core header from in here —
  * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
 #include "../palette.h"
@@ -170,10 +170,11 @@ static void roll_and_reseed(gol_mode_state_t *st) {
     st->rng ^= lv_tick_get() * 2654435761u;
     if (st->rng == 0)
         st->rng = 0x1234567u;
-    /* Randomize, then overlay any one-shot settings injected via Redis; absent
-     * fields keep their randomized values and the injection key is cleared. */
+    /* Randomize, then overlay any one-shot settings injected from central with
+     * the mode command; absent fields keep their randomized values, and the
+     * injection is consumed so it applies exactly once. */
     gol_settings_t cfg = random_settings(&st->rng);
-    redis_apply_gol_settings(&cfg);
+    panel_feed_apply_gol_settings(&cfg);
     if (cfg.padding >= cfg.cell_size)
         cfg.padding = cfg.cell_size - 1;
     reseed(st, &cfg);

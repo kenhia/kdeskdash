@@ -14,10 +14,16 @@
 # The binary is deployed to /usr/local/bin/kdeskdash by `just deploy <host>`.
 [Unit]
 Description=kdeskdash touch dashboard
-# Redis is optional; start after it when present so remote control/persistence
-# are available immediately, but do not fail if it is absent.
+# Ordering ONLY, and only for the one-time state migration: on a first run with
+# no /var/lib/kdeskdash/state, the panel copies its old durable values out of
+# the board's local Redis. After that it never dials it again — commands come
+# from central and state is a file (sprint 039).
+#
+# `After=` and deliberately NOT `Wants=`: nothing here should PULL a Redis
+# server in. `After=` on a unit that does not exist is silent, so when the
+# k-homelab cleanup slice removes redis-server from both panels this line
+# simply stops mattering, with no edit needed here and nothing left behind.
 After=redis-server.service
-Wants=redis-server.service
 # Never permanently give up restarting the appliance. With systemd's default
 # start limit (StartLimitBurst=5 / StartLimitIntervalSec=10s) a transient
 # early-boot crash loop would wedge the unit in `failed` until someone SSHes in
@@ -66,10 +72,16 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=yes
-# Only writable state: the icons-mode favourites file. StateDirectory creates
-# /var/lib/kdeskdash and makes just that path writable under ProtectSystem=strict
-# (matching KDESKDASH_ICONS_FAVORITES's default). Screenshots land in
-# PrivateTmp's /tmp; the env file and runtime font are read-only.
+# The one writable path, and now three things live in it: the durable panel
+# state file (KDESKDASH_STATE_FILE), the icons-mode favourites file
+# (KDESKDASH_ICONS_FAVORITES) and device screenshots. StateDirectory creates
+# /var/lib/kdeskdash and makes just that path writable under
+# ProtectSystem=strict; the env file and runtime font stay read-only.
+#
+# It is also the directory the screenshot path guard enforces: a path arriving
+# on kdash:panelshot:<host> is refused unless it is inside this one, because
+# that key is writable by every holder of the central password and this service
+# runs as root. The two facts belong together — widening one widens the other.
 StateDirectory=kdeskdash
 
 [Install]

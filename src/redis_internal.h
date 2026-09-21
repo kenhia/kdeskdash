@@ -1,7 +1,9 @@
 /**
  * @file redis_internal.h
- * Private layout of the Redis connection handle, shared only by the Redis /
- * telemetry implementation units (redis.c, telemetry.c, kvscf_redis.c).
+ * Private layout of the Redis connection handle, shared only by the units that
+ * own a connection: redis.c, telemetry.c, kvscf_redis.c, service_pub.c and
+ * panel_store.c (whose one-time state migration is the last reader of the
+ * board's own Redis).
  *
  * This is the one place that includes hiredis. Public consumers include
  * redis.h, which forward-declares redis_client_t as an opaque type, so touching
@@ -19,8 +21,8 @@
 
 /* Generic synchronous Redis connection handle: owns a hiredis context plus the
  * endpoint/auth and a per-handle reconnect backoff deadline. Independent
- * endpoints (control + telemetry) each use their own handle so a stall or
- * backoff on one never affects the other. Single-threaded; no locking. */
+ * endpoints each use their own handle so a stall or backoff on one never
+ * affects the other. Single-threaded; no locking. */
 struct redis_client {
     redisContext *ctx;
     char host[128];

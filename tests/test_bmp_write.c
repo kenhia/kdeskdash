@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "bmp_write.h"
 
@@ -65,6 +66,62 @@ int main(void) {
     check(!bmp_write_xrgb8888(NULL, px, 2, 2, 12), "null file rejects");
     check(!bmp_write_xrgb8888(g, NULL, 2, 2, 12), "null pixels rejects");
     fclose(g);
+
+    /* ---- the atomic file write (korg WI 2308) ----
+     *
+     * The bug it fixes is a consumer reading the target while it is still
+     * being written, so what is worth asserting is that the target is never
+     * the file being written to: the temp sibling exists during the write and
+     * not after it, and a failed write leaves the previous target alone. */
+    {
+        char path[256], tmp[320];
+        const char *dir = getenv("TMPDIR");
+        snprintf(path, sizeof(path), "%s/kdeskdash-test-shot-%d.bmp",
+                 (dir && dir[0]) ? dir : "/tmp", (int)getpid());
+        snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+        unlink(path);
+        unlink(tmp);
+
+        check(bmp_write_file_atomic(path, px, 2, 2, 12), "atomic write succeeds");
+        check(access(tmp, F_OK) != 0, "the .tmp sibling is gone afterwards");
+
+        FILE *r = fopen(path, "rb");
+        check(r != NULL, "the target exists");
+        if (r) {
+            uint8_t got[70];
+            size_t n = fread(got, 1, sizeof(got), r);
+            check(n == sizeof(got), "the target is the WHOLE 70-byte file");
+            check(fgetc(r) == EOF, "and nothing follows it");
+            fclose(r);
+            check(memcmp(got, buf, sizeof(got)) == 0,
+                  "byte-identical to the streamed encode");
+        }
+
+        /* A failed encode must not replace a good previous capture — a panel
+         * that answers a screenshot command with the last good shot is wrong,
+         * but a panel that replaces it with a truncated one is worse. */
+        check(!bmp_write_file_atomic(path, px, 2, 2, 4),
+              "an invalid stride fails the atomic write");
+        check(access(tmp, F_OK) != 0, "and leaves no .tmp debris");
+        r = fopen(path, "rb");
+        check(r != NULL, "the previous target survives a failed write");
+        if (r) {
+            uint8_t got[70];
+            check(fread(got, 1, sizeof(got), r) == sizeof(got) &&
+                      memcmp(got, buf, sizeof(got)) == 0,
+                  "and is still byte-identical");
+            fclose(r);
+        }
+
+        check(!bmp_write_file_atomic("/proc/kdeskdash-nonexistent/x.bmp", px, 2,
+                                     2, 12),
+              "an unwritable directory fails rather than reporting success");
+        check(!bmp_write_file_atomic(NULL, px, 2, 2, 12), "null path rejects");
+        check(!bmp_write_file_atomic("", px, 2, 2, 12), "empty path rejects");
+
+        unlink(path);
+        unlink(tmp);
+    }
 
     if (failures) {
         fprintf(stderr, "%d test(s) failed\n", failures);

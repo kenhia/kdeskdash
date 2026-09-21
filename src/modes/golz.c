@@ -17,7 +17,8 @@
 
 #include "golz.h"
 #include "lvgl.h"
-#include "redis.h"
+#include "panel_feed.h"
+#include "panel_store.h"
 /* "../palette.h": src/modes/palette.h shadows the core header from in here —
  * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
 #include "../palette.h"
@@ -42,7 +43,7 @@
 #define GOLZ_HUMAN_KILL_MAX 32
 
 /* Adaptive human-win threshold: starting value and self-balancing steps. The
- * floor (100) is enforced by redis_golz_set_gens_to_win. Symmetric steps give a
+ * floor (100) is enforced by panel_store_golz_set_gens_to_win. Symmetric steps give a
  * fixed point where P(Human win) == P(Zombie win), i.e. a true 50/50 decisive
  * match (the loop self-tunes the threshold to hold it). */
 #define GOLZ_GENS_TO_WIN_DEFAULT 250
@@ -219,10 +220,12 @@ static void reseed(golz_mode_state_t *st) {
     roll_settings(&st->rng, &living, &z);
     /* The human-win threshold is the adaptive, persisted value (not rolled). */
     z.generations_to_win = (int)st->gens_to_win;
-    /* Overlay one-shot injected settings; absent fields keep the randomized
-     * values and the injection key is cleared. */
-    redis_apply_gol_settings(&living);
-    redis_apply_golz_settings(&z);
+    /* Overlay one-shot settings injected from central with the mode command;
+     * absent fields keep the randomized values. Both vocabularies come from one
+     * `settings` object and each is consumed once, so reading them in sequence
+     * here is safe — see panel_feed.h. */
+    panel_feed_apply_gol_settings(&living);
+    panel_feed_apply_golz_settings(&z);
     living.rgb = false;
     if (living.padding >= living.cell_size)
         living.padding = living.cell_size - 1;
@@ -255,8 +258,8 @@ static void reseed_same(golz_mode_state_t *st) {
 static void show_banner(golz_mode_state_t *st); /* defined below */
 
 /* Record one decisive round outcome exactly once (latched): bump the matching
- * persistent counter (preferring the authoritative Redis value, falling back to
- * the in-memory mirror), and for a Human/Zombie win nudge the adaptive
+ * persistent counter (preferring the store's authoritative value, falling back
+ * to the in-memory mirror), and for a Human/Zombie win nudge the adaptive
  * generations_to_win (the loser gets an easier next game) and persist it. */
 static void record_outcome(golz_mode_state_t *st, golz_terminal_t outcome) {
     if (st->outcome_recorded)
@@ -264,21 +267,21 @@ static void record_outcome(golz_mode_state_t *st, golz_terminal_t outcome) {
     st->outcome = outcome;
     switch (outcome) {
     case GOLZ_HUMAN_WIN: {
-        long n = redis_golz_incr_human_wins();
+        long n = panel_store_golz_incr_human_wins();
         st->human_wins = (n >= 0) ? n : st->human_wins + 1;
         st->gens_to_win += GOLZ_GENS_WIN_STEP; /* humans won -> harder next time */
-        st->gens_to_win = redis_golz_set_gens_to_win(st->gens_to_win);
+        st->gens_to_win = panel_store_golz_set_gens_to_win(st->gens_to_win);
         break;
     }
     case GOLZ_ZOMBIE_WIN: {
-        long n = redis_golz_incr_zombie_wins();
+        long n = panel_store_golz_incr_zombie_wins();
         st->zombie_wins = (n >= 0) ? n : st->zombie_wins + 1;
         st->gens_to_win -= GOLZ_GENS_LOSS_STEP; /* humans lost -> easier next time */
-        st->gens_to_win = redis_golz_set_gens_to_win(st->gens_to_win);
+        st->gens_to_win = panel_store_golz_set_gens_to_win(st->gens_to_win);
         break;
     }
     case GOLZ_TIE: {
-        long n = redis_golz_incr_ties();
+        long n = panel_store_golz_incr_ties();
         st->ties = (n >= 0) ? n : st->ties + 1;
         break; /* a tie leaves the threshold unchanged */
     }
@@ -566,14 +569,15 @@ static void activate(kd_mode_t *self) {
     /* A re-activation starts a fresh randomized round with no overlay open. */
     close_overlays(st);
     /* Restore the persisted counters and adaptive threshold into the in-memory
-     * mirrors (defaults when Redis is absent), then start a fresh round. The
+     * mirrors (defaults when the state file carries none), then start a fresh
+     * round. The
      * historical zombie-win figure is the legacy pre-machete counter; default to
      * the documented baseline (13,883) when the key is absent. */
-    st->human_wins = redis_golz_get_human_wins(0);
-    st->zombie_wins = redis_golz_get_zombie_wins(0);
-    st->ties = redis_golz_get_ties(0);
-    st->gens_to_win = redis_golz_get_gens_to_win(GOLZ_GENS_TO_WIN_DEFAULT);
-    st->historical_zombie_wins = redis_golz_get_wins(13883);
+    st->human_wins = panel_store_golz_get_human_wins(0);
+    st->zombie_wins = panel_store_golz_get_zombie_wins(0);
+    st->ties = panel_store_golz_get_ties(0);
+    st->gens_to_win = panel_store_golz_get_gens_to_win(GOLZ_GENS_TO_WIN_DEFAULT);
+    st->historical_zombie_wins = panel_store_golz_get_wins(13883);
     reseed(st);
 }
 

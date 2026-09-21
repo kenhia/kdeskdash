@@ -105,3 +105,52 @@ bool gol_settings_apply_field(gol_settings_t *cfg, const char *field,
     }
     return false;
 }
+
+bool golz_settings_apply_field(golz_settings_t *cfg, const char *field,
+                               const char *val) {
+    if (!cfg || !field || !val)
+        return false;
+
+    long iv;
+    /* Bounds carried over verbatim from redis.c's apply_golz_field; only the
+     * parse got stricter. They are deliberately wider than roll_settings() in
+     * modes/golz.c, so a remote client can push the simulation somewhere the
+     * random roller never goes. */
+    if (strcmp(field, "initial_count") == 0) {
+        if (parse_int(val, &iv) && iv >= 0 && iv <= 5) {
+            cfg->initial_count = (int)iv;
+            return true;
+        }
+    } else if (strcmp(field, "zombie_reinfect") == 0) {
+        if (parse_int(val, &iv) && iv >= 0 && iv <= 100) {
+            cfg->zombie_reinfect = (int)iv;
+            return true;
+        }
+    } else if (strcmp(field, "zombie_spawn_chance") == 0) {
+        if (parse_int(val, &iv) && iv >= 0 && iv <= 100) {
+            cfg->zombie_spawn_chance = (int)iv;
+            return true;
+        }
+    } else if (strcmp(field, "max_generations") == 0) {
+        if (parse_int(val, &iv) && iv >= 1 && iv <= 1000000) {
+            cfg->max_generations = (int)iv;
+            return true;
+        }
+    } else if (strcmp(field, "machete_percentage") == 0) {
+        if (parse_int(val, &iv) && iv >= 0 && iv <= 100) {
+            cfg->machete_percentage = (int)iv;
+            return true;
+        }
+    } else if (strcmp(field, "human_kill_zombie") == 0) {
+        if (parse_int(val, &iv) && iv >= 0 && iv <= 100) {
+            cfg->human_kill_zombie = (int)iv;
+            return true;
+        }
+    } else if (strcmp(field, "generations_to_win") == 0) {
+        if (parse_int(val, &iv) && iv >= 1 && iv <= 1000000) {
+            cfg->generations_to_win = (int)iv;
+            return true;
+        }
+    }
+    return false;
+}
