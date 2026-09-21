@@ -79,6 +79,10 @@ add_executable(kdeskdash
     src/iconset.c
     src/stopwatch.c
     src/redis.c
+    src/panel_state.c
+    src/panel_store.c
+    src/panel_cmd.c
+    src/panel_feed.c
     src/dev_telemetry.c
     src/telemetry.c
     src/telemetry_host.c
@@ -165,9 +169,12 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_compile_options(test_gol PRIVATE -Wall -Wextra)
     add_test(NAME test_gol COMMAND test_gol)
 
-    # Untrusted GoL settings-hash validation, extracted from redis.c so it can be
-    # exercised on the host with no hiredis dependency (guards the cell_size floor).
-    add_executable(test_settings tests/test_settings.c src/gol_settings.c)
+    # Untrusted settings validation for BOTH settings structs, extracted from
+    # redis.c so it can be exercised on the host with no hiredis dependency
+    # (guards the cell_size floor). gol_settings.c declares the GoLZ applier
+    # too since sprint 039, so golz.c/gol.c come along for golz_settings_t.
+    add_executable(test_settings tests/test_settings.c src/gol_settings.c
+                   src/golz.c src/gol.c)
     target_include_directories(test_settings PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_settings PRIVATE -Wall -Wextra)
     add_test(NAME test_settings COMMAND test_settings)
@@ -329,10 +336,28 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_compile_options(test_service_card PRIVATE -Wall -Wextra)
     add_test(NAME test_service_card COMMAND test_service_card)
 
+    # The durable panel state file (sprint 039): the whole-file rejection rule,
+    # the unknown-key exception that keeps a rollback survivable, and the
+    # atomic save — including that a failed save leaves the previous file
+    # byte-identical. Pure stdlib, so it runs anywhere ctest does.
+    add_executable(test_panel_state tests/test_panel_state.c src/panel_state.c)
+    target_include_directories(test_panel_state PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_panel_state PRIVATE -Wall -Wextra)
+    add_test(NAME test_panel_state COMMAND test_panel_state)
+
+    # Central-command policy (sprint 039): the `{host}` segment this panel
+    # answers to — lowercased, because rpidash2's kernel hostname is `rpiDash2`
+    # (korg WI 2277) — and the screenshot path guard, which is the panel's half
+    # of CD-23 and is negative-tested against paths outside its own directory.
+    add_executable(test_panel_cmd tests/test_panel_cmd.c src/panel_cmd.c)
+    target_include_directories(test_panel_cmd PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_panel_cmd PRIVATE -Wall -Wextra)
+    add_test(NAME test_panel_cmd COMMAND test_panel_cmd)
+
     # Endpoint fallbacks, the kvscf-vs-claude auth rule in particular. config.c
     # is stdlib-only, so the test drives the real config_load() through setenv
     # rather than re-stating its rules.
-    add_executable(test_config tests/test_config.c src/config.c)
+    add_executable(test_config tests/test_config.c src/config.c src/panel_cmd.c)
     target_include_directories(test_config PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_config PRIVATE -Wall -Wextra)
     add_test(NAME test_config COMMAND test_config)

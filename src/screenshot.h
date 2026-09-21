@@ -1,9 +1,15 @@
 /**
  * @file screenshot.h
  * Device self-screenshot: render the active LVGL screen to a memory buffer
- * (lv_snapshot) and write it as a 24-bit BMP. Triggered one-shot via the
- * control Redis key `kdeskdash:screenshot` (see redis_poll) so a pixel-perfect
- * shot can be taken without photographing the glossy panel.
+ * (lv_snapshot) and write it as a 24-bit BMP, so a pixel-perfect shot can be
+ * taken without photographing the glossy panel.
+ *
+ * Triggered from central by `kdash:panelshot:<host>` (see panel_feed.c). The
+ * write is ATOMIC — bmp_write_file_atomic does temp + rename — so a consumer
+ * polling for the file never reads a partial one (korg WI 2308).
+ *
+ * A path arriving on the wire has already passed panel_cmd_shot_path_ok()
+ * before it gets here; this function trusts its caller.
  */
 #ifndef KDESKDASH_SCREENSHOT_H
 #define KDESKDASH_SCREENSHOT_H

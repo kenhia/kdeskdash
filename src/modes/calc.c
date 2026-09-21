@@ -41,7 +41,7 @@
  * shadowing the core. */
 #include "../calc.h"
 #include "lvgl.h"
-#include "redis.h"
+#include "panel_store.h"
 /* "../palette.h": src/modes/palette.h shadows the core header from in here —
  * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
 #include "../palette.h"
@@ -107,26 +107,27 @@ struct calc_mode_state {
     reg_ref_t  reg_refs[CALC_REGS];
     lv_obj_t  *drg_label; /* the DEG/RAD key's own label — it names the mode */
     lv_obj_t  *inv_btn;   /* the INV key, lit while the modifier is armed */
-    /* The registers have been reconciled with Redis: either a stored line was
-     * read back, or the user stored one here. Until then a later activate may
-     * still try the read — the endpoint is optional and may simply have been
-     * down at boot. Once true it never flips back, so a restored-or-local
-     * register file can never be overwritten by a stale remote read. */
+    /* The registers have been reconciled with the store: either a stored line
+     * was read back, or the user stored one here. Until then a later activate
+     * may still try the read — the state file is optional and may simply have
+     * been unreadable at boot. Once true it never flips back, so a
+     * restored-or-local register file can never be overwritten by a stale read. */
     bool       regs_loaded;
 };
 
 /* --- register persistence (WI #509) --------------------------------------
  *
  * The contract is pure and host-tested (calc_regs_serialize / calc_regs_parse);
- * this is just the I/O around it. Both directions are no-ops when the control
- * Redis is down, which leaves the registers behaving exactly as they did
- * before they were persisted at all. */
+ * this is just the I/O around it. Both directions are no-ops when the state
+ * file cannot be written, which leaves the registers behaving exactly as they
+ * did before they were persisted at all. (They lived on the board's own Redis
+ * until sprint 039; the store is the file now, and the API is the same shape.) */
 
 static void load_regs(calc_mode_state_t *st) {
     if (st->regs_loaded)
         return;
     char line[CALC_REGS_STR_MAX];
-    if (redis_get_calc_regs(line, sizeof(line)) &&
+    if (panel_store_get_calc_regs(line, sizeof(line)) &&
         calc_regs_parse(&st->calc, line))
         st->regs_loaded = true;
 }
@@ -137,7 +138,7 @@ static void save_regs(calc_mode_state_t *st) {
     st->regs_loaded = true;
     char line[CALC_REGS_STR_MAX];
     calc_regs_serialize(&st->calc, line, sizeof(line));
-    redis_set_calc_regs(line);
+    panel_store_set_calc_regs(line);
 }
 
 /* --- refresh: repaint every readout from the core ------------------------- */
@@ -471,9 +472,9 @@ static void activate(kd_mode_t *self) {
     calc_mode_state_t *st = self->state;
     if (!self->screen)
         build_screen(self);
-    /* Not in _create: modes are built before the control Redis is dialled, and
-     * the endpoint is optional anyway — so the read is attempted on the way in
-     * and retried on a later activate if it did not land. */
+    /* Not in _create: modes are built before the state store is loaded, and the
+     * file is optional anyway — so the read is attempted on the way in and
+     * retried on a later activate if it did not land. */
     load_regs(st);
     refresh(st); /* registers/result persist across mode switches */
 }

@@ -93,8 +93,8 @@ cross-compile approach and adding touch input.
   `sin cos tan` with an `INV` modifier for the inverses and a `DEG`/`RAD` key that names
   the angle mode it is in). `CE` clears the operand you are typing; `C` takes the pending
   operation with it. Immediate-execution infix. **Registers survive a restart** — the only
-  thing here that touches Redis (`kdeskdash:calc:regs`), and the calculator works normally
-  without it. **Tap a register row to recall it, hold it to store** — the two STO/RCL
+  thing here that touches durable state (`calc.regs` in the panel state file), and the
+  calculator works normally without it. **Tap a register row to recall it, hold it to store** — the two STO/RCL
   buttons that used to sit on each row are what paid for the keypad's extra columns. See
   [sprints/016-calc-mode](sprints/016-calc-mode/requirements.md) and
   [sprints/036-calc-and-clock.md](sprints/036-calc-and-clock.md).
@@ -257,12 +257,17 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_DRM_DEV`    | `/dev/dri/card1`     | DRM device (card1 = vc4 GPU) |
 | `KDESKDASH_ROTATE_180` | _(off)_              | Parsed but currently a **no-op** — the DRM driver has no software-rotation path yet, so setting it only logs a warning (the panel is mounted the right way up via the case). Reserved for a future rotation path. |
 | `KDESKDASH_TOUCH_DEV`  | `/dev/input/by-id/usb-ILITEK_ILITEK-TOUCH-event-if00` | evdev touch device; the by-id symlink is stable across replug/reboot |
-| `KDESKDASH_REDIS_HOST` | `127.0.0.1`          | Control Redis host (optional) |
-| `KDESKDASH_REDIS_PORT` | `6379`               | Control Redis port           |
-| `KDESKDASH_CONTROL_REDISCLI_AUTH` | _(unset)_ | Control Redis password, if any (AUTH). Unset on both panels — that instance is loopback-only and passwordless. Deliberately **not** bare `REDISCLI_AUTH`, which is the fleet's name for the central rpi53 password and is always set once the unit reads `/etc/khomelab/secrets.env`; a Redis with no password configured answers `AUTH` with an *error*, so reading the bare name here would silently kill remote control, last-mode persistence, GoL injection and screenshots. Guarded by `just unit-lint` and `test_config`. |
+| `KDESKDASH_STATE_FILE` | `/var/lib/kdeskdash/state` | Where the panel keeps its **durable state** — GoLZ counters and threshold, calculator registers, dev-mode host assignments, last active mode. Written atomically (temp + rename) on every change; a malformed file is rejected whole and the panel starts from defaults. Lived on a Redis server running on the board itself until sprint 039. |
+| `KDESKDASH_PANEL_HOST` | _(hostname, lowercased)_ | The `{host}` segment this panel answers to on central (`kdash:panelmode:<host>`, `kdash:panelshot:<host>`). Derived from `gethostname()`'s first label, **lowercased** — rpidash2's kernel hostname is `rpiDash2` while the fleet calls it `rpidash2`, and the panel must answer to the name people and tools write. Set it only to override; junk disables the command feed rather than guessing. The panel logs the name it chose at startup. |
+| `KDESKDASH_CMD_REDIS_HOST` | _(telemetry host → `rpi53`)_ | Where the panel **reads its commands** from. Defaults to the telemetry endpoint, which is already central, so neither device needs a line. Read-only; the panel never writes these keys. |
+| `KDESKDASH_CMD_REDIS_PORT` | _(telemetry port → `6379`)_ | Falls back independently of the host. |
+| `KDESKDASH_CMD_REDISCLI_AUTH` | _(telemetry auth, **same instance only**)_ | Unset on both panels: the command feed rides the telemetry endpoint and inherits `REDISCLI_AUTH` with no line anywhere. Inherits *only when it resolves to the same host:port* — the same rule, and the same reason, as `KVSCF_REDISCLI_AUTH`. |
+| `KDESKDASH_REDIS_HOST` | `127.0.0.1`          | The board's own **legacy** Redis, read exactly **once**: on a first run with no state file, to copy the old `kdeskdash:*` values into it. Copy, never move — nothing is deleted, so a rollback finds its state where it left it. |
+| `KDESKDASH_REDIS_PORT` | `6379`               | As above. |
+| `KDESKDASH_CONTROL_REDISCLI_AUTH` | _(unset)_ | Password for that legacy instance, if any (AUTH). Unset on both panels — it is loopback-only and passwordless. Deliberately **not** bare `REDISCLI_AUTH`, which is the fleet's name for the central rpi53 password and is always set once the unit reads `/etc/khomelab/secrets.env`; a Redis with no password configured answers `AUTH` with an *error*, so reading the bare name here would break the migration silently. Guarded by `just unit-lint` and `test_config`. |
 | `KDESKDASH_TELEMETRY_REDIS_HOST` | `rpi53`    | Telemetry source Redis host (kpidash host metrics; read-only, separate from the control Redis). Used by `dev` mode. |
 | `KDESKDASH_TELEMETRY_REDIS_PORT` | `6379`     | Telemetry source Redis port |
-| `REDISCLI_AUTH`        | _(unset)_            | The **central rpi53 password**, and the one credential three handles share: telemetry, the Claude feed, and the service card. **Secret, and not this repo's to install** — k-homelab renders it into `/etc/khomelab/secrets.env` on every host from the age store, and the unit reads it there. One name, one secret, fleet-wide (sprint 037). |
+| `REDISCLI_AUTH`        | _(unset)_            | The **central rpi53 password**, and the one credential four handles share: telemetry, the Claude feed, the service card, and the command feed. **Secret, and not this repo's to install** — k-homelab renders it into `/etc/khomelab/secrets.env` on every host from the age store, and the unit reads it there. One name, one secret, fleet-wide (sprint 037). |
 | `KDESKDASH_CLAUDE_REDIS_HOST` | `127.0.0.1`   | Claude-feed Redis host (agent activity + usage limits). Used by `claude` mode. The compiled-in default is a leftover from when the feed was loopback-local on rpidash2; the feed lives on the central Redis now (kdashdata CD-7) and both shipped panels set `rpi53` explicitly — see sprint 031. |
 | `KDESKDASH_CLAUDE_REDIS_PORT` | `6380`        | Claude-feed Redis port (both panels set `6379`) |
 | `KDESKDASH_KVSCF_REDIS_HOST` | _(claude-feed host)_ | kvscf instance the `Remote` and `Launcher` modes read and publish to. The fallback is legacy: kvscf stays with its workstation pair while the Claude feed has moved to central, so **both** panels now pin these explicitly (rpidash2 → its own `127.0.0.1:6380`, rpidash3 → its own second instance that kwork publishes to). Leaving them unset drags kvscf to central, which is the one thing the pin exists to prevent. |
@@ -279,39 +284,80 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_CARD_NAME`  | `deskdash`           | The card's name segment. Card identity is `(name, host)`, so two panels on two hosts need nothing here; **two instances on one host** would otherwise clobber each other's key and must be given distinct names (`deskdash-left`). |
 | `KVSCF_TOKEN`          | _(unset)_            | Shared secret authenticating the commands `Remote` and `Launcher` send to that device's `kvscf` (must byte-match kvscf's `KVSCF_TOKEN`, format `kvscf-<64hex>`). Unset → both modes still render but tapping cannot act ("view only"). Per kvscf instance, so each panel gets its own. **Secret** — and the only one still hand-installed to `/etc/kdeskdash/secrets.env`, because the two panels hold different values, neither is in the age store, and who issues it is an open question (korg WI 2479). |
 
-## Redis (optional)
+## Remote control (from central)
 
-Redis enables remote control, last-mode persistence, and Game of Life settings injection.
-The dashboard runs fully by touch without it.
+The panel takes commands from the **central** Redis on rpi53, read-only, through
+the kdashdata control families. It runs no Redis server of its own, and it never
+writes these keys — a command is *acted on* and left alone.
+
+| Key | Payload | Purpose |
+|-----|---------|---------|
+| `kdash:panelmode:<host>` | `{"mode": "<id>", "settings": {…}}` | Switch to `<id>`, optionally injecting one-shot settings for it. `settings` is optional; names and meanings belong to the mode, values are text. A mode this panel does not have is ignored (and logged). |
+| `kdash:panelshot:<host>` | `{"path": "/var/lib/kdeskdash/…"}` | Capture the active screen to BMP. `path` is optional — absent means `/var/lib/kdeskdash/kdeskdash-shot.bmp`. When present it is **absolute by contract**, and the panel **refuses anything outside `/var/lib/kdeskdash/`**, saying so in its log: this key is writable by every holder of the central password, so where a root process puts a 2.5 MB file is the panel's decision, not the wire's. |
+
+`<host>` is the panel's **lowercase short name** — `rpidash2`, `rpidash3`. The
+panel logs the one it chose at startup; `KDESKDASH_PANEL_HOST` overrides it.
+
+**A command is an edge, not a state.** The panel remembers the `ts` of the last
+command it acted on — separately per key — and acts only when a newer one
+arrives, ignoring anything older than 60 s. Three things follow, and they are
+the reason the shape is this one:
+
+- **A mode you pick by hand sticks.** The key may still say "GoL"; its `ts` has
+  not moved, so nothing yanks the screen back.
+- **Re-publishing is idempotent**, so a script can set the same command twice.
+- **A panel that was off for an hour comes back to its own screen**, not to
+  whatever it was told while it was away.
+
+Examples (from any fleet host — `kdash-pub` finds central and the password):
 
 ```bash
-ssh ken@rpidash2 'sudo apt-get install -y redis-server'   # enabled on install
+kdash-pub set kdash:panelmode:rpidash2 '{"mode":"clock"}'
+kdash-pub set kdash:panelmode:rpidash2 '{"mode":"game_of_life","settings":{
+  "cell_size":"6","padding":"1","density":"0.4","trail":"1","trail_turns":"8",
+  "speed_ms":"120","rgb":"1"}}'
+kdash-pub set kdash:panelshot:rpidash2 '{}'
 ```
 
-Keys:
+GoL setting names (all optional; absent fields randomize): `cell_size` (2–64),
+`padding` (0–16), `density` (0–1.0), `trail` (0/1), `trail_turns` (1–64),
+`speed_ms` (10–5000), `rgb` (0/1). With `rgb` on, three independent boards run
+with the same settings and are composited into the red/green/blue channels.
+GoLZ adds `initial_count` (0–5), `zombie_reinfect`, `zombie_spawn_chance`,
+`machete_percentage`, `human_kill_zombie` (all 0–100), `max_generations` and
+`generations_to_win` (1–1,000,000). An out-of-range or non-numeric value is
+ignored, leaving that field randomized; the injection applies to the next round,
+so naming the mode already showing configures it without switching.
 
-| Key | Type | Purpose |
-|-----|------|---------|
-| `kdeskdash:active_mode`  | string | Active mode id (e.g. `clock`, `game_of_life`, `dev`); `SET` to switch remotely, written on every change (persistence). |
-| `kdeskdash:gol:settings` | hash   | One-shot Game of Life settings, consumed (deleted) on the next GoL entry. |
-| `kdeskdash:dev:left`     | string | Dev mode: hostname assigned to the left charts; written on assign, restored on dev entry. |
-| `kdeskdash:dev:right`    | string | Dev mode: hostname assigned to the right charts; written on assign, restored on dev entry. |
-| `kdeskdash:calc:regs`    | string | Calc mode: the store/recall registers as `<idx>:<value>` pairs (e.g. `0:1.4142135623730951 3:-1.5`); written on every store, restored on calc entry. A malformed line is rejected whole rather than half-restored. Deleting the key clears the saved registers. |
-| `kdeskdash:screenshot`   | string | One-shot device self-screenshot (consumed with GETDEL): `SET` any value to write the active screen to `/var/lib/kdeskdash/kdeskdash-shot.bmp`; a value starting with `/` names the output path. (The state directory, not `/tmp` — the unit's `PrivateTmp=yes` would hide a `/tmp` shot inside the service's namespace.) How the README hero image above was taken — no glossy-panel photography. [scripts/kddss](scripts/kddss) wraps the whole flow: `kddss [basename]` triggers the shot and lands a PNG in the current directory; `KDD_HOST=rpidash3 kddss` targets another panel. |
+[scripts/kddss](scripts/kddss) wraps the whole screenshot flow: `kddss
+[basename]` publishes the trigger, waits for the file on the panel and lands a
+PNG in the current directory; `KDD_HOST=rpidash3 kddss` targets another panel.
+It is how the hero image above was taken — no glossy-panel photography.
 
-Examples (run on the Pi or any host pointed at its Redis):
+## Durable state (one file)
 
-```bash
-redis-cli set kdeskdash:active_mode clock         # switch to the Clock mode
-redis-cli hset kdeskdash:gol:settings \
-  cell_size 6 padding 1 density 0.4 trail 1 trail_turns 8 speed_ms 120 rgb 1
-redis-cli set kdeskdash:active_mode game_of_life  # applies the injected settings
-```
+Everything the panel must remember across a restart lives in
+`/var/lib/kdeskdash/state`, a flat `key=value` file the panel owns:
 
-GoL fields (all optional; absent fields randomize): `cell_size` (2–64), `padding` (0–16),
-`density` (0–1.0), `trail` (0/1), `trail_turns` (1–64), `speed_ms` (10–5000), `rgb` (0/1).
-With `rgb` on, three independent boards run with the same settings and are
-composited into the red/green/blue channels.
+| Key | Purpose |
+|-----|---------|
+| `golz.human_wins`, `golz.zombie_wins`, `golz.ties` | GoLZ outcome counters. |
+| `golz.gens_to_win` | The adaptive Human-win generation threshold (floor 100). |
+| `golz.wins` | The legacy pre-machete zombie-win counter; display-only. |
+| `calc.regs` | Calc mode's store/recall registers, `<idx>:<value>` pairs. |
+| `dev.left`, `dev.right` | Dev mode's assigned hosts. |
+| `active_mode` | The last active mode id, restored at startup. |
+
+Written atomically — temp file then rename — so a power cut leaves the previous
+file intact rather than half of a new one. A malformed file is **rejected
+whole** (the rule `calc:regs` already followed: half-restored state is worse
+than none, because nobody can tell which half they are looking at) and the panel
+starts from defaults. An **unknown key** is the one thing that does not reject
+it, because naming an older version is how this project rolls back.
+
+On a first run with no state file, the panel copies the old `kdeskdash:*` values
+out of the board's local Redis if one answers — **copy, never move** — so scores
+survive the move and a rollback finds Redis as it left it.
 
 ## Service (boot-to-dashboard)
 

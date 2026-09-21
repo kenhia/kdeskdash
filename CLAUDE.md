@@ -119,7 +119,8 @@ Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMak
 - **Pure cores** (`src/gol.c`, `src/golz.c`, `src/stopwatch.c`, `src/calc.c`, `src/palette.c`, `src/registry.c`,
   `src/modeset.c`, `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/modes/claude_view.c`,
   `src/telemetry_host.c`, `src/bmp_write.c`, `src/clock_core.c`, `src/service_card.c`,
-  `src/quickswitch.c`, `src/modes/dev_hostlist.c`, `src/modes/dev_view.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
+  `src/quickswitch.c`, `src/panel_state.c`, `src/panel_cmd.c`,
+  `src/modes/dev_hostlist.c`, `src/modes/dev_view.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
   explicit `uint32_t *state` seam). Each has a `tests/test_*.c`.
 - **Modes** (`src/modes/*.c`) — each implements the `kd_mode_t` lifecycle from `src/mode.h`:
   `activate` / `deactivate` / `tick`, owning one LVGL screen and its private `state`. A mode
@@ -156,13 +157,24 @@ only recoverable over SSH.
 #### Five independent feed handles — do not conflate them
 
 Each has its own connection and failure isolation (a down endpoint never stalls boot or
-another path). Four are `redis_client_t`s — the generic client + backoff lives in
-`src/redis.c` / `redis_internal.h`, and each feed is a thin reader on its own handle. The
-**claude feed is the exception**: since sprint 034 it is a libkdash `kdash_conn_t`, owned by
-the mode rather than by a module main.c initialises.
+another path). Three are `redis_client_t`s — the generic client + backoff lives in
+`src/redis.c` / `redis_internal.h`, and each feed is a thin reader on its own handle. **Two
+are libkdash `kdash_conn_t`s**: the claude feed since sprint 034, owned by its mode rather
+than by a module main.c initialises, and the command feed since sprint 039.
 
-1. **Control** (`src/redis.c`, `KDESKDASH_REDIS_*`) — remote mode control, last-mode
-   persistence, GoL settings injection, screenshot trigger. Polled ~1×/sec from the main loop.
+1. **Commands from central** (`src/panel_feed.c`, `KDESKDASH_CMD_REDIS_*`) — read-only
+   `kdash:panelmode:<host>` / `kdash:panelshot:<host>` on rpi53, polled ~1×/sec from the
+   main loop. **Not a `redis_client_t`**: a libkdash handle on `KDASH_STEM_CENTRAL`. Acts on
+   `ts` **advancing**, one acted stamp per verb, never clearing a key — so a mode picked by
+   hand sticks. The panel's policy (which `{host}` it answers to, which screenshot paths it
+   will accept) is pure and lives in `src/panel_cmd.c`. This replaced the **control**
+   handle, a `redis_client_t` on the board's OWN Redis that carried remote mode control,
+   last-mode persistence, GoL/GoLZ injection and the screenshot trigger.
+
+   Durable state went the other way: it is a **file** now (`src/panel_state.c` pure core,
+   `src/panel_store.c` store), not a feed at all. `KDESKDASH_REDIS_*` still names the local
+   Redis, but only `panel_store.c`'s one-time migration reads it — on a first run with no
+   state file, copying the old values across. Copy, never move.
 2. **Telemetry** (`src/telemetry.c`, `KDESKDASH_TELEMETRY_REDIS_*`) — read-only kpidash host
    metrics for Dev mode. Defaults to host `rpi53`.
 3. **Claude feed** (`src/modes/claude.c`, `KDESKDASH_CLAUDE_REDIS_*`) — fleet Claude Code
@@ -220,8 +232,11 @@ the mode rather than by a module main.c initialises.
 
 Feeds are initialised **only for modes the modeset registered**, so a panel without Dev never
 dials the telemetry endpoint at all. A handle shared by two modes is initialised when *either*
-is registered — see the kvscf gate in `main.c`. **The service card is the deliberate
-exception**: it reports the instance, not a mode, so it is initialised unconditionally.
+is registered — see the kvscf gate in `main.c`. **Two are deliberate exceptions**, and for
+the same reason: they address the *instance*, not a mode. The service card reports that this
+panel is alive whatever it carries; the command feed is how the panel is told what to show,
+and gating "can this panel be commanded" on "does it happen to carry some particular mode"
+would be an odd appliance. Both are initialised unconditionally.
 
 **A feed key's TTL is not a policy for every consumer.** The kvscf keys carry a 10s TTL, which
 is right for a live window list (absent genuinely means "nothing to focus") and wrong for the
@@ -254,6 +269,14 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
   LVGL lays *hidden* children out too, so a pooled grid child with no cell, or a grid with no
   track descriptors, segfaults on the first layout pass. Install a placeholder 1×1 track set
   at build time, and keep the descriptor arrays in state (LVGL stores the pointer).
+- **A fresh mtime is not a finished file** (`a-fresh-mtime-is-not-a-finished-file.md`) —
+  a writer publishes by `rename()`ing a complete file into place: `<path>.tmp` in the **same
+  directory**, `fsync`, then rename, and on failure unlink the temp and leave the target
+  alone. `fopen(path,"wb")` sets a fresh mtime on the first byte, so a reader waiting for
+  freshness reads a prefix — WI 2308's truncated screenshots. Fix it on the **writer**, which
+  fixes every consumer at once and lets the readers get simpler. Same shape in
+  `panel_state_save()`, where a torn file after a power cut is the failure. The test that
+  catches a regression is that a **failed** write leaves the previous target byte-identical.
 - **Sandboxing needs a second device** (`systemd-sandboxing-needs-a-second-device.md`) —
   `install-service` never overwrites a device's env file but *does* overwrite the unit, so a
   fleet drifts one device at a time. `PrivateTmp=yes` had been hiding device screenshots

@@ -1,44 +1,26 @@
 /**
  * @file redis.c
- * Optional Redis client implementation. Synchronous, single-threaded, driven
+ * The generic Redis connection handle. Synchronous, single-threaded, driven
  * from the main loop. Connection/reconnect shape mirrors kpidash/src/redis.c:
- * 250 ms connect timeout, 50 ms read timeout, REDISCLI_AUTH -> AUTH, and a
+ * 250 ms connect timeout, 50 ms read timeout, optional AUTH, and a
  * reconnect-if-needed gate before each op. All failures are swallowed so the
- * dashboard keeps running when Redis is absent.
+ * dashboard keeps running when an endpoint is absent.
  *
- * The connection/backoff machinery lives in a reusable redis_client_t handle so
- * a second endpoint (telemetry) can share the exact same discipline with its
- * own independent context and backoff. The control client below is one such
- * handle (g_control); its public redis_* API is unchanged.
+ * Nothing here talks to a particular feed. Each feed is a thin reader on its
+ * own handle (telemetry.c, kvscf_redis.c, service_pub.c, panel_store.c's
+ * migration), so a stall or backoff on one never reaches another.
+ *
+ * This file also held the CONTROL client until sprint 039 — the singleton on
+ * the board's own Redis that carried the panel's durable state and its command
+ * keys. See redis.h for where both went.
  */
 #include "redis.h"
 #include "redis_internal.h" /* private redis_client layout + hiredis */
 
 #include <netdb.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <time.h>
-
-#include "gol_settings.h"
-#include "screenshot.h"
-#include "shell.h"
-
-#define KEY_ACTIVE_MODE  "kdeskdash:active_mode"
-#define KEY_SCREENSHOT   "kdeskdash:screenshot"
-#define KEY_GOL_SETTINGS "kdeskdash:gol:settings"
-#define KEY_GOLZ_WINS     "kdeskdash:golz:wins" /* legacy: historical zombie wins */
-#define KEY_GOLZ_HUMAN_WINS  "kdeskdash:golz:human_wins"
-#define KEY_GOLZ_ZOMBIE_WINS "kdeskdash:golz:zombie_wins"
-#define KEY_GOLZ_TIES        "kdeskdash:golz:ties"
-#define KEY_GOLZ_GENS_TO_WIN "kdeskdash:golz:gens_to_win"
-#define KEY_GOLZ_SETTINGS "kdeskdash:golz:settings"
-
-/* Floor for the adaptive human-win threshold, mirroring the game rule. */
-#define GOLZ_GENS_FLOOR 100
-#define KEY_DEV_LEFT     "kdeskdash:dev:left"
-#define KEY_DEV_RIGHT    "kdeskdash:dev:right"
-#define KEY_CALC_REGS    "kdeskdash:calc:regs"
 
 /* A blocking connect to an unreachable host stalls the single-threaded UI loop
  * for up to the connect timeout. Keep that timeout short and only retry a dead
@@ -48,7 +30,7 @@
 #define CONNECT_TIMEOUT_MS  250
 #define RECONNECT_BACKOFF_S 5
 
-/* ---- Generic connection handle (shared by control + telemetry) ---- */
+/* ---- Generic connection handle (one per endpoint) ---- */
 
 /* Resolve `host` to a numeric IP string in `out`. Returns true on success.
  * getaddrinfo has no timeout knob, so this can block on a slow/dead resolver —
@@ -159,281 +141,4 @@ void redis_client_close(redis_client_t *c) {
         redisFree(c->ctx);
         c->ctx = NULL;
     }
-}
-
-/* ---- Control client (local endpoint): unchanged public API ---- */
-
-static redis_client_t g_control;
-
-void redis_init(const char *host, int port, const char *auth) {
-    redis_client_init(&g_control, host, port, auth);
-    redis_client_connect(&g_control); /* best-effort; a later op reconnects */
-}
-
-void redis_shutdown(void) {
-    redis_client_close(&g_control);
-}
-
-void redis_poll(void) {
-    if (!redis_client_ensure(&g_control))
-        return;
-
-    redisReply *r = redisCommand(g_control.ctx, "GET %s", KEY_ACTIVE_MODE);
-    if (!r) {
-        /* Context is now in error; next poll reconnects. */
-        return;
-    }
-    if (r->type == REDIS_REPLY_STRING && r->len > 0) {
-        kd_mode_t *m = shell_find_mode(r->str);
-        if (m && m != shell_active())
-            shell_set_active(m); /* unknown ids are simply ignored */
-    }
-    freeReplyObject(r);
-
-    /* One-shot device self-screenshot: consume kdeskdash:screenshot (GETDEL)
-     * and snapshot the active screen to BMP. A value starting with '/' names
-     * the output path; anything else uses the default. */
-    r = redisCommand(g_control.ctx, "GETDEL " KEY_SCREENSHOT);
-    if (!r)
-        return;
-    if (r->type == REDIS_REPLY_STRING && r->len > 0)
-        screenshot_save(r->str[0] == '/' ? r->str : NULL);
-    freeReplyObject(r);
-}
-
-void redis_set_active_mode(const char *id) {
-    if (!id || !redis_client_ensure(&g_control))
-        return;
-    redisReply *r = redisCommand(g_control.ctx, "SET %s %s", KEY_ACTIVE_MODE, id);
-    if (r)
-        freeReplyObject(r);
-}
-
-/* GET `key` into buf (truncated, always NUL-terminated). False on any error,
- * missing key, wrong type, or empty value; buf is left untouched on failure. */
-static bool redis_get_string(const char *key, char *buf, size_t buflen) {
-    if (!buf || buflen == 0 || !redis_client_ensure(&g_control))
-        return false;
-    redisReply *r = redisCommand(g_control.ctx, "GET %s", key);
-    bool ok = false;
-    if (r && r->type == REDIS_REPLY_STRING && r->len > 0) {
-        strncpy(buf, r->str, buflen - 1);
-        buf[buflen - 1] = '\0';
-        ok = true;
-    }
-    if (r)
-        freeReplyObject(r);
-    return ok;
-}
-
-bool redis_get_active_mode(char *buf, size_t buflen) {
-    return redis_get_string(KEY_ACTIVE_MODE, buf, buflen);
-}
-
-static const char *dev_side_key(redis_dev_side_t side) {
-    return side == REDIS_DEV_SIDE_LEFT ? KEY_DEV_LEFT : KEY_DEV_RIGHT;
-}
-
-void redis_set_dev_assignment(redis_dev_side_t side, const char *host) {
-    if (!redis_client_ensure(&g_control))
-        return;
-    const char *key = dev_side_key(side);
-    redisReply *r;
-    if (host && host[0] != '\0')
-        r = redisCommand(g_control.ctx, "SET %s %s", key, host);
-    else
-        r = redisCommand(g_control.ctx, "DEL %s", key);
-    if (r)
-        freeReplyObject(r);
-}
-
-bool redis_get_dev_assignment(redis_dev_side_t side, char *buf, size_t buflen) {
-    return redis_get_string(dev_side_key(side), buf, buflen);
-}
-
-void redis_set_calc_regs(const char *line) {
-    if (!redis_client_ensure(&g_control))
-        return;
-    redisReply *r;
-    /* An empty line means "no registers set", and the honest way to say that
-     * is an absent key rather than an empty string the reader has to special-
-     * case. Clearing the last register really does clear the saved state. */
-    if (line && line[0] != '\0')
-        r = redisCommand(g_control.ctx, "SET %s %s", KEY_CALC_REGS, line);
-    else
-        r = redisCommand(g_control.ctx, "DEL %s", KEY_CALC_REGS);
-    if (r)
-        freeReplyObject(r);
-}
-
-bool redis_get_calc_regs(char *buf, size_t buflen) {
-    return redis_get_string(KEY_CALC_REGS, buf, buflen);
-}
-
-bool redis_apply_gol_settings(gol_settings_t *cfg) {
-    if (!cfg || !redis_client_ensure(&g_control))
-        return false;
-
-    redisReply *r = redisCommand(g_control.ctx, "HGETALL %s", KEY_GOL_SETTINGS);
-    bool applied = false;
-    if (r && r->type == REDIS_REPLY_ARRAY && r->elements >= 2) {
-        for (size_t i = 0; i + 1 < r->elements; i += 2) {
-            redisReply *k = r->element[i];
-            redisReply *v = r->element[i + 1];
-            if (k && v && k->type == REDIS_REPLY_STRING &&
-                v->type == REDIS_REPLY_STRING) {
-                /* Delegate the untrusted-value validation to the pure, host-
-                 * tested boundary. `applied` gates the DEL below and mirrors the
-                 * prior semantics: any well-typed pair present means we consume
-                 * the one-shot key, whether or not its value passed validation. */
-                gol_settings_apply_field(cfg, k->str, v->str);
-                applied = true;
-            }
-        }
-    }
-    if (r)
-        freeReplyObject(r);
-
-    if (applied) {
-        redisReply *d = redisCommand(g_control.ctx, "DEL %s", KEY_GOL_SETTINGS);
-        if (d)
-            freeReplyObject(d);
-    }
-    return applied;
-}
-
-/* Atomic INCR of a counter key, returning the post-increment value or -1. */
-static long redis_incr_key(const char *key) {
-    if (!redis_client_ensure(&g_control))
-        return -1;
-    redisReply *r = redisCommand(g_control.ctx, "INCR %s", key);
-    long count = -1;
-    if (r && r->type == REDIS_REPLY_INTEGER)
-        count = (long)r->integer;
-    if (r)
-        freeReplyObject(r);
-    return count;
-}
-
-/* Read a counter key as a non-negative long, returning default_val otherwise. */
-static long redis_get_count(const char *key, long default_val) {
-    char buf[32];
-    if (!redis_get_string(key, buf, sizeof(buf)))
-        return default_val;
-    return golz_parse_wins(buf, default_val);
-}
-
-long redis_golz_incr_wins(void) {
-    return redis_incr_key(KEY_GOLZ_WINS);
-}
-
-long redis_golz_get_wins(long default_val) {
-    return redis_get_count(KEY_GOLZ_WINS, default_val);
-}
-
-long redis_golz_incr_human_wins(void) {
-    return redis_incr_key(KEY_GOLZ_HUMAN_WINS);
-}
-
-long redis_golz_incr_zombie_wins(void) {
-    return redis_incr_key(KEY_GOLZ_ZOMBIE_WINS);
-}
-
-long redis_golz_incr_ties(void) {
-    return redis_incr_key(KEY_GOLZ_TIES);
-}
-
-long redis_golz_get_human_wins(long default_val) {
-    return redis_get_count(KEY_GOLZ_HUMAN_WINS, default_val);
-}
-
-long redis_golz_get_zombie_wins(long default_val) {
-    return redis_get_count(KEY_GOLZ_ZOMBIE_WINS, default_val);
-}
-
-long redis_golz_get_ties(long default_val) {
-    return redis_get_count(KEY_GOLZ_TIES, default_val);
-}
-
-long redis_golz_get_gens_to_win(long default_val) {
-    long v = redis_get_count(KEY_GOLZ_GENS_TO_WIN, -1);
-    if (v < 0)
-        return default_val; /* missing/unparseable -> caller's default */
-    return v < GOLZ_GENS_FLOOR ? GOLZ_GENS_FLOOR : v;
-}
-
-long redis_golz_set_gens_to_win(long value) {
-    if (value < GOLZ_GENS_FLOOR)
-        value = GOLZ_GENS_FLOOR; /* enforce the game-rule floor */
-    if (!redis_client_ensure(&g_control))
-        return value; /* Redis down: caller still uses the in-memory value */
-    redisReply *r =
-        redisCommand(g_control.ctx, "SET %s %ld", KEY_GOLZ_GENS_TO_WIN, value);
-    if (r)
-        freeReplyObject(r);
-    return value;
-}
-
-/* Apply one "field value" pair from the GoLZ settings hash onto cfg, with hard
- * safety bounds mirroring golz_settings_clamp() (intentionally wider than the
- * mode's random roller so a remote client can experiment). */
-static void apply_golz_field(golz_settings_t *cfg, const char *field,
-                             const char *val) {
-    if (strcmp(field, "initial_count") == 0) {
-        int v = atoi(val);
-        if (v >= 0 && v <= 5)
-            cfg->initial_count = v;
-    } else if (strcmp(field, "zombie_reinfect") == 0) {
-        int v = atoi(val);
-        if (v >= 0 && v <= 100)
-            cfg->zombie_reinfect = v;
-    } else if (strcmp(field, "zombie_spawn_chance") == 0) {
-        int v = atoi(val);
-        if (v >= 0 && v <= 100)
-            cfg->zombie_spawn_chance = v;
-    } else if (strcmp(field, "max_generations") == 0) {
-        int v = atoi(val);
-        if (v >= 1 && v <= 1000000)
-            cfg->max_generations = v;
-    } else if (strcmp(field, "machete_percentage") == 0) {
-        int v = atoi(val);
-        if (v >= 0 && v <= 100)
-            cfg->machete_percentage = v;
-    } else if (strcmp(field, "human_kill_zombie") == 0) {
-        int v = atoi(val);
-        if (v >= 0 && v <= 100)
-            cfg->human_kill_zombie = v;
-    } else if (strcmp(field, "generations_to_win") == 0) {
-        int v = atoi(val);
-        if (v >= 1 && v <= 1000000)
-            cfg->generations_to_win = v;
-    }
-}
-
-bool redis_apply_golz_settings(golz_settings_t *cfg) {
-    if (!cfg || !redis_client_ensure(&g_control))
-        return false;
-
-    redisReply *r = redisCommand(g_control.ctx, "HGETALL %s", KEY_GOLZ_SETTINGS);
-    bool applied = false;
-    if (r && r->type == REDIS_REPLY_ARRAY && r->elements >= 2) {
-        for (size_t i = 0; i + 1 < r->elements; i += 2) {
-            redisReply *k = r->element[i];
-            redisReply *v = r->element[i + 1];
-            if (k && v && k->type == REDIS_REPLY_STRING &&
-                v->type == REDIS_REPLY_STRING) {
-                apply_golz_field(cfg, k->str, v->str);
-                applied = true;
-            }
-        }
-    }
-    if (r)
-        freeReplyObject(r);
-
-    if (applied) {
-        redisReply *d = redisCommand(g_control.ctx, "DEL %s", KEY_GOLZ_SETTINGS);
-        if (d)
-            freeReplyObject(d);
-    }
-    return applied;
 }

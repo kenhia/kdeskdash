@@ -35,6 +35,11 @@ static void clear_env(void) {
     unsetenv("KDESKDASH_CARD_REDISCLI_AUTH");
     unsetenv("KDESKDASH_CARD_NAME");
     unsetenv("KDESKDASH_QUICK_PAIRS");
+    unsetenv("KDESKDASH_CMD_REDIS_HOST");
+    unsetenv("KDESKDASH_CMD_REDIS_PORT");
+    unsetenv("KDESKDASH_CMD_REDISCLI_AUTH");
+    unsetenv("KDESKDASH_PANEL_HOST");
+    unsetenv("KDESKDASH_STATE_FILE");
 }
 
 static void load(kdeskdash_config_t *cfg) {
@@ -345,6 +350,107 @@ static void test_kvscf_slot_name_wins_over_the_historical_one(void) {
     printf("ok  both declared: KVSCF_REDISCLI_AUTH wins\n");
 }
 
+/* --- commands from central (sprint 039) ---------------------------------- */
+
+/* Both panels point telemetry at rpi53, which is where the control families
+ * live, so neither device env file needs a command endpoint line. */
+static void test_cmd_defaults_to_the_telemetry_endpoint(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KDESKDASH_TELEMETRY_REDIS_HOST", "rpi53", 1);
+    setenv("KDESKDASH_TELEMETRY_REDIS_PORT", "6379", 1);
+    setenv("REDISCLI_AUTH", "fleet", 1);
+    load(&cfg);
+    assert(strcmp(cfg.cmd_redis_host, "rpi53") == 0);
+    assert(cfg.cmd_redis_port == 6379);
+    assert(cfg.cmd_redis_auth != NULL && strcmp(cfg.cmd_redis_auth, "fleet") == 0);
+    printf("ok  cmd: defaults to the telemetry endpoint, auth included\n");
+}
+
+/* The sprint-031 rule, third instance of it: auth follows the ENDPOINT. */
+static void test_cmd_different_endpoint_does_not_inherit_auth(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KDESKDASH_TELEMETRY_REDIS_HOST", "rpi53", 1);
+    setenv("REDISCLI_AUTH", "fleet", 1);
+    setenv("KDESKDASH_CMD_REDIS_HOST", "127.0.0.1", 1);
+    load(&cfg);
+    assert(strcmp(cfg.cmd_redis_host, "127.0.0.1") == 0);
+    assert(cfg.cmd_redis_auth == NULL);
+    printf("ok  cmd: a different host does not inherit the telemetry password\n");
+}
+
+static void test_cmd_same_host_different_port_does_not_inherit_auth(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KDESKDASH_TELEMETRY_REDIS_HOST", "rpi53", 1);
+    setenv("KDESKDASH_TELEMETRY_REDIS_PORT", "6379", 1);
+    setenv("REDISCLI_AUTH", "fleet", 1);
+    setenv("KDESKDASH_CMD_REDIS_PORT", "6380", 1);
+    load(&cfg);
+    assert(cfg.cmd_redis_port == 6380);
+    assert(cfg.cmd_redis_auth == NULL);
+    printf("ok  cmd: a different port does not inherit the telemetry password\n");
+}
+
+static void test_cmd_explicit_auth_wins(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KDESKDASH_TELEMETRY_REDIS_HOST", "rpi53", 1);
+    setenv("REDISCLI_AUTH", "fleet", 1);
+    setenv("KDESKDASH_CMD_REDISCLI_AUTH", "its-own", 1);
+    load(&cfg);
+    assert(cfg.cmd_redis_auth != NULL &&
+           strcmp(cfg.cmd_redis_auth, "its-own") == 0);
+    printf("ok  cmd: an explicit password wins over the inherited one\n");
+}
+
+/* The `{host}` segment. The measured case is rpidash2's kernel hostname
+ * `rpiDash2` (korg WI 2277) against the fleet's `rpidash2`; config_load cannot
+ * fake gethostname(), so the override path is what is asserted here and the
+ * derivation itself is test_panel_cmd's. */
+static void test_panel_host_override_is_normalized(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KDESKDASH_PANEL_HOST", "rpiDash2.local", 1);
+    load(&cfg);
+    assert(strcmp(cfg.panel_host, "rpidash2") == 0);
+    printf("ok  panel host: an override is lowercased and shortened too\n");
+}
+
+/* An unusable override disables the feed rather than guessing — panel_feed
+ * refuses to open a handle on an empty host. */
+static void test_panel_host_junk_disables_the_feed(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    setenv("KDESKDASH_PANEL_HOST", "not a host", 1);
+    load(&cfg);
+    assert(cfg.panel_host != NULL && cfg.panel_host[0] == '\0');
+    printf("ok  panel host: junk yields \"\", which disables the feed\n");
+}
+
+/* Derived when unset: whatever this build host is called, it must at least be
+ * a legal token and carry no upper case. */
+static void test_panel_host_is_derived_when_unset(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    load(&cfg);
+    for (const char *p = cfg.panel_host; *p; p++)
+        assert(!(*p >= 'A' && *p <= 'Z'));
+    printf("ok  panel host: derived from the hostname, never upper case\n");
+}
+
+static void test_state_path_default_and_override(void) {
+    kdeskdash_config_t cfg;
+    clear_env();
+    load(&cfg);
+    assert(strcmp(cfg.state_path, "/var/lib/kdeskdash/state") == 0);
+    setenv("KDESKDASH_STATE_FILE", "/var/tmp/other-state", 1);
+    load(&cfg);
+    assert(strcmp(cfg.state_path, "/var/tmp/other-state") == 0);
+    printf("ok  state file: default and override\n");
+}
+
 int main(void) {
     test_control_ignores_the_fleet_password();
     test_control_reads_its_own_name();
@@ -363,6 +469,14 @@ int main(void) {
     test_card_different_endpoint_does_not_inherit_auth();
     test_card_explicit_overrides();
     test_quick_pairs_three_states();
+    test_cmd_defaults_to_the_telemetry_endpoint();
+    test_cmd_different_endpoint_does_not_inherit_auth();
+    test_cmd_same_host_different_port_does_not_inherit_auth();
+    test_cmd_explicit_auth_wins();
+    test_panel_host_override_is_normalized();
+    test_panel_host_junk_disables_the_feed();
+    test_panel_host_is_derived_when_unset();
+    test_state_path_default_and_override();
     printf("test_config: all passed\n");
     return 0;
 }

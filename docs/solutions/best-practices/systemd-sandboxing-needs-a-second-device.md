@@ -66,9 +66,15 @@ Deploying a binary does not update the unit, so a fleet drifts one device at a
 time and the drift is invisible until something breaks asymmetrically.
 
 **4. Make host-side tooling tolerate both the old and new layout during a
-rollout.** `kddss` tries the state directory, then falls back to `/tmp`, so it
-works against a device that has not been redeployed yet. In a multi-device fleet
-"all devices are on the current build" is a goal, not an invariant.
+rollout.** `kddss` tried the state directory and then fell back to `/tmp`, so it
+worked against a device that had not been redeployed yet. In a multi-device
+fleet "all devices are on the current build" is a goal, not an invariant.
+
+*(Sprint 039 dropped that fallback, and the reason is the rule rather than an
+exception to it: the trigger moved to `kdash:panelshot:<host>` on central, and a
+panel still running a build old enough to write `/tmp` does not answer that key
+at all. The fallback stopped covering anything — which is the test to apply
+before removing one, not "it looks unused".)*
 
 ## Signature
 

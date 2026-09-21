@@ -5,6 +5,7 @@
 #include "bmp_write.h"
 
 #include <string.h>
+#include <unistd.h>
 
 /* Little-endian scalar writers (BMP is little-endian by definition). */
 static void put16(uint8_t *p, uint16_t v) {
@@ -55,6 +56,45 @@ bool bmp_write_xrgb8888(FILE *f, const uint8_t *px, int w, int h, int stride) {
         }
         if (row_pad && fwrite(pad, 1, row_pad, f) != row_pad)
             return false;
+    }
+    return true;
+}
+
+/* Longest output path this will write. Comfortably over the contract's own
+ * maxLength for a wire-supplied path (KDASH_PATH_MAX / PANEL_CMD_PATH_MAX,
+ * 256), with room for the ".tmp" suffix. */
+#define BMP_PATH_MAX 512
+
+bool bmp_write_file_atomic(const char *path, const uint8_t *px, int w, int h,
+                           int stride) {
+    if (!path || path[0] == '\0')
+        return false;
+
+    /* Same directory, so rename() is within one filesystem and therefore
+     * atomic. A temp file elsewhere would silently become a copy. */
+    char tmp[BMP_PATH_MAX];
+    int n = snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    if (n < 0 || (size_t)n >= sizeof(tmp))
+        return false;
+
+    FILE *f = fopen(tmp, "wb");
+    if (!f)
+        return false;
+
+    bool ok = bmp_write_xrgb8888(f, px, w, h, stride);
+    /* fflush + fsync before the rename: the rename is only atomic with respect
+     * to a crash if the bytes are on the device first. On a Pi's SD card that
+     * is not a theoretical distinction. */
+    if (ok && fflush(f) != 0)
+        ok = false;
+    if (ok && fsync(fileno(f)) != 0)
+        ok = false;
+    if (fclose(f) != 0)
+        ok = false;
+
+    if (!ok || rename(tmp, path) != 0) {
+        unlink(tmp); /* no debris beside a target we did not replace */
+        return false;
     }
     return true;
 }

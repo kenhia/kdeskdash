@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# kddss — kdeskdash screenshot: trigger the device self-screenshot
-# (kdeskdash:screenshot control key) and copy the result here as PNG.
+# kddss — kdeskdash screenshot: trigger the device self-screenshot from
+# CENTRAL and copy the result here as PNG.
 #
 # Usage: kddss [basename]
 #   kddss                        -> ./kdeskdash-YYYYmmdd-HHMMSS.png
@@ -9,43 +9,73 @@
 # Target another dashboard with KDD_HOST, e.g.
 #   KDD_HOST=ken@rpidash3 kddss work-desk-boot
 #
-# Requires: ssh access to the dashboard Pi; python3+PIL or ffmpeg locally for
+# The trigger is `kdash-pub set kdash:panelshot:<host>` against the central
+# Redis — NOT `redis-cli` on the panel, which is what it was until sprint 039.
+# The panel no longer runs a Redis server of its own; it reads its commands
+# from central. `<host>` is the LOWERCASE short name (rpidash2's kernel
+# hostname is `rpiDash2`; central keys it by the name the fleet uses), and
+# KDD_PANEL overrides it.
+#
+# ssh is still needed to *fetch* the image — the BMP lands on the panel's own
+# disk, and nothing publishes 2.5 MB through Redis.
+#
+# Requires: kdash-pub on PATH (with the central password reachable — see its
+# --help); ssh access to the dashboard Pi; python3+PIL or ffmpeg locally for
 # PNG conversion (falls back to keeping the raw BMP otherwise).
 set -euo pipefail
 
 KDD_HOST="${KDD_HOST:-ken@rpidash2}"
 case "$KDD_HOST" in *@*) ;; *) KDD_HOST="ken@$KDD_HOST" ;; esac
 
+# The `{host}` segment the panel answers to: short name, lowercased. Same
+# derivation the panel itself does (src/panel_cmd.c).
+panel="${KDD_PANEL:-}"
+if [ -z "$panel" ]; then
+    panel="${KDD_HOST#*@}"
+    panel="${panel%%.*}"
+    panel=$(printf '%s' "$panel" | tr '[:upper:]' '[:lower:]')
+fi
+
+if ! command -v kdash-pub > /dev/null; then
+    echo "kddss: kdash-pub not found — it is what publishes the trigger to" >&2
+    echo "       central now (see docs/deploying.md in kdashdata)." >&2
+    exit 1
+fi
+
 base="${1:-kdeskdash-$(date +%Y%m%d-%H%M%S)}"
 base="${base%.png}"
 tmp_bmp="$(mktemp --suffix=.bmp)"
 trap 'rm -f "$tmp_bmp"' EXIT
 
-# One round-trip: trigger the shot and stream it back once it is FRESH. The
-# service runs as root and overwrites its own default output file in place, so
-# freshness is judged by mtime (a stale file from a previous run must not
-# satisfy the wait). Wrapped in bash -s so the remote login shell's dialect
-# doesn't matter.
-# Two candidate paths: the state directory is where the current build writes
-# (the unit's PrivateTmp=yes hides /tmp from anyone outside the service), and
-# /tmp is the legacy location, still correct for a device that has not been
-# redeployed yet. Whichever goes fresh first wins.
-ssh "$KDD_HOST" 'bash -s' > "$tmp_bmp" <<'EOF'
-new=/var/lib/kdeskdash/kdeskdash-shot.bmp
-old=/tmp/kdeskdash-shot.bmp
-fresh() { m=$(stat -c %Y "$1" 2>/dev/null || echo 0); [ "$m" -ge "$2" ]; }
-t0=$(date +%s)
-redis-cli set kdeskdash:screenshot 1 > /dev/null
-for i in $(seq 1 14); do
-    fresh "$new" "$t0" && { cat "$new"; exit 0; }
-    fresh "$old" "$t0" && { cat "$old"; exit 0; }
+shot=/var/lib/kdeskdash/kdeskdash-shot.bmp
+
+# Note the CURRENT mtime before triggering, and wait for it to change. This
+# compares the file against itself rather than against a wall clock, so no
+# comparison of this host's time with the panel's is involved — the trigger is
+# published from here and the file is written there.
+#
+# There is no partial-read guard here and none is needed: since sprint 039 the
+# panel writes `<path>.tmp` and renames it, so the target only ever exists
+# complete (korg WI 2308). A fresh mtime now really does mean a whole file.
+before=$(ssh "$KDD_HOST" "stat -c %Y '$shot' 2>/dev/null || echo 0")
+
+kdash-pub set "kdash:panelshot:$panel" '{}' > /dev/null
+
+ssh "$KDD_HOST" 'bash -s' "$shot" "$before" > "$tmp_bmp" <<'EOF'
+shot=$1
+before=$2
+for _ in $(seq 1 14); do
+    now=$(stat -c %Y "$shot" 2>/dev/null || echo 0)
+    [ "$now" != "$before" ] && { cat "$shot"; exit 0; }
     sleep 0.5
 done
 exit 0
 EOF
 
 if [ ! -s "$tmp_bmp" ]; then
-    echo "kddss: no screenshot produced — is kdeskdash running on ${KDD_HOST#*@}?" >&2
+    echo "kddss: no screenshot produced — is kdeskdash running on ${KDD_HOST#*@}," >&2
+    echo "       and does it answer to the name \"$panel\" on central?" >&2
+    echo "       (the panel logs the name it uses at startup)" >&2
     exit 1
 fi
 

@@ -10,9 +10,14 @@
 typedef struct {
     const char *drm_dev;   /* KDESKDASH_DRM_DEV   — default /dev/dri/card1 (vc4 GPU) */
     const char *touch_dev; /* KDESKDASH_TOUCH_DEV — default /dev/input/event1 (ILITEK) */
-    const char *redis_host; /* KDESKDASH_REDIS_HOST — default 127.0.0.1 */
+    const char *redis_host; /* KDESKDASH_REDIS_HOST — the board's own legacy Redis, read ONCE to migrate durable state into the state file; default 127.0.0.1 */
     int         redis_port; /* KDESKDASH_REDIS_PORT — default 6379 */
     const char *redis_auth; /* KDESKDASH_CONTROL_REDISCLI_AUTH — NULL when unset (no AUTH). NOT bare REDISCLI_AUTH: that name is the fleet's central-Redis password since sprint 037, and this handle is the board's own passwordless local instance */
+    const char *state_path; /* KDESKDASH_STATE_FILE — durable panel state; default /var/lib/kdeskdash/state */
+    const char *panel_host; /* the `{host}` segment this panel answers to on central — KDESKDASH_PANEL_HOST, else gethostname()'s first label lowercased; "" disables the command feed */
+    const char *cmd_redis_host; /* KDESKDASH_CMD_REDIS_HOST — central control feed (kdash:panelmode/panelshot); falls back to the telemetry values */
+    int         cmd_redis_port; /* KDESKDASH_CMD_REDIS_PORT — falls back to telemetry_redis_port */
+    const char *cmd_redis_auth; /* KDESKDASH_CMD_REDISCLI_AUTH — falls back to telemetry_redis_auth ONLY when the endpoint is the same instance; NULL otherwise */
     bool        rotate_180; /* KDESKDASH_ROTATE_180 — flip the whole display 180° (case mounts the panel inverted) */
     const char *telemetry_redis_host; /* KDESKDASH_TELEMETRY_REDIS_HOST — kpidash telemetry source, default rpi53 */
     int         telemetry_redis_port; /* KDESKDASH_TELEMETRY_REDIS_PORT — default 6379 */
