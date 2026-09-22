@@ -114,22 +114,11 @@ only**. Two reasons for that scoping:
 - Applying it to the running block would reorder the open windows Ken looks at
   now. That is a behaviour change someone depends on, not a repair.
 
-**The 64-row cap was inside the working range.** `KV_INSTANCES_MAX` was sized
-when the Code list was open windows plus a handful of favorites. ~40 project
-rows arrive *before a single open window*.
+**The 64-row cap was inside the working range** — see *Repaired in passing*
+below, which is where the overseer ruled this belongs.
 
-What makes that worse than an ordinary cap: `kvscf_parse_append()` fills in
-**wire order** and stops dead at the cap, while `kvscf_sort_by_label()` runs
-afterwards. An overflow therefore does not drop the least important rows — it
-drops whichever the publisher happened to list last, **which can be open
-windows**, with no signal anywhere on the panel.
-
-Raised to 128: ~40 projects, every favorite and a full set of open windows fit
-inside the array. Cost is ~1.1 KB per index across `foreground.c`'s three arrays
-(measured: instance 576 B, edge 396 B, appitem 168 B) — ~146 KB total, and the
-state is `calloc`'d, not on the stack. Paging needed nothing: `KV_PER_PAGE` is
-28, so ~40 rows is two pages and the existing page nav and `N · p/pages` counter
-already handle it.
+Paging itself needed nothing: `KV_PER_PAGE` is 28, so ~40 rows is two pages and
+the existing page nav and `N · p/pages` counter already handle it.
 
 ## What this sprint did not do
 
@@ -146,7 +135,35 @@ repo's contract, so it is not this sprint's to decide.
 
 ## Repaired in passing
 
-Nothing. The gate was green on arrival and no unrelated defect surfaced.
+**`KV_INSTANCES_MAX` 64 → 128 — a silent, wire-ordered truncation of the Code
+list.** Filed here on the overseer's ruling (proposal korg:3047, clearance
+comment): the evidence removed the decision, so it is a repair rather than a
+feature of WI 2928.
+
+*What was broken.* The cap was sized when the Code list was open windows plus a
+handful of favorites. ~40 project rows arrive *before a single open window*, so
+64 had stopped being headroom. Worse than an ordinary cap:
+`kvscf_parse_append()` fills in **wire order** and stops dead at the cap, while
+`kvscf_sort_by_label()` runs *afterwards*. An overflow therefore does not drop
+the least important rows — it drops whichever the publisher happened to list
+last, **which can be open windows**, with no signal anywhere on the panel.
+
+*What was done.* Raised to 128, so ~40 projects, every favorite and a full set
+of open windows fit inside the array. Cost ~1.1 KB per index across
+`foreground.c`'s three arrays (measured: instance 576 B, edge 396 B, appitem
+168 B) — ~146 KB total, `calloc`'d, not on the stack.
+
+*Which gate proves it.* `just check` — `test_kvscf_feed` gained
+`test_capacity_holds_a_full_project_list`, which parses an 80-row feed and
+asserts all 80 land (the old cap would have truncated to 64). The existing
+`test_cap` still pins that the parser clamps rather than overflowing.
+
+*What was deliberately not done.* A cap overflow still shows no signal on the
+panel. That needs a decision about what to render, and the overseer declined it
+as speculative now that worst case (~60–70 rows) sits well under 128. **The
+condition that reopens it:** if the deck ever publishes enough project rows to
+approach 128, the signal question becomes real and gets filed then, with the
+render decision named.
 
 ## Verification
 
