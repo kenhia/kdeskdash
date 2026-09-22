@@ -33,8 +33,19 @@
 #define KV_WORKSPACE_MAX 48
 #define KV_FILE_MAX      64
 
-/* Total windows tracked across all hosts (paged KV_PER_PAGE at a time). */
-#define KV_INSTANCES_MAX 64
+/* Total rows tracked across all hosts (paged KV_PER_PAGE at a time).
+ *
+ * Sized 64 when the Code list was open windows plus a handful of favorites.
+ * korg's projects land in the same list as closed rows (WI 2928) — ~40 of them
+ * on their own, before a single open window — so 64 is no longer headroom, it
+ * is inside the working range. It matters more than a cap usually does because
+ * `kvscf_parse_append` fills in WIRE order and stops at the cap, while
+ * kvscf_sort_by_label runs afterwards: an overflow does not drop the least
+ * important rows, it drops whichever the publisher happened to list last, which
+ * can be open windows. 128 keeps ~40 projects, every favorite and a full set of
+ * open windows inside the array. Cost is ~1.1 KB per index across the three
+ * arrays in foreground.c's state (~146 KB total, calloc'd, not stack). */
+#define KV_INSTANCES_MAX 128
 
 /* Window grid: 4×7 = 28 cells this sprint (5×7 reserved for the Edge view). */
 #define KV_COLS     4

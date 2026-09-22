@@ -53,7 +53,19 @@ bool service_card_short_host(const char *hostname, char *out, size_t outsz) {
     size_t len = strlen(label);
     if (len >= outsz)
         return false; /* caller's buffer too small — leave it untouched */
-    memcpy(out, label, len + 1);
+    /* Lowercase the host segment. rpidash2 calls itself `rpiDash2`, so the card
+     * key published verbatim read `deskdash:rpiDash2` beside `deskdash:rpidash3`
+     * while every other fleet reference (ssh, deploy/hosts/, korg) is lowercase.
+     * Normalising here rather than in segment_ok keeps a mixed-case hostname
+     * *valid* — it is a real hostname — while making the key canonical, and it
+     * is the one place the host segment is derived, so the key and the payload's
+     * `host` field cannot disagree. Cards have no TTL: a change of this segment
+     * strands the old card until it is pruned (see sprints/042). */
+    for (size_t i = 0; i < len; i++) {
+        char c = label[i];
+        out[i] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+    }
+    out[len] = '\0';
     return true;
 }
 
