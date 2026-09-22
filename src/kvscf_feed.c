@@ -194,7 +194,16 @@ int kvscf_parse_append(const char *json, size_t len, kvscf_instance_t *arr,
 static int cmp_label(const void *a, const void *b) {
     const kvscf_instance_t *x = a, *y = b;
     if (x->running != y->running)
-        return x->running ? -1 : 1; /* running block first, favorites after */
+        return x->running ? -1 : 1; /* running block first, closed rows after */
+    /* Inside the CLOSED block only: favorites before non-favorites. The panel
+     * re-sorts the feed, so the publisher's own "starred first" array order does
+     * not survive — this is the sort key that reproduces it, and `favorite` is
+     * already on the wire, so no additive field is needed (WI 2928 item 3).
+     * Deliberately NOT applied to the running block: today every closed row is a
+     * favorite, so this is a no-op until the deck publishes project rows, and
+     * reordering open windows would change what Ken sees now. */
+    if (!x->running && x->favorite != y->favorite)
+        return x->favorite ? -1 : 1;
     int c = strcasecmp(x->label, y->label);
     if (c)
         return c;

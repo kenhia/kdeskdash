@@ -141,6 +141,71 @@ static void test_favorites_sort(void) {
     check(arr[2].running, 0, "last row is the favorite");
 }
 
+/* WI 2928: korg's projects arrive in this same list as closed rows that are NOT
+ * favorites — `running:false, favorite:false`, a shape the wire always allowed
+ * but nothing ever sent. The two fields must stay independent end to end. */
+static const char *PROJECT_SAMPLE =
+    "{\"host\":\"cleo\",\"instances\":["
+    "{\"id\":\"777\",\"label\":\"zeta-open\",\"app\":\"insiders\",\"running\":true,\"favorite\":true},"
+    "{\"id\":\"vscode-remote://ssh-remote%2Bkai/home/ken/src/tools/aaa-project\","
+    "\"label\":\"aaa-project\",\"remote_host\":\"kai\",\"app\":\"stable\","
+    "\"running\":false,\"favorite\":false},"
+    "{\"id\":\"vscode-remote://ssh-remote%2Bkai/home/ken/src/tools/zzz-fav\","
+    "\"label\":\"zzz-fav\",\"remote_host\":\"kai\",\"app\":\"stable\","
+    "\"running\":false,\"favorite\":true}]}";
+
+static void test_project_row_parse(void) {
+    kvscf_instance_t arr[KV_INSTANCES_MAX];
+    int n = kvscf_parse_append(PROJECT_SAMPLE, strlen(PROJECT_SAMPLE), arr, 0,
+                               KV_INSTANCES_MAX);
+    check(n, 3, "parsed three (incl. a closed NON-favorite)");
+    /* The pair that matters: closed and not-a-favorite is a faithful row, not a
+     * row that got coerced into a favorite or dropped. */
+    check(arr[1].running, 0, "project row: running false");
+    check(arr[1].favorite, 0, "project row: favorite false — NOT conflated");
+    check(arr[2].running, 0, "closed favorite: running false");
+    check(arr[2].favorite, 1, "closed favorite: favorite true");
+}
+
+static void test_project_row_sort(void) {
+    kvscf_instance_t arr[KV_INSTANCES_MAX];
+    int n = kvscf_parse_append(PROJECT_SAMPLE, strlen(PROJECT_SAMPLE), arr, 0,
+                               KV_INSTANCES_MAX);
+    kvscf_sort_by_label(arr, n);
+    /* Open window first, then the CLOSED block starred-first — "zzz-fav" ahead
+     * of "aaa-project" despite losing on label. The panel re-sorts the feed, so
+     * this sort key is the only thing that reproduces the publisher's own
+     * starred-first order; without it a starred project sorts alphabetically
+     * among ~40 unstarred ones. */
+    check_str(arr[0].label, "zeta-open", "open window first");
+    check_str(arr[1].label, "zzz-fav", "closed favorite ahead of closed non-favorite");
+    check_str(arr[2].label, "aaa-project", "closed non-favorite last");
+}
+
+/* The density half of WI 2928. `kvscf_parse_append` fills in WIRE order and
+ * stops dead at the cap, and the sort runs afterwards — so an overflow drops
+ * whichever rows the publisher listed last, which can be open windows, with no
+ * signal anywhere. ~40 project rows plus open windows plus favorites has to fit
+ * inside the array for that never to fire. */
+static void test_capacity_holds_a_full_project_list(void) {
+    check(KV_INSTANCES_MAX >= 100, 1, "cap holds ~40 projects + windows + favorites");
+
+    /* Build a feed larger than the old 64 cap and assert every row lands. */
+    char json[16384];
+    size_t off = (size_t)snprintf(json, sizeof(json), "{\"host\":\"cleo\",\"instances\":[");
+    const int rows = 80;
+    for (int i = 0; i < rows; i++)
+        off += (size_t)snprintf(json + off, sizeof(json) - off,
+                                "%s{\"id\":\"id%03d\",\"label\":\"proj%03d\","
+                                "\"running\":false,\"favorite\":false}",
+                                i ? "," : "", i, i);
+    snprintf(json + off, sizeof(json) - off, "]}");
+
+    kvscf_instance_t arr[KV_INSTANCES_MAX];
+    int n = kvscf_parse_append(json, strlen(json), arr, 0, KV_INSTANCES_MAX);
+    check(n, rows, "80 rows all parsed (old 64 cap would have truncated to 64)");
+}
+
 static void test_running_defaults_true(void) {
     /* Older publisher with no `running` field -> treated as running. */
     kvscf_instance_t arr[KV_INSTANCES_MAX];
@@ -655,6 +720,9 @@ int main(void) {
     test_sort();
     test_favorites_parse();
     test_favorites_sort();
+    test_project_row_parse();
+    test_project_row_sort();
+    test_capacity_holds_a_full_project_list();
     test_running_defaults_true();
     test_merge_across_hosts();
     test_edge_parse();

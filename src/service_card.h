@@ -46,11 +46,13 @@
 #define SERVICE_CARD_KEY_MAX     160
 #define SERVICE_CARD_PAYLOAD_MAX 320
 
-/* Shorten a hostname to its first label ("kai.local" -> "kai") and validate it
- * against the segment charset [A-Za-z0-9._-] (minus ':'). NULL, empty, or an
- * unusable hostname yields SERVICE_CARD_HOST_NONE rather than failing, so a
- * broken gethostname() still produces a card. Returns false only when `out` is
- * too small (in which case `out` is left untouched). */
+/* Shorten a hostname to its first label ("kai.local" -> "kai"), validate it
+ * against the segment charset [A-Za-z0-9._-] (minus ':'), and **lowercase** it
+ * ("rpiDash2" -> "rpidash2") so the card key matches every other fleet
+ * reference. Mixed case is valid input, not an error — it is normalised, not
+ * rejected. NULL, empty, or an unusable hostname yields SERVICE_CARD_HOST_NONE
+ * rather than failing, so a broken gethostname() still produces a card. Returns
+ * false only when `out` is too small (in which case `out` is left untouched). */
 bool service_card_short_host(const char *hostname, char *out, size_t outsz);
 
 /* Build `kpidash:services:<name>:<host>`. Both segments must be non-empty and

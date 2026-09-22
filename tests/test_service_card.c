@@ -50,6 +50,22 @@ int main(void) {
         check(service_card_short_host("a.b.c.d", out, sizeof(out)), "multi-dot ok");
         eq(out, "a", "multi-dot takes first label");
 
+        /* WI 2277: rpidash2's own hostname is `rpiDash2`, capital D, and the
+         * card key IS the card's identity. Mixed case is valid — it normalises
+         * rather than degrading to the sentinel — so that the board reads
+         * `deskdash:rpidash2` beside `deskdash:rpidash3` like the rest of the
+         * fleet. Pinned because the cards have no TTL: if this ever regresses,
+         * the panel grows a second card and the old one never expires. */
+        check(service_card_short_host("rpiDash2", out, sizeof(out)), "mixed-case host ok");
+        eq(out, "rpidash2", "mixed case lowercased");
+        check(service_card_short_host("RPIDASH2", out, sizeof(out)), "upper host ok");
+        eq(out, "rpidash2", "all upper lowercased");
+        check(service_card_short_host("rpiDash2.local", out, sizeof(out)), "mixed fqdn ok");
+        eq(out, "rpidash2", "fqdn truncated then lowercased");
+        /* Digits, '-' and '_' are in the charset and must survive untouched. */
+        check(service_card_short_host("Pi-Dash_2", out, sizeof(out)), "punct host ok");
+        eq(out, "pi-dash_2", "non-alpha characters unchanged");
+
         /* Unusable hostnames degrade to the sentinel — a card with a wrong host
          * line beats no card at all. */
         check(service_card_short_host(NULL, out, sizeof(out)), "null host ok");
