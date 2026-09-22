@@ -174,3 +174,75 @@ render decision named.
   host gate and would not have caught a cross-build break.
 - No sysroot refresh was needed (`~/pi-sysroot` is absent on kai; the existing
   `build-pi` tree configures and builds as it stands).
+
+## Deployed
+
+From merged `main` (`77925f2`), in the order `.sprint-deploy` writes the two
+steps. **Both boards were reachable**, which matters here: this is the first
+sprint in a while whose change is *per-board*, and rpidash2 is the board it
+changes.
+
+**1. `deploy-panels` (skill) — published and installed.** `just publish` cut
+**`0.27.0-77925f2`** and moved `latest` to it (the panel payload did change, so
+unlike sprint 041 this was not a no-op). `just deploy` installed that exact
+version on **rpidash2** and **rpidash3**; `just versions` reports both boards
+on `kdeskdash 0.27.0-77925f2` and `systemctl is-active` returns `active` on
+both. `install-service` was **not** run: this sprint did not touch
+`deploy/kdeskdash.service`.
+
+**2. `recipe: publish-publisher` — a deliberate no-op.** `nothing to publish:
+kdeskdash-publisher 2.3.0-69cad0d already in the store`. Correct: this sprint
+touched no publisher payload, so its own clock did not move. The two-clock case
+again, in the opposite direction from 041.
+
+### Verifying the thing this sprint actually changed
+
+A frame proves the app is drawing; it does not prove the sprint's work is live.
+Both halves were checked against the deployed build.
+
+**WI 2277 — the card key, proven end to end.** Immediately after the install,
+`kpidash-cards list` showed exactly the predicted transition:
+
+```
+deskdash@rpidash2   ok     9s     <- new, lowercase, live
+deskdash@rpiDash2   down   28s    <- stranded, nothing republishing it
+deskdash@rpidash3   ok     4s
+```
+
+The old card going `down` with the new one `ok` beside it *is* the no-TTL
+problem the item described, observed rather than argued. Pruned with the
+helper, **after** the new build was confirmed live:
+
+```sh
+/home/ken/src/tools/kpidash/scripts/kpidash-cards prune --service deskdash:rpiDash2
+```
+
+`pruned 1 card(s)`. A re-list three seconds later shows only
+`deskdash@rpidash2` and `deskdash@rpidash3`, both `ok`. The board is now
+lowercase throughout.
+
+**WI 2928 / the cap raise — the Remote mode exercised on the grown state.**
+`KV_INSTANCES_MAX` 64 → 128 grows `fg_state_t` by ~73 KB, and a mode that
+failed to activate would have gone unnoticed until someone swiped to it. So
+rpidash2 was commanded to `foreground` via `kdash:panelmode:rpidash2`, framed,
+and restored. The Code list rendered four open windows with `ClaudeWorks`
+carrying the gold ★ as the sole favorite, no `○` rows, correct rotated host
+tabs — the mode activates and draws correctly at the larger cap, and with no
+closed rows on the wire yet the sort change is the **no-op it was predicted to
+be**. rpidash2 was restored to `game_of_life`, confirmed by reading
+`/var/lib/kdeskdash/state` (`active_mode=game_of_life`) rather than by eye:
+GoL composes cell colour from neighbour state, so a fresh seed and a mature
+board look quite different in the same mode.
+
+rpidash3's frame (Launcher, live kvscf buttons, correct dual clock at 21:50
+PDT / 04:50 UTC) independently exercises the same `kvscf_feed.c` this sprint
+edited, on the board that reads its feed from its own Redis rather than
+central.
+
+### An incidental corroboration
+
+`src/panel_cmd.h` documents the command feed's `{host}` segment as "the first
+label of `raw`, **lowercased**" — the panel command path had been lowercasing
+its host all along. The service card was the one path that did not, which is
+why rpidash2 answered to `kdash:panelmode:rpidash2` while publishing
+`kpidash:services:deskdash:rpiDash2`. The two agree now.
