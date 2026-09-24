@@ -127,3 +127,33 @@ merge commit's.
 - **`jstr` returned the last occurrence of a field, not the first** (above):
   a nested field in `tool_input` could shadow the top-level `cwd`/`project` on
   every platform. Fixed by the same change; proven by `batch-shape.sh` §13.
+
+## Deployed
+
+2026-09-23 ~22:57 PDT, from merged `main` at `c44430a` (PR #50), both
+`.sprint-deploy` steps run in the foreground:
+
+- **`deploy-panels`** — `just publish` answered `nothing to publish: kdeskdash
+  0.27.0-77925f2 already in the store`: no panel code changed this sprint.
+  `just versions` shows rpidash2 and rpidash3 both on `kdeskdash
+  0.27.0-77925f2`, so neither was installed or restarted.
+- **`just publish-publisher`** — published **`kdeskdash-publisher
+  2.4.0-c44430a`**, `latest -> 2.4.0-c44430a`. Its `SHA256SUMS` matches the
+  branch build `2.4.0-d4e01cf` on every file except the generated `VERSION`.
+  **This is the version k-homelab pins** (korg:3143).
+
+Post-ship acceptance was re-run against `2.4.0-c44430a`, fetched from the store
+and sha-verified, probed from kai:
+
+- **kimac:** `claude:session:kimac:t1` was written with all six fields, and
+  `SessionEnd(clear)` removed it. The installed 2.3.0 control still publishes
+  nothing.
+- **kai:** `claude:session:kai:t1-043h` was written with the same fields, and
+  cleared.
+
+The kai control key was cleared too, and a final `t*` scan on both hosts came
+back empty.
+
+Nothing is installed on any feed host by this sprint. Installing is k-homelab's
+pin bump: `claude-hooks` on kai, kubs0 and kimac, and `copilot-hooks` declared
+on kimac with `ghcp-hooks.darwin.json` (korg:3143).
