@@ -235,5 +235,26 @@ expect "Stop's batch is delivered before the hook returns" "1" \
 "$(find "$KDD_CAPTURE_DIR" -type f | wc -l)"
 has "Stop still publishes awaiting" "status${TAB}awaiting"
 
+# ---- 13. jstr reads the top-level field, not a nested one after it ----
+# The sed form jstr used before sprint 043 anchored on a greedy `.*` and so
+# returned the LAST occurrence of a name. Claude Code emits its own fields
+# first and a tool's arguments after them, so the first occurrence is the one
+# this script means; a nested `cwd` later in the document is cargo.
+run hook central 1 \
+  '{"hook_event_name":"SessionStart","session_id":"s9","cwd":"/tmp/proj","tool_input":{"cwd":"/tmp/cargo"}}'
+has "a nested field later in the payload does not shadow the top-level one" \
+  "cwd${TAB}/tmp/proj"
+
+# ---- 14. no GNU-only regex in either publisher ----
+# BSD sed and grep (macOS) have no `\|`, `\+` or `\?` in a basic regex. On
+# kimac `\|` made every jstr field parse to empty, and the hook exited 0 on its
+# first line having published nothing, with no breadcrumb (korg WI 3170). Linux
+# cannot run BSD sed, so this is the gate that can see the class at all: use an
+# ERE (`grep -oE`, `sed -E`) instead.
+gnu=$(grep -nE '\\[|+?]' "$script" "$here/../ghcp-pub.sh" \
+      | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+      | grep -vE "sed -E|grep -[a-zA-Z]*E|'s/\\\\\\//" || true)
+expect "no GNU-only BRE alternation or repetition in the publishers" "" "$gnu"
+
 [ "$fails" -eq 0 ] || { printf '\n%d assertion(s) failed\n' "$fails"; exit 1; }
 printf '\nall batch-shape assertions passed\n'

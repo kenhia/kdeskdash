@@ -41,10 +41,16 @@ cd "$repo"
 # publisher is on this host" a two-part question. ghcp-hooks.json ships beside
 # it because for Copilot the hook declaration IS the config — there is no
 # settings.json to merge into, so the template is a deliverable, not a doc.
+#
+# ghcp-hooks.darwin.json is the same declaration re-homed to /Users/ken (sprint
+# 043, korg WI 3170): a Copilot hook command is not $HOME-expanded, and
+# k-homelab installs the file byte-identical, so a host with a different $HOME
+# needs its own shipped file rather than an installer that rewrites one.
 payload=(
     publisher/claude-pub.sh
     publisher/ghcp-pub.sh
     publisher/ghcp-hooks.json
+    publisher/ghcp-hooks.darwin.json
     publisher/kdeskdash-claude-poll.service
     publisher/kdeskdash-claude-poll.timer
 )

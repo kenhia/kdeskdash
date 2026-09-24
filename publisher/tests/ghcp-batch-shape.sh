@@ -295,5 +295,24 @@ else
   ok "no hand-rolled sockets"
 fi
 
+# ---- 16. the darwin template is the Linux one, re-homed --------------------
+# ghcp-hooks.darwin.json exists because a Copilot hook command is not
+# $HOME-expanded and kimac's $HOME is /Users/ken (korg WI 3170). k-homelab's
+# copilot-hooks installs it byte-identical on a Darwin host, so it must wire
+# the same five events, each passing its own name, with the same timeouts —
+# differing ONLY in the publisher path (and in carrying no Windows variant,
+# which a Mac never reads). Derived from the Linux file rather than restated,
+# so a sixth event added to one template and not the other fails here.
+darwin="$here/../ghcp-hooks.darwin.json"
+if [ -f "$darwin" ]; then
+  want_darwin=$(grep -v '"powershell":' "$hooks" | sed 's#"/home/ken/#"/Users/ken/#')
+  expect "the darwin template is the Linux one with only the path re-homed" \
+    "$want_darwin" "$(cat "$darwin")"
+  expect "every darwin bash command runs /Users/ken's publisher" "" \
+    "$(grep '"bash":' "$darwin" | grep -v '"bash": "/Users/ken/.copilot/kdeskdash-pub/ghcp-pub.sh [a-zA-Z]*",$')"
+else
+  fail "the darwin template ships" "no $darwin"
+fi
+
 [ "$fails" -eq 0 ] || { printf '\n%d assertion(s) failed\n' "$fails"; exit 1; }
 printf '\nall ghcp batch-shape assertions passed\n'
