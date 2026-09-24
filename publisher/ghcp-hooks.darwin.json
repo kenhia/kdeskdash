@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "/Users/ken/.copilot/kdeskdash-pub/ghcp-pub.sh sessionStart",
+        "timeoutSec": 5
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "/Users/ken/.copilot/kdeskdash-pub/ghcp-pub.sh userPromptSubmitted",
+        "timeoutSec": 5
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "/Users/ken/.copilot/kdeskdash-pub/ghcp-pub.sh preToolUse",
+        "timeoutSec": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "/Users/ken/.copilot/kdeskdash-pub/ghcp-pub.sh postToolUse",
+        "timeoutSec": 5
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "/Users/ken/.copilot/kdeskdash-pub/ghcp-pub.sh sessionEnd",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

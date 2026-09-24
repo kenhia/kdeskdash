@@ -208,7 +208,7 @@ just publish-publisher      # → artifacts/kdeskdash-publisher/<version>/
 ```
 
 `artifacts/kdeskdash-publisher/<version>/`, flat, plus `SHA256SUMS`:
-`claude-pub.sh`, `ghcp-pub.sh`, `ghcp-hooks.json`,
+`claude-pub.sh`, `ghcp-pub.sh`, `ghcp-hooks.json`, `ghcp-hooks.darwin.json`,
 `kdeskdash-claude-poll.service`, `kdeskdash-claude-poll.timer`, and a generated
 `VERSION` holding the full version string so an installed copy can say what it
 is without the store path that delivered it.
@@ -219,6 +219,28 @@ a `settings.json` the host already owns (hence `settings-fragment.json`, which
 does *not* ship), while a Copilot hook declaration **is** its own file in
 `~/.copilot/hooks/`. There is nothing to merge it into, so the template has to
 reach the host.
+
+**Which hook file a host installs is a function of its platform** (sprint 043,
+korg WI 3170). A Copilot hook command is not `$HOME`-expanded, so the file
+carries absolute paths, and k-homelab's `copilot-hooks` installs it
+**byte-identical** to the bundle's — that is what keeps it inside the checksum
+chain. One file cannot serve two `$HOME`s, so there are two:
+
+| Host platform (`uname -s`) | Install | Publisher path it invokes |
+|---|---|---|
+| `Linux` | `ghcp-hooks.json` | `/home/ken/.copilot/kdeskdash-pub/ghcp-pub.sh` |
+| `Darwin` | `ghcp-hooks.darwin.json` | `/Users/ken/.copilot/kdeskdash-pub/ghcp-pub.sh` |
+
+The darwin file is the Linux one with the path re-homed and the Windows
+`powershell` variant dropped (a Mac never reads it); `publisher/tests/
+ghcp-batch-shape.sh` asserts exactly that, so the two cannot drift apart on an
+event name. Rendering the path at install time was the alternative, and it was
+rejected because it takes the installed file out of the byte-identical chain.
+
+**2.4.0** is the macOS release: the darwin hook file above, and `claude-pub.sh`
+made portable to BSD userland — `jstr` parsed with a GNU-only sed `\|` and
+published nothing at all on kimac, and `date -d` / `stat -c` now fall back to
+their BSD forms.
 
 **The version is not the dashboard's.** The publisher changes on its own clock,
 so its version is `<publisher/VERSION>-<short sha of the last commit touching

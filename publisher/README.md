@@ -5,7 +5,8 @@ Publishes Claude Code session activity (hooks) and subscription usage limits
 claude-feed Redis, where the dashboard's `claude` mode reads it. One bash script
 plus `kdash-pub` — kdashdata's publisher CLI, which brings the khlenv-resolved
 endpoint, CD-12 auth and the key grammar. No `redis-cli`, no `jq`. Works on
-Linux and on Windows under Git Bash (Claude Code runs hooks/statusline via Git
+Linux, on macOS (BSD userland, `/bin/bash` 3.2 — since 2.4.0) and on Windows
+under Git Bash (Claude Code runs hooks/statusline via Git
 Bash when it is installed).
 
 **Where it writes is a khlenv stem, not a hostname.** One home:
@@ -546,6 +547,13 @@ Copilot hooks are **user-level JSON files**, one per concern, in
 `ghcp-hooks.json` ships in the bundle as a deliverable rather than as a
 reference fragment. Drop it in as `~/.copilot/hooks/kdeskdash-ghcp.json` and
 fix the paths to the machine's own.
+
+**macOS gets its own file**, `ghcp-hooks.darwin.json`: the same five events
+with the publisher at `/Users/ken/...` instead of `/home/ken/...`. A hook
+command is not `$HOME`-expanded and k-homelab installs the file byte-identical,
+so a host whose `$HOME` differs needs a shipped file of its own rather than a
+rewrite. `docs/deploying.md` has the platform table; the test asserts the two
+files differ only in the path.
 
 Files in that directory are independent: this one sits beside any others (kai
 has a `klams-sync.json`) and neither knows about the other.

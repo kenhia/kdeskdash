@@ -79,9 +79,20 @@ STATE_DIR="${KDD_STATE_DIR:-${HOME}/.claude/kdeskdash-pub/state}"
 # ---------- tiny JSON helpers (flat fields on a single-line document) ----------
 
 # jstr <json> <field>: first "field":"value" occurrence, minimally unescaped.
+#
+# ERE through `grep -oE`, the same form as ghcp-pub.sh, because it is portable.
+# This was a sed BRE using `\|` alternation until sprint 043 — a GNU extension
+# BSD sed does not have, so on macOS every field parsed to empty, `sid` was
+# empty, and the hook exited 0 on its first line with no breadcrumb (korg WI
+# 3170). The sed form's leading greedy `.*` also returned the LAST occurrence;
+# this returns the first, which is the top-level field — Claude Code emits its
+# own fields before `tool_input`, whose contents are arbitrary.
 jstr() {
-  printf '%s' "$1" | sed -n 's/.*"'"$2"'"[[:space:]]*:[[:space:]]*"\(\(\\.\|[^"\\]\)*\)".*/\1/p' \
-    | head -n1 | sed -e 's/\\"/"/g' -e 's/\\\\/\\/g' -e 's/\\\//\//g'
+  printf '%s' "$1" \
+    | grep -oE "\"$2\"[[:space:]]*:[[:space:]]*\"([^\"\\\\]|\\\\.)*\"" \
+    | head -n1 \
+    | sed -e 's/^[^:]*:[[:space:]]*"//' -e 's/"$//' \
+          -e 's/\\"/"/g' -e 's/\\\\/\\/g' -e 's/\\\//\//g'
 }
 
 # jnum <json> <field>: first numeric field.
@@ -91,6 +102,28 @@ jnum() {
 
 # sanitized token for key material (host/session id)
 token() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._-' | cut -c1-63; }
+
+# iso_epoch <iso8601>: epoch seconds, or nothing. GNU `date -d` first, then
+# BSD `date -j -f`, which cannot read fractional seconds or a colon in the
+# offset — so strip the one and close the other up. An ISO stamp with no zone
+# reads as UTC on the BSD path (every stamp this script parses carries `Z` or
+# an offset). Prints nothing on failure; every caller treats empty as unknown.
+iso_epoch() {
+  local s="$1" z
+  [ -n "$s" ] || return 0
+  date -u -d "$s" +%s 2>/dev/null | tr -cd '0-9' && [ "${PIPESTATUS[0]}" -eq 0 ] && return 0
+  s=$(printf '%s' "$s" | sed -E 's/\.[0-9]+//')
+  case "$s" in
+    *Z) z=+0000; s=${s%Z} ;;
+    *[+-][0-9][0-9]:[0-9][0-9]) z=${s: -6}; z=${z/:/}; s=${s%??????} ;;
+    *[+-][0-9][0-9][0-9][0-9]) z=${s: -5}; s=${s%?????} ;;
+    *) z=+0000 ;;
+  esac
+  date -j -u -f '%Y-%m-%dT%H:%M:%S%z' "$s$z" +%s 2>/dev/null | tr -cd '0-9'
+}
+
+# mtime <file>: modification time in epoch seconds (GNU stat, then BSD stat).
+mtime() { { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; } | tr -cd '0-9'; }
 
 # ---------- transport: kdash-pub batch ----------
 #
@@ -270,7 +303,7 @@ first_turn_ts() {
   [ -n "$t" ] && [ -f "$t" ] || return 0
   iso=$(grep -oE '"timestamp":"[0-9]{4}-[^"]*"' "$t" 2>/dev/null | head -n1 | cut -d'"' -f4)
   [ -n "$iso" ] || return 0
-  date -u -d "$iso" +%s 2>/dev/null
+  iso_epoch "$iso"
 }
 
 # Keepalive for a session that is working but not emitting lifecycle events.
@@ -516,12 +549,9 @@ stored_epoch() {
     hget claude:limits "$1" 2>/dev/null | tr -cd '0-9'
 }
 
-# ISO-8601 (with fractional seconds and offset) -> epoch seconds. GNU date only;
-# a BSD/macOS date fails silently to empty, which the caller treats as unknown.
-iso2epoch() {
-  [ -n "$1" ] || return 0
-  date -d "$1" +%s 2>/dev/null | tr -cd '0-9'
-}
+# ISO-8601 (with fractional seconds and offset) -> epoch seconds; empty when
+# unparseable, which the caller treats as unknown. See iso_epoch.
+iso2epoch() { iso_epoch "$1"; }
 
 from_file() {
   local f rec t age
@@ -555,7 +585,7 @@ cli_version() {
   local vf="${STATE_DIR}/cli.version" v mt c
   if [ -f "$vf" ]; then
     v=$(tr -cd '0-9.' < "$vf" 2>/dev/null)
-    mt=$(stat -c %Y "$vf" 2>/dev/null | tr -cd '0-9')
+    mt=$(mtime "$vf")
     [ -n "$v" ] && [ -n "$mt" ] && [ $((NOW - mt)) -lt 86400 ] && { printf '%s' "$v"; return 0; }
   fi
   for c in claude "${HOME}/.local/bin/claude" "${HOME}/.claude/local/claude" /usr/local/bin/claude ; do

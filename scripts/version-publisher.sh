@@ -25,6 +25,7 @@ payload=(
     publisher/claude-pub.sh
     publisher/ghcp-pub.sh
     publisher/ghcp-hooks.json
+    publisher/ghcp-hooks.darwin.json
     publisher/kdeskdash-claude-poll.service
     publisher/kdeskdash-claude-poll.timer
     publisher/VERSION
