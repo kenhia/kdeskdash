@@ -92,7 +92,35 @@ publish. The bundle version recorded for the pin bump is the one published from
 
 ## Acceptance
 
-(Recorded below as it is run.)
+WI 3170's harness, extended with three controls, run in the foreground
+2026-09-23 ~22:53 PDT. It ran against the **store artifact**, not the checkout.
+`d4e01cf` was published from the branch as `2.4.0-d4e01cf` with `--no-latest`,
+and the harness fetched `claude-pub.sh` from the store into a temp dir and
+checked it against the bundle's `SHA256SUMS` before running it. The kimac run
+was probed **from kai**, piped through `ssh kimac 'bash -s'`. It left nothing on
+the host: the temp dir and state dir were removed on exit.
+
+The three controls:
+- `kdash-pub check` runs first, so an empty scan cannot be a failed
+  connection.
+- The installed 2.3.0 runs as the "before".
+- The scan runs again after `SessionEnd(clear)`.
+
+| | kimac (Darwin 27, bash 3.2.57) | kai (Linux, bash 5.2) |
+|---|---|---|
+| `kdash-pub check` | PING answered, auth from `/etc/khomelab/secrets.env` | same |
+| installed `2.3.0-69cad0d`, SessionStart `t0` | **nothing published** (the bug) | published, as it should |
+| `2.4.0-d4e01cf`, SessionStart `t1` | `claude:session:kimac:t1`, host/project/cwd/status/ts/started_ts all set | `claude:session:kai:t1-043h`, same fields |
+| after SessionEnd `reason: clear` | gone | gone |
+
+On kai, the 2.3.0 control's fields (`host=kai project=x cwd=/tmp/x
+status=working`) match 2.4.0's, so the Linux feed is unchanged. That control
+key was then cleared with the installed script's own `SessionEnd(clear)`. A
+final scan of both hosts' `t*` keys came back empty.
+
+The version k-homelab pins is the one published from `main` after the squash
+merge. Its payload is byte-identical to `2.4.0-d4e01cf`, but its sha is the
+merge commit's.
 
 ## Repaired in passing
 
