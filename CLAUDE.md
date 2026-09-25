@@ -396,6 +396,12 @@ draws a box. The
   font (`create_data_ex(..., cache_size=0)`) and test `dsc.gid.index != 0`. The boolean
   return of `lv_font_get_glyph_dsc` is `true` even for missing glyphs, and a *cached* font
   logs `cache not allocated` per miss — the cache-less probe font avoids both traps.
+- **Set a label's text before its TinyTTF font** — "per miss" means *any* lookup, not just
+  a probe. A new `lv_label` holds LVGL's default `"Text"`, and applying a cached Nerd font
+  first measures four Latin letters it does not have: four `cache not allocated` errors per
+  label, per mode entry (WI 3275, ~1,200 journal lines a week until sprint 044). Call
+  `lv_label_set_text()` first, as `icons.c`'s grid cells and preview column and
+  `foreground.c`'s rail and marker labels now do.
 
 Baking a curated subset the kpidash way (`lv_font_conv` → committed C font, for pixel-crisp
 production icons) is the complementary path; the `icons` mode's favourites file is the

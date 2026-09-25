@@ -2,7 +2,8 @@
 
 **Proposal:** korg:3234 (a slice of program korg:3245, "Low-hanging fruit — run 3").
 **Covers:** WI 2657 (agent glyphs render as boxes), WI 2365 (colour dev-host rows),
-WI 2281 (service card's silent-failure path unproven).
+WI 2281 (service card's silent-failure path unproven), and, from round 2, WI 3275 (the
+TinyTTF journal flood found here).
 **Branch:** `044-devhost-colour-glyphs-card-seam`, off `5fed4e3`.
 
 This is an overseen sprint: it ran as karc leg `kdeskdash-d84edd` on kai, and the
@@ -149,19 +150,46 @@ lines. The key was deleted afterwards (`DEL` returned 1).
   kdashdata's justfile). Carried over from korg:3233 as proposal comment 3097. README
   isn't in the publisher bundle's payload, so the bundle version doesn't move.
 
-## Filed
+## WI 3275: the TinyTTF "cache not allocated" flood (round 2)
 
-- **WI 3275**: TinyTTF `cache not allocated` errors flood the journal: 1,180 in the
-  week before this sprint, and 236 in one burst when the panel entered `foreground`.
-  They're pre-existing and not a missing-glyph warning, so 044's logfilter leaves them
-  alone. The decision it needs is whether to diagnose the cached-TinyTTF call site or
-  widen logfilter's tested contract to dedupe a second message class. The five glyphs
-  `foreground.c` draws are all present in the TTF, which ruled out the obvious cause.
+I found this during the live pass and filed it. The overseer then ruled it a repair in
+this sprint (option 1, fix the cause) and declined a logfilter dedupe, which would have
+hidden the fault and broken logfilter's tested contract.
+
+**Diagnosis.** I temporarily changed `lv_tiny_ttf.c:252` to log `unicode_letter` and
+the font pointer, and printed foreground's two font pointers. It was never committed:
+the submodule was reverted with `git checkout` and the print removed. A
+`kdash:panelmode` switch into foreground and then icons gave codepoints
+**U+54 U+65 U+78 U+74, "Text"**, which is LVGL's default text for a new `lv_label`.
+The breakdown: 225 lines on foreground's `mark_font`, 13 on its `rail_font`, and 4
+each on icons' four preview fonts. `lv_obj_set_style_text_font()` refreshes the label
+immediately, so applying a cached Nerd font before setting text measures four Latin
+letters the font doesn't have, and each one fails glyph-cache creation. So the fault
+wasn't a missing Nerd glyph or cache sizing: nothing about memory, no trade-off.
+
+**Fix:** set the text before the font, at the three sites that didn't. Those are
+`foreground.c`'s `make_app_icon` and `mark` labels, and `icons.c`'s preview column.
+`icons.c`'s grid cells already did this, with a comment saying why. That's why the
+preview column's miss is only 4 lines per font against the mark labels' 225 (28 cells).
+I swept every `lv_obj_set_style_text_font` in `src/`; only those two modes hold
+TinyTTF fonts. CLAUDE.md's Fonts note now says "per miss" means any lookup, not just a
+probe.
+
+**Proof** (rpidash2, build `0.27.0-cd1d49a` via `push-dev`, fresh process): switched
+through foreground → icons → foreground → icons → launcher → claude with
+`kdash:panelmode`, then a second pass through icons and foreground with a `kddss`
+screenshot of each. That produced **zero** `cache not allocated` lines and zero
+`[Error]` lines, where the old build gave 236 on one foreground switch. Both
+screenshots render as before, and the panel is back on `claude`.
+
+**No regression test,** because this isn't reachable natively. It's the order of two
+LVGL calls on a live label, and this repo's tests link only pure cores and never LVGL
+(CLAUDE.md). The CLAUDE.md gotcha is the guard; the live count is the proof.
 
 ## Gate note
 
-One pre-commit `just check` failed in ctest, and I didn't capture which test: the
-output went through `tail`, which also hid the exit code, and the commit went ahead on
-it. It then passed on 30 consecutive runs, 25 of them against the committed tree, and
-didn't reproduce with a dirty or untracked tree either. The likely class is a
-second-boundary race in a publisher shape test, but that's unconfirmed.
+One pre-commit `just check` in round 1 failed in ctest, and I didn't capture which
+test: the output went through `tail`, which also hid the exit code, and the commit went
+ahead on it. It passed on 30 consecutive runs afterwards, and in round 2 on **10 more,
+run unfiltered with each log kept** (rc 0 and 27/27 every time). **It's an unreproduced
+single failure**, and the test that failed is unknown.
