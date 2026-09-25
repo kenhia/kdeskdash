@@ -132,12 +132,12 @@ lv_obj_t *dev_graph_create(lv_obj_t *parent, dev_graph_kind_t kind) {
     /* Compact header: host name + one current-values line. */
     lv_obj_t *host_lbl = lv_label_create(cont);
     lv_label_set_text(host_lbl, kind == DEV_GRAPH_CPU_RAM ? "CPU / RAM" : "GPU / VRAM");
-    lv_obj_set_style_text_font(host_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(host_lbl, &kd_font_montserrat_20, 0);
     lv_obj_set_style_text_color(host_lbl, COLOR_HOST, 0);
 
     lv_obj_t *stat_lbl = lv_label_create(cont);
     lv_label_set_text(stat_lbl, "--");
-    lv_obj_set_style_text_font(stat_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(stat_lbl, &kd_font_montserrat_14, 0);
     lv_obj_set_style_text_color(stat_lbl, COLOR_CAP, 0);
 
     lv_obj_t *chart = make_chart(cont);
@@ -159,7 +159,7 @@ lv_obj_t *dev_graph_create(lv_obj_t *parent, dev_graph_kind_t kind) {
     lv_obj_align(overlay, LV_ALIGN_CENTER, 0, 0);
 
     lv_obj_t *overlay_lbl = lv_label_create(overlay);
-    lv_obj_set_style_text_font(overlay_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(overlay_lbl, &kd_font_montserrat_20, 0);
     lv_obj_set_style_text_color(overlay_lbl, COLOR_HOST, 0);
     lv_obj_center(overlay_lbl);
 

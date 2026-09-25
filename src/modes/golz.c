@@ -411,7 +411,7 @@ static void show_banner(golz_mode_state_t *st) {
              title, st->human_wins, st->zombie_wins, st->ties, st->gens_to_win);
     lv_obj_t *lbl = lv_label_create(scrim);
     lv_label_set_text(lbl, buf);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &kd_font_montserrat_28, LV_PART_MAIN);
     lv_obj_set_style_text_color(lbl, lv_color_hex(accent), LV_PART_MAIN);
     lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_align(lbl, LV_ALIGN_CENTER, 0, -14);
@@ -423,7 +423,7 @@ static void show_banner(golz_mode_state_t *st) {
     snprintf(hist, sizeof(hist), "Historical zombie wins: %s", num);
     lv_obj_t *foot = lv_label_create(scrim);
     lv_label_set_text(foot, hist);
-    lv_obj_set_style_text_font(foot, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(foot, &kd_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(foot, PAL(ASH_MIST), LV_PART_MAIN);
     lv_obj_set_style_text_align(foot, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_align(foot, LV_ALIGN_BOTTOM_MID, 0, -10);
@@ -468,7 +468,7 @@ static void make_menu_button(lv_obj_t *parent, const char *text,
 
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, text);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &kd_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(lbl, PAL(MOON_INK), LV_PART_MAIN);
     lv_obj_add_flag(lbl, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_center(lbl);

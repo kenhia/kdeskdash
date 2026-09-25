@@ -130,23 +130,23 @@ static void build_card(palette_mode_state_t *st, lv_obj_t *scr, int slot) {
     lv_obj_add_flag(card, LV_OBJ_FLAG_GESTURE_BUBBLE);
     c->card = card;
 
-    c->name_label = make_label(card, "", &lv_font_montserrat_28, PAL(MOON_INK));
+    c->name_label = make_label(card, "", &kd_font_montserrat_28, PAL(MOON_INK));
     lv_obj_set_pos(c->name_label, 14, 10);
 
     /* Name repeated in ink: dark swatches (VOID on DEEP_SLATE) render their
      * in-color name invisible; this line keeps every card identifiable. */
     c->plain_name_label =
-        make_label(card, "", &lv_font_montserrat_14, PAL(STEEL_MIST));
+        make_label(card, "", &kd_font_montserrat_14, PAL(STEEL_MIST));
     lv_obj_set_pos(c->plain_name_label, 14, 48);
 
     c->usage_label =
-        make_label(card, "", &lv_font_montserrat_14, PAL(STEEL_MIST));
+        make_label(card, "", &kd_font_montserrat_14, PAL(STEEL_MIST));
     lv_label_set_long_mode(c->usage_label, LV_LABEL_LONG_DOT);
     lv_obj_set_width(c->usage_label, CARD_W - 28);
     lv_obj_set_pos(c->usage_label, 14, 68);
 
     c->sample_label = make_label(card, "Handgloves 0123456789",
-                                 &lv_font_montserrat_20, PAL(MOON_INK));
+                                 &kd_font_montserrat_20, PAL(MOON_INK));
     lv_obj_set_pos(c->sample_label, 14, 94);
 
     c->filled_box = make_box(card, 14, 148);
@@ -159,7 +159,7 @@ static void build_card(palette_mode_state_t *st, lv_obj_t *scr, int slot) {
     lv_obj_set_style_border_width(c->outline_box, 3, LV_PART_MAIN);
 
     c->hex_label =
-        make_label(card, "", &lv_font_montserrat_20, PAL(STEEL_MIST));
+        make_label(card, "", &kd_font_montserrat_20, PAL(STEEL_MIST));
     lv_obj_set_pos(c->hex_label, 156, 156);
 }
 
@@ -173,12 +173,12 @@ static void build_rail(palette_mode_state_t *st, lv_obj_t *scr) {
     lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN);
     lv_obj_add_flag(btn, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(btn, prev_cb, LV_EVENT_CLICKED, st);
-    lv_obj_t *l = make_label(btn, LV_SYMBOL_UP, &lv_font_montserrat_28,
+    lv_obj_t *l = make_label(btn, LV_SYMBOL_UP, &kd_font_montserrat_28,
                              PAL(MOON_INK));
     lv_obj_center(l);
 
     st->page_label =
-        make_label(scr, "1/1", &lv_font_montserrat_20, PAL(STEEL_MIST));
+        make_label(scr, "1/1", &kd_font_montserrat_20, PAL(STEEL_MIST));
     lv_obj_set_pos(st->page_label, x + 18, 208);
 
     btn = lv_button_create(scr);
@@ -188,7 +188,7 @@ static void build_rail(palette_mode_state_t *st, lv_obj_t *scr) {
     lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN);
     lv_obj_add_flag(btn, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(btn, next_cb, LV_EVENT_CLICKED, st);
-    l = make_label(btn, LV_SYMBOL_DOWN, &lv_font_montserrat_28, PAL(MOON_INK));
+    l = make_label(btn, LV_SYMBOL_DOWN, &kd_font_montserrat_28, PAL(MOON_INK));
     lv_obj_center(l);
 }
 

@@ -229,7 +229,7 @@ static void rebuild_rows(dev_state_t *st) {
         lv_obj_add_event_cb(btn, row_cb, LV_EVENT_CLICKED, &st->row_ctx[i]);
 
         lv_obj_t *lbl = lv_label_create(btn);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_font(lbl, &kd_font_montserrat_20, 0);
         lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
         st->rows[i] = btn;
@@ -251,7 +251,7 @@ static lv_obj_t *make_assign_btn(lv_obj_t *parent, const char *text,
 
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, text);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(lbl, &kd_font_montserrat_20, 0);
     lv_obj_center(lbl);
     return btn;
 }
@@ -271,7 +271,7 @@ static void make_center(dev_state_t *st, lv_obj_t *parent) {
 
     lv_obj_t *title = lv_label_create(col);
     lv_label_set_text(title, "Dev");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(title, &kd_font_montserrat_28, 0);
     lv_obj_set_style_text_color(title, COLOR_HOST, 0);
 
     /* Assign controls: pick a row, then commit it left or right. */

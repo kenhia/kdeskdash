@@ -82,6 +82,8 @@ typedef struct {
     int         z_index; /* parsed but unused (we sort by label) */
     bool        running;  /* false = a favorite with no open window (relaunch) */
     bool        favorite; /* one of Ken's favorites, open or not               */
+    bool        ext_dev_host; /* a VS Code Extension Development Host (WI 2365);
+                               * absent or non-bool on the wire -> false      */
 } kvscf_instance_t;
 
 /* Trim trailing whitespace/CR/LF in place (byte-exact token matching depends on
@@ -275,6 +277,19 @@ const char *kvscf_display_host(const kvscf_instance_t *in);
  * shown separately). Only strips when the parenthesised token exactly matches
  * the display host. Writes a NUL-terminated result into buf. */
 void kvscf_display_label(const kvscf_instance_t *in, char *buf, size_t bufsz);
+
+/* Which tone an instance row's label takes (WI 2365). Precedence: a row that
+ * is not running is muted whatever else it says — it is launchable, not
+ * focusable — then an Extension Development Host takes the dev-host tone, so a
+ * throwaway debug window does not look like the workspace Ken meant to tap;
+ * everything else takes its app colour. The mode maps each to a palette entry. */
+typedef enum {
+    KV_TONE_APP = 0,
+    KV_TONE_MUTED,
+    KV_TONE_DEV_HOST,
+} kv_row_tone_t;
+
+kv_row_tone_t kvscf_row_tone(const kvscf_instance_t *in);
 
 /* Label colour (0xRRGGBB) for an app variant — mirrors the cleo side. */
 uint32_t kvscf_app_color(kv_app_t app);

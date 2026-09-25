@@ -33,7 +33,7 @@
     /* --- accents & status --- */ \
     X(CLAUDE_CORAL,  0xcf6b4a, "accent: claude, menu headers, calc hex") \
     X(BURNT_CORAL,   0x99492e, "calc: = key - darker coral anchor") \
-    X(ALARM_EMBER,   0xe0563f, "claude: hard-blocked status") \
+    X(ALARM_EMBER,   0xe0563f, "claude: hard-blocked status; Remote: extension dev host") \
     X(PATIENT_AMBER, 0xb9832c, "claude: awaiting input / warn tone") \
     X(WORKING_JADE,  0x35a271, "claude: working status; dev OK") \
     X(INSIDER_MINT,  0x38be84, "Remote: Insiders green; calc mm-out rows") \

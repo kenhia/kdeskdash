@@ -238,7 +238,7 @@ static lv_obj_t *make_button(lv_obj_t *parent, const char *text, int x, int y,
     lv_obj_add_flag(btn, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
 
-    lv_obj_t *label = make_label(btn, text, &lv_font_montserrat_28, COLOR_INK);
+    lv_obj_t *label = make_label(btn, text, &kd_font_montserrat_28, COLOR_INK);
     lv_obj_center(label);
     if (out_label)
         *out_label = label;
@@ -248,14 +248,14 @@ static lv_obj_t *make_button(lv_obj_t *parent, const char *text, int x, int y,
 /* A caption above a readout: the small grey word that says what it is. */
 static void make_caption(lv_obj_t *parent, const char *text, lv_align_t align,
                          int dx, int dy) {
-    lv_obj_t *c = make_label(parent, text, &lv_font_montserrat_20, COLOR_CAPTION);
+    lv_obj_t *c = make_label(parent, text, &kd_font_montserrat_20, COLOR_CAPTION);
     lv_obj_align(c, align, dx, dy);
 }
 
 /* One "Day [========----] 62%" row. */
 static void build_progress_row(clock_state_t *st, lv_obj_t *p, int slot,
                                const char *label, int y) {
-    lv_obj_t *l = make_label(p, label, &lv_font_montserrat_20, COLOR_MUTED);
+    lv_obj_t *l = make_label(p, label, &kd_font_montserrat_20, COLOR_MUTED);
     lv_obj_align(l, LV_ALIGN_TOP_LEFT, 20, y + 4);
 
     lv_obj_t *bar = lv_bar_create(p);
@@ -274,7 +274,7 @@ static void build_progress_row(clock_state_t *st, lv_obj_t *p, int slot,
      * in a proportional font, so it is right-aligned against the panel edge
      * and grows leftward into its own empty space rather than pushing the bar.
      * Same rule as the stopwatch readout, one anchor away. */
-    st->prog_pct[slot] = make_label(p, "0%", &lv_font_montserrat_20, COLOR_SECONDARY);
+    st->prog_pct[slot] = make_label(p, "0%", &kd_font_montserrat_20, COLOR_SECONDARY);
     lv_obj_set_width(st->prog_pct[slot], 60);
     lv_obj_set_style_text_align(st->prog_pct[slot], LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_align(st->prog_pct[slot], LV_ALIGN_TOP_RIGHT, -20, y + 4);
@@ -288,13 +288,13 @@ static void build_almanac(clock_state_t *st, lv_obj_t *scr) {
     /* The long date is the headline of this panel. It is bounded and dotted
      * rather than allowed to size itself: "Wednesday 30 September 2026" is the
      * worst case and it very nearly fills the panel at this size. */
-    st->date_label = make_label(p, "", &lv_font_montserrat_36, COLOR_INK);
+    st->date_label = make_label(p, "", &kd_font_montserrat_36, COLOR_INK);
     lv_obj_set_width(st->date_label, ALMANAC_W - 40);
     lv_label_set_long_mode(st->date_label, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(st->date_label, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_align(st->date_label, LV_ALIGN_TOP_LEFT, 20, 46);
 
-    st->almanac_label = make_label(p, "", &lv_font_montserrat_20, COLOR_SECONDARY);
+    st->almanac_label = make_label(p, "", &kd_font_montserrat_20, COLOR_SECONDARY);
     lv_obj_align(st->almanac_label, LV_ALIGN_TOP_LEFT, 20, 100);
 
     st->zone_count =
@@ -313,13 +313,13 @@ static void build_almanac(clock_state_t *st, lv_obj_t *scr) {
         for (int i = 0; i < st->zone_count; i++) {
             int y = 182 + i * 56;
             lv_obj_t *name = make_label(p, st->zones[i].label,
-                                        &lv_font_montserrat_28, COLOR_MUTED);
+                                        &kd_font_montserrat_28, COLOR_MUTED);
             lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
             lv_obj_set_width(name, ALMANAC_W - 40 - 160);
             lv_obj_align(name, LV_ALIGN_TOP_LEFT, 20, y);
 
             st->zone_time[i] =
-                make_label(p, "--:--", &lv_font_montserrat_28, COLOR_ZONE);
+                make_label(p, "--:--", &kd_font_montserrat_28, COLOR_ZONE);
             lv_obj_align(st->zone_time[i], LV_ALIGN_TOP_RIGHT, -20, y);
         }
         return;
@@ -336,7 +336,7 @@ static void build_stopwatch(clock_state_t *st, lv_obj_t *scr) {
 
     make_caption(p, "Stopwatch", LV_ALIGN_TOP_MID, 0, 40);
 
-    st->sw_label = make_label(p, "0:00.0", &lv_font_montserrat_48, COLOR_SW);
+    st->sw_label = make_label(p, "0:00.0", &kd_font_montserrat_48, COLOR_SW);
     /* Left-aligned inside a box pinned to the widest rendering: the leading
      * digit stays put and the shuffle happens to its right, into space that is
      * already part of the box. The box itself never resizes, so the caption

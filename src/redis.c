@@ -136,6 +136,11 @@ bool redis_client_ensure(redis_client_t *c) {
     return true;
 }
 
+void redis_client_drop(redis_client_t *c) {
+    redis_client_close(c);
+    c->next_attempt = time(NULL) + RECONNECT_BACKOFF_S;
+}
+
 void redis_client_close(redis_client_t *c) {
     if (c->ctx) {
         redisFree(c->ctx);

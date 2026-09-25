@@ -304,19 +304,19 @@ static lv_obj_t *make_key(calc_mode_state_t *st, lv_obj_t *pad, const char *text
 static void build_readouts(calc_mode_state_t *st, lv_obj_t *scr) {
     lv_obj_t *p = make_panel(scr, READOUT_X, ZONE_Y, READOUT_W, ZONE_H);
 
-    st->result_label = make_label(p, "0", &lv_font_montserrat_48, COLOR_INK);
+    st->result_label = make_label(p, "0", &kd_font_montserrat_48, COLOR_INK);
     lv_obj_align(st->result_label, LV_ALIGN_TOP_RIGHT, -16, 14);
 
     /* hex/bin rows: caption left, value right, caption and value in the same
      * hue so each readout reads as one unit at a glance. */
-    lv_obj_t *cap = make_label(p, "hex", &lv_font_montserrat_20, COLOR_ACCENT);
+    lv_obj_t *cap = make_label(p, "hex", &kd_font_montserrat_20, COLOR_ACCENT);
     lv_obj_set_pos(cap, 16, 92);
-    st->hex_label = make_label(p, "-", &lv_font_montserrat_20, COLOR_ACCENT);
+    st->hex_label = make_label(p, "-", &kd_font_montserrat_20, COLOR_ACCENT);
     lv_obj_align(st->hex_label, LV_ALIGN_TOP_RIGHT, -16, 88);
 
-    cap = make_label(p, "bin", &lv_font_montserrat_20, COLOR_TEAL);
+    cap = make_label(p, "bin", &kd_font_montserrat_20, COLOR_TEAL);
     lv_obj_set_pos(cap, 16, 128);
-    st->bin_label = make_label(p, "-", &lv_font_montserrat_20, COLOR_TEAL);
+    st->bin_label = make_label(p, "-", &kd_font_montserrat_20, COLOR_TEAL);
     lv_obj_align(st->bin_label, LV_ALIGN_TOP_RIGHT, -16, 126);
 
     /* Live conversions of the current value, both directions, always on.
@@ -328,11 +328,11 @@ static void build_readouts(calc_mode_state_t *st, lv_obj_t *scr) {
                                        COLOR_GREEN};
     for (int i = 0; i < 4; i++) {
         int y = 178 + i * 58;
-        cap = make_label(p, conv_caps[i], &lv_font_montserrat_20,
+        cap = make_label(p, conv_caps[i], &kd_font_montserrat_20,
                          conv_colors[i]);
         lv_obj_set_pos(cap, 16, y + 4);
         st->conv_labels[i] =
-            make_label(p, "0", &lv_font_montserrat_28, conv_colors[i]);
+            make_label(p, "0", &kd_font_montserrat_28, conv_colors[i]);
         lv_obj_align(st->conv_labels[i], LV_ALIGN_TOP_RIGHT, -16, y);
     }
 }
@@ -366,10 +366,10 @@ static void build_registers(calc_mode_state_t *st, lv_obj_t *scr) {
         char name[4];
         snprintf(name, sizeof(name), "R%d", i);
         lv_obj_t *cap =
-            make_label(row, name, &lv_font_montserrat_20, COLOR_SECONDARY);
+            make_label(row, name, &kd_font_montserrat_20, COLOR_SECONDARY);
         lv_obj_align(cap, LV_ALIGN_LEFT_MID, 12, 0);
 
-        st->reg_labels[i] = make_label(row, "---", &lv_font_montserrat_28,
+        st->reg_labels[i] = make_label(row, "---", &kd_font_montserrat_28,
                                        COLOR_MUTED);
         lv_label_set_long_mode(st->reg_labels[i], LV_LABEL_LONG_DOT);
         lv_obj_set_width(st->reg_labels[i], REG_W - 16 - 56 - 12);
@@ -381,15 +381,15 @@ static void build_registers(calc_mode_state_t *st, lv_obj_t *scr) {
      * buttons were, so the panel says what they are. ASCII only: Montserrat has
      * no U+00B7, and a separator that draws as a box is the bug this repo
      * already filters out of button labels. */
-    lv_obj_t *hint = make_label(p, "tap RCL / hold STO", &lv_font_montserrat_14,
+    lv_obj_t *hint = make_label(p, "tap RCL / hold STO", &kd_font_montserrat_14,
                                 COLOR_MUTED);
     lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -8);
 }
 
 static void build_keypad(calc_mode_state_t *st, lv_obj_t *scr) {
     lv_obj_t *pad = make_panel(scr, PAD_X, ZONE_Y, PAD_W, ZONE_H);
-    const lv_font_t *num = &lv_font_montserrat_36;
-    const lv_font_t *fn = &lv_font_montserrat_28;
+    const lv_font_t *num = &kd_font_montserrat_36;
+    const lv_font_t *fn = &kd_font_montserrat_28;
 
     /* 9 cols x 4 rows:
      *
@@ -450,7 +450,7 @@ static void build_keypad(calc_mode_state_t *st, lv_obj_t *scr) {
     make_key(st, pad, "e", CALC_KEY_E, fn, COLOR_KEY_FN, COLOR_INK, 7, 1, 1, 1);
     st->inv_btn =
         make_key(st, pad, "INV", CALC_KEY_INV, fn, COLOR_KEY_FN, COLOR_INK, 8, 1, 1, 1);
-    make_key(st, pad, "=", CALC_KEY_EQ, &lv_font_montserrat_48, COLOR_EQ,
+    make_key(st, pad, "=", CALC_KEY_EQ, &kd_font_montserrat_48, COLOR_EQ,
              COLOR_INK, 7, 2, 2, 2);
 }
 

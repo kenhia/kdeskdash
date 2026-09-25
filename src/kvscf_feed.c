@@ -97,6 +97,12 @@ static kv_remote_t remote_from_str(const char *s) {
     return KV_REMOTE_UNKNOWN;
 }
 
+kv_row_tone_t kvscf_row_tone(const kvscf_instance_t *in) {
+    if (!in || !in->running)
+        return KV_TONE_MUTED;
+    return in->ext_dev_host ? KV_TONE_DEV_HOST : KV_TONE_APP;
+}
+
 uint32_t kvscf_app_color(kv_app_t app) {
     switch (app) {
     case KV_APP_STABLE: return 0x60A5EB;      /* VS Code blue ("code")   */
@@ -182,6 +188,11 @@ int kvscf_parse_append(const char *json, size_t len, kvscf_instance_t *arr,
             r->running = cJSON_IsBool(runj) ? cJSON_IsTrue(runj) : true;
             r->favorite =
                 cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(el, "favorite"));
+            /* WI 2365. cJSON_IsTrue is false for absent, null and "true" the
+             * string alike — absent means false, the rule kvscf 021 wrote down,
+             * so a publisher that predates the field never paints a dev host. */
+            r->ext_dev_host =
+                cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(el, "ext_dev_host"));
 
             count++;
         }

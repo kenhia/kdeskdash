@@ -60,7 +60,9 @@ cross-compile approach and adding touch input.
   the `kvscf:` key namespace is the contract's, and kctrldeck kept it deliberately)
   in a 4×7 grid. A left **app rail**
   switches the view between **VS Code / Insiders** (`kvscf:instances:*`; open windows first
-  with a ★ on favorites, then closed favorites dimmed with ○), **Microsoft Edge**
+  with a ★ on favorites, then closed favorites dimmed with ○; a VS Code *Extension Development
+  Host* — the throwaway debug window F5 opens — is labelled in ember red from the row's
+  `ext_dev_host` flag, absent meaning false), **Microsoft Edge**
   (`kvscf:edge:*`, named windows first in teal, then unnamed with a tab count), and **Apps**
   (`kvscf:apps:*`, non-running apps greyed). **Tapping brings a window to the foreground on its
   host — or launches it** (a closed Code favorite relaunches the editor; a stopped app starts)
@@ -416,7 +418,7 @@ kdeskdash/
 ├── VERSION                         # base version; minor tracks the sprint number
 ├── .sprint-deploy                  # declares BOTH deploy steps /sprint-ship runs (panel + publisher bundle)
 ├── .claude/skills/deploy-panels/   #   ...the skill half: publish from main, roll the boards
-├── lv_conf.h                       # LVGL config: DRM + EVDEV + Montserrat fonts
+├── lv_conf.h                       # LVGL config: DRM + EVDEV + generated Montserrat fonts
 ├── cmake/aarch64-toolchain.cmake   # aarch64 cross-compile toolchain (one build, every Pi)
 ├── deploy/
 │   ├── kdeskdash.service           # systemd unit (boot-to-dashboard)
@@ -462,6 +464,7 @@ kdeskdash/
 │   ├── service_card.{c,h}          # pure core: the kpidash service-card key + payload contract
 │   ├── service_pub.{c,h}           # write-only kpidash service-card publisher (own Redis handle)
 │   └── modes/                      # game_of_life, clock, menu, dev, claude, icons, foreground, launcher, calc, palette
+├── fonts/                          # generate.sh + committed kd_font_montserrat_NN.c (text fonts)
 ├── fonts/ttf/                      # vendored SymbolsNerdFont-Regular.ttf (icons mode, runtime TinyTTF)
 ├── tests/                          # host unit tests (registry, gol, stopwatch, iconset, …)
 ├── lib/lvgl/                       # LVGL v9.2.2 (submodule)

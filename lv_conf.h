@@ -23,20 +23,31 @@
 /* OS: pthreads (for mutex support in LVGL internals) */
 #define LV_USE_OS   LV_OS_PTHREAD
 
-/* Logging — enable for pre-MVP bring-up debugging */
+/* Logging — enable for pre-MVP bring-up debugging.
+ *
+ * LV_LOG_PRINTF is 0 deliberately (WI #2657): lv_log_add() runs its printf
+ * path AND any registered print callback, so leaving it on would print every
+ * line twice. main.c registers the one sink with lv_log_register_print_cb(),
+ * and src/logfilter.c decides what reaches it — LVGL warns about a missing
+ * glyph on every redraw of every character the font lacks. */
 #define LV_USE_LOG 1
 #if LV_USE_LOG
     #define LV_LOG_LEVEL LV_LOG_LEVEL_WARN
-    #define LV_LOG_PRINTF 1
+    #define LV_LOG_PRINTF 0
 #endif
 
-/* Fonts (built-in Montserrat — no font-conversion pipeline needed for the pre-MVP) */
-#define LV_FONT_MONTSERRAT_14  1
-#define LV_FONT_MONTSERRAT_20  1
-#define LV_FONT_MONTSERRAT_28  1
-#define LV_FONT_MONTSERRAT_36  1
-#define LV_FONT_MONTSERRAT_48  1
-#define LV_FONT_DEFAULT &lv_font_montserrat_20
+/* Fonts. LVGL's built-in Montserrat is OFF: those carry ASCII plus ° and •,
+ * so an agent's em dash drew as a box (WI #2657). fonts/generate.sh builds the
+ * same font with LVGL's own recipe and a wider range — Latin-1, dashes, curly
+ * quotes, ellipsis — plus the LV_SYMBOL_* set, and the generated .c files are
+ * committed. `just check-fonts` asserts they still carry what it declares. */
+#define LV_FONT_CUSTOM_DECLARE \
+    LV_FONT_DECLARE(kd_font_montserrat_14) \
+    LV_FONT_DECLARE(kd_font_montserrat_20) \
+    LV_FONT_DECLARE(kd_font_montserrat_28) \
+    LV_FONT_DECLARE(kd_font_montserrat_36) \
+    LV_FONT_DECLARE(kd_font_montserrat_48)
+#define LV_FONT_DEFAULT &kd_font_montserrat_20
 
 /* Layouts. Both default on, but the Launcher's button grid is the first place
  * that depends on GRID, so say so rather than inherit it. */

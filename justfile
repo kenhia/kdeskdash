@@ -21,6 +21,12 @@ unit-lint:
 check: build unit-lint
     ctest --test-dir build --output-on-failure --no-tests=error
 
+# The committed fonts carry every codepoint fonts/generate.sh declares (WI #2657).
+# Also runs inside `just check` as ctest's test_font_coverage; this is the
+# direct way in after re-running the generator.
+check-fonts:
+    tests/font-coverage.sh
+
 # Run one test by name, e.g. `just test golz`
 test name: build
     ctest --test-dir build -R test_{{ name }} --output-on-failure --no-tests=error

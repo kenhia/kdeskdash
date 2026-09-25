@@ -13,6 +13,7 @@
 
 #include "config.h"
 #include "kvscf_redis.h"
+#include "logfilter.h"
 #include "service_pub.h"
 #include "lvgl.h"
 #include "modes/calc.h"
@@ -85,6 +86,30 @@ static kd_mode_t *create_mode(const char *id, const kdeskdash_config_t *cfg) {
 #define KD_VERSION "unknown"
 #endif
 
+/* LVGL's print sink (WI #2657). Replaces LVGL's own LV_LOG_PRINTF path —
+ * same destination — so that logfilter.c can drop the repeats of a
+ * missing-glyph warning that would otherwise arrive once per redraw, forever,
+ * for one character an agent typed. stdout is line-buffered (see main()). */
+static void lv_log_print_cb(lv_log_level_t level, const char *buf) {
+    (void)level;
+    switch (logfilter_check(buf)) {
+    case LOGFILTER_SUPPRESS:
+        return;
+    case LOGFILTER_EMIT_FIRST:
+        fputs(buf, stdout);
+        /* Say it out loud: a reader who sees one line must not conclude the
+         * character was drawn once. */
+        fputs("kdeskdash: further reports for this codepoint suppressed (WI #2657); "
+              "add it to RANGE in fonts/generate.sh to render it\n",
+              stdout);
+        break;
+    case LOGFILTER_EMIT:
+    default:
+        fputs(buf, stdout);
+        break;
+    }
+}
+
 int main(int argc, char **argv) {
     /* --version before anything else touches hardware. A deploy asks the
      * *installed* binary on the board what it is, which is the only way to
@@ -115,6 +140,10 @@ int main(int argc, char **argv) {
     config_load(&cfg);
 
     lv_init();
+
+    /* After lv_init, never before: LV_GLOBAL_INIT() resets the struct the
+     * callback pointer lives in, so an earlier registration is thrown away. */
+    lv_log_register_print_cb(lv_log_print_cb);
 
     /* DRM/KMS display on the vc4 GPU (default /dev/dri/card1) */
     lv_display_t *disp = lv_linux_drm_create();

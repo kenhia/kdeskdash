@@ -425,7 +425,7 @@ static lv_obj_t *make_ctrl_btn(lv_obj_t *parent, const char *text,
 
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, text);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(lbl, &kd_font_montserrat_20, 0);
     lv_obj_set_style_text_color(lbl, COLOR_INK, 0);
     lv_obj_center(lbl);
     if (out_lbl)
@@ -468,10 +468,10 @@ static void build_grid_column(icons_state_t *st, lv_obj_t *parent) {
     lv_obj_add_flag(head, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
     st->set_name = lv_label_create(head);
-    lv_obj_set_style_text_font(st->set_name, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(st->set_name, &kd_font_montserrat_28, 0);
     lv_obj_set_style_text_color(st->set_name, COLOR_ACCENT, 0);
     st->set_meta = lv_label_create(head);
-    lv_obj_set_style_text_font(st->set_meta, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(st->set_meta, &kd_font_montserrat_14, 0);
     lv_obj_set_style_text_color(st->set_meta, COLOR_SECONDARY, 0);
 
     /* The wrapping cell grid. */
@@ -511,7 +511,7 @@ static void build_grid_column(icons_state_t *st, lv_obj_t *parent) {
         /* Favourite marker: a small coral dot, top-right, hidden by default. */
         lv_obj_t *mark = lv_label_create(cell);
         lv_label_set_text(mark, LV_SYMBOL_OK);
-        lv_obj_set_style_text_font(mark, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(mark, &kd_font_montserrat_14, 0);
         lv_obj_set_style_text_color(mark, COLOR_ACCENT, 0);
         lv_obj_align(mark, LV_ALIGN_TOP_RIGHT, -4, 4);
         lv_obj_add_flag(mark, LV_OBJ_FLAG_HIDDEN);
@@ -548,16 +548,16 @@ static void build_preview_column(icons_state_t *st, lv_obj_t *parent) {
     }
 
     st->prev_cp = lv_label_create(col);
-    lv_obj_set_style_text_font(st->prev_cp, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(st->prev_cp, &kd_font_montserrat_20, 0);
     lv_obj_set_style_text_color(st->prev_cp, COLOR_SECONDARY, 0);
     lv_obj_set_style_pad_top(st->prev_cp, 6, 0);
 
     st->prev_set = lv_label_create(col);
-    lv_obj_set_style_text_font(st->prev_set, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(st->prev_set, &kd_font_montserrat_14, 0);
     lv_obj_set_style_text_color(st->prev_set, COLOR_MUTED, 0);
 
     st->page_lbl = lv_label_create(col);
-    lv_obj_set_style_text_font(st->page_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(st->page_lbl, &kd_font_montserrat_14, 0);
     lv_obj_set_style_text_color(st->page_lbl, COLOR_MUTED, 0);
 }
 
@@ -587,7 +587,7 @@ static void build_control_column(icons_state_t *st, lv_obj_t *parent) {
     make_nav_row(col, LV_SYMBOL_LEFT, prev_cb, LV_SYMBOL_RIGHT, next_cb, st);
 
     st->toast = lv_label_create(col);
-    lv_obj_set_style_text_font(st->toast, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(st->toast, &kd_font_montserrat_14, 0);
     lv_obj_set_style_text_color(st->toast, COLOR_MUTED, 0);
     lv_label_set_text(st->toast, "");
 }
@@ -659,11 +659,11 @@ static void build_unavailable(kd_mode_t *self, lv_obj_t *scr) {
 
     lv_obj_t *t = lv_label_create(box);
     lv_label_set_text(t, "Nerd Font unavailable");
-    lv_obj_set_style_text_font(t, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(t, &kd_font_montserrat_28, 0);
     lv_obj_set_style_text_color(t, COLOR_INK, 0);
     lv_obj_t *p = lv_label_create(box);
     lv_label_set_text(p, st->ttf_path);
-    lv_obj_set_style_text_font(p, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(p, &kd_font_montserrat_14, 0);
     lv_obj_set_style_text_color(p, COLOR_MUTED, 0);
     self->screen = scr;
 }
