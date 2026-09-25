@@ -256,7 +256,7 @@ static void make_menu_button(lv_obj_t *parent, const char *text,
 
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, text);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &kd_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(lbl, PAL(MOON_INK), LV_PART_MAIN);
     lv_obj_center(lbl);
 }
@@ -290,7 +290,7 @@ static void open_menu(gol_mode_state_t *st) {
                           LV_FLEX_ALIGN_CENTER);
 
     lv_obj_t *info = lv_label_create(panel);
-    lv_obj_set_style_text_font(info, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(info, &kd_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(info, PAL(PALE_STEEL), LV_PART_MAIN);
     lv_obj_add_flag(info, LV_OBJ_FLAG_GESTURE_BUBBLE);
 

@@ -66,6 +66,13 @@ bool redis_client_connect(redis_client_t *c);
  * an unreachable endpoint can't stall the UI loop on every op. */
 bool redis_client_ensure(redis_client_t *c);
 
+/* Drop the connection and arm the reconnect backoff, as redis_client_ensure
+ * does for a context hiredis has flagged. For a command whose reply was an
+ * ERROR: the socket is fine, so hiredis flags nothing, and a caller that just
+ * retried would write at main-loop rate. Reconnecting also re-runs AUTH, which
+ * is the cure for a -NOAUTH after the server restarted. Idempotent. */
+void redis_client_drop(redis_client_t *c);
+
 /* Close and free the handle's context (idempotent). */
 void redis_client_close(redis_client_t *c);
 

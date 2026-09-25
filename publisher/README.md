@@ -37,11 +37,11 @@ feeds look identical and the Copilot one can say strictly less.
 
 0. **`kdash-pub` must already be on the machine** at its fleet path —
    `/usr/local/bin/kdash-pub` on Linux, `C:\tools\bin\kdash-pub.exe` on Windows
-   (kdashdata CD-13; installed by `knarr deploy kdash-pub`, or kdashdata's
-   `just deploy-cleo`). Without it this script publishes nothing and drops a
-   `no-kdash-pub` breadcrumb in its state dir. `kdash-pub --version` is the
-   check; `kdash-pub --app kdeskdash endpoint` additionally proves khlenv and
-   auth work on that host.
+   (kdashdata CD-13; installed by kdashdata's `just deploy`, one
+   `knarr deploy kdash-pub` across the fleet, cleo included). Without it this
+   script publishes nothing and drops a `no-kdash-pub` breadcrumb in its state
+   dir. `kdash-pub --version` is the check; `kdash-pub --app kdeskdash endpoint`
+   additionally proves khlenv and auth work on that host.
 1. Copy `claude-pub.sh` to `~/.claude/kdeskdash-pub/claude-pub.sh` and make it
    executable (`chmod +x`; not needed on Windows).
 2. Merge `settings-fragment.json` into user-level `~/.claude/settings.json`,

@@ -31,17 +31,17 @@ typedef struct {
 static tier_fonts_t tier_fonts(kd_clock_tier_t t) {
     switch (t) {
     case KD_CLOCK_TIER_L:
-        return (tier_fonts_t){&lv_font_montserrat_48, &lv_font_montserrat_28,
-                              &lv_font_montserrat_36, &lv_font_montserrat_20, true};
+        return (tier_fonts_t){&kd_font_montserrat_48, &kd_font_montserrat_28,
+                              &kd_font_montserrat_36, &kd_font_montserrat_20, true};
     case KD_CLOCK_TIER_M:
-        return (tier_fonts_t){&lv_font_montserrat_48, &lv_font_montserrat_20,
-                              &lv_font_montserrat_28, &lv_font_montserrat_14, true};
+        return (tier_fonts_t){&kd_font_montserrat_48, &kd_font_montserrat_20,
+                              &kd_font_montserrat_28, &kd_font_montserrat_14, true};
     case KD_CLOCK_TIER_S:
-        return (tier_fonts_t){&lv_font_montserrat_36, &lv_font_montserrat_14,
-                              &lv_font_montserrat_20, &lv_font_montserrat_14, false};
+        return (tier_fonts_t){&kd_font_montserrat_36, &kd_font_montserrat_14,
+                              &kd_font_montserrat_20, &kd_font_montserrat_14, false};
     default:
-        return (tier_fonts_t){&lv_font_montserrat_28, &lv_font_montserrat_14,
-                              &lv_font_montserrat_20, &lv_font_montserrat_14, false};
+        return (tier_fonts_t){&kd_font_montserrat_28, &kd_font_montserrat_14,
+                              &kd_font_montserrat_20, &kd_font_montserrat_14, false};
     }
 }
 

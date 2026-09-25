@@ -176,7 +176,7 @@ static lv_obj_t *make_zone(lv_obj_t *parent, int width, bool hairline_left) {
 static lv_obj_t *make_zone_label(lv_obj_t *parent, const char *text) {
     lv_obj_t *l = lv_label_create(parent);
     lv_label_set_text(l, text);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(l, &kd_font_montserrat_20, 0);
     lv_obj_set_style_text_color(l, COLOR_ACCENT, 0);
     lv_obj_set_style_text_letter_space(l, 4, 0);
     return l;
@@ -213,7 +213,7 @@ static void make_row(claude_state_t *st, lv_obj_t *parent, int i) {
     lv_obj_set_style_bg_opa(r->stripe, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(r->stripe, 3, 0);
 
-    r->host = make_label(r->row, &lv_font_montserrat_20, COLOR_SECONDARY);
+    r->host = make_label(r->row, &kd_font_montserrat_20, COLOR_SECONDARY);
     lv_obj_set_width(r->host, 120);
     lv_label_set_long_mode(r->host, LV_LABEL_LONG_DOT);
 
@@ -222,24 +222,24 @@ static void make_row(claude_state_t *st, lv_obj_t *parent, int i) {
      * 280 fits the fleet's longest repo name ("agent-wiki-tooling", 18ch at
      * montserrat_28) — the identifier is the one field that must not clip, so
      * it wins the tie against the title, which reads fine truncated. */
-    r->proj = make_label(r->row, &lv_font_montserrat_28, COLOR_INK);
+    r->proj = make_label(r->row, &kd_font_montserrat_28, COLOR_INK);
     lv_obj_set_width(r->proj, 280);
     lv_label_set_long_mode(r->proj, LV_LABEL_LONG_DOT);
 
-    r->title = make_label(r->row, &lv_font_montserrat_20, COLOR_TITLE);
+    r->title = make_label(r->row, &kd_font_montserrat_20, COLOR_TITLE);
     lv_obj_set_flex_grow(r->title, 1);
     lv_label_set_long_mode(r->title, LV_LABEL_LONG_DOT);
 
-    r->model = make_label(r->row, &lv_font_montserrat_20, COLOR_SECONDARY);
+    r->model = make_label(r->row, &kd_font_montserrat_20, COLOR_SECONDARY);
     lv_obj_set_width(r->model, 130);
     lv_label_set_long_mode(r->model, LV_LABEL_LONG_DOT);
 
-    r->status = make_label(r->row, &lv_font_montserrat_20, COLOR_MUTED);
+    r->status = make_label(r->row, &kd_font_montserrat_20, COLOR_MUTED);
     lv_obj_set_width(r->status, 240);
     lv_obj_set_style_text_letter_space(r->status, 2, 0);
     lv_label_set_long_mode(r->status, LV_LABEL_LONG_CLIP);
 
-    r->age = make_label(r->row, &lv_font_montserrat_20, COLOR_SECONDARY);
+    r->age = make_label(r->row, &kd_font_montserrat_20, COLOR_SECONDARY);
     lv_obj_set_width(r->age, 90);
     lv_obj_set_style_text_align(r->age, LV_TEXT_ALIGN_RIGHT, 0);
 }
@@ -270,14 +270,14 @@ static void make_gauge(claude_gauge_t *g, lv_obj_t *parent, const char *window) 
     lv_obj_set_style_arc_rounded(g->arc, true, LV_PART_MAIN);
     lv_obj_set_style_arc_rounded(g->arc, true, LV_PART_INDICATOR);
 
-    g->pct = make_label(g->arc, &lv_font_montserrat_28, COLOR_INK);
+    g->pct = make_label(g->arc, &kd_font_montserrat_28, COLOR_INK);
     lv_obj_center(g->pct);
 
-    g->cap = make_label(col, &lv_font_montserrat_20, COLOR_SECONDARY);
+    g->cap = make_label(col, &kd_font_montserrat_20, COLOR_SECONDARY);
     lv_label_set_text(g->cap, window);
     lv_obj_set_style_text_letter_space(g->cap, 4, 0);
 
-    g->reset = make_label(col, &lv_font_montserrat_20, COLOR_MUTED);
+    g->reset = make_label(col, &kd_font_montserrat_20, COLOR_MUTED);
 }
 
 /* A horizontal band of the USAGE zone holding gauge columns, centred. */
@@ -312,14 +312,14 @@ static void build_screen(kd_mode_t *self) {
     lv_obj_set_flex_align(head, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_END,
                           LV_FLEX_ALIGN_CENTER);
     make_zone_label(head, "AGENTS");
-    st->head_sub = make_label(head, &lv_font_montserrat_20, COLOR_SECONDARY);
+    st->head_sub = make_label(head, &kd_font_montserrat_20, COLOR_SECONDARY);
 
     for (int i = 0; i < CLAUDE_ROWS; i++)
         make_row(st, za, i);
 
-    st->more = make_label(za, &lv_font_montserrat_20, COLOR_MUTED);
+    st->more = make_label(za, &kd_font_montserrat_20, COLOR_MUTED);
 
-    st->empty = make_label(za, &lv_font_montserrat_28, COLOR_MUTED);
+    st->empty = make_label(za, &kd_font_montserrat_28, COLOR_MUTED);
     lv_label_set_text(st->empty, "no agents active");
     lv_obj_set_flex_grow(st->empty, 1);
     lv_obj_set_style_text_align(st->empty, LV_TEXT_ALIGN_CENTER, 0);
@@ -339,7 +339,7 @@ static void build_screen(kd_mode_t *self) {
     lv_obj_set_flex_align(uhead, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_END,
                           LV_FLEX_ALIGN_CENTER);
     make_zone_label(uhead, "USAGE");
-    st->asof = make_label(uhead, &lv_font_montserrat_20, COLOR_MUTED);
+    st->asof = make_label(uhead, &kd_font_montserrat_20, COLOR_MUTED);
 
     lv_obj_t *top = make_gauge_row(zu);
     make_gauge(&st->five, top, "5 HR");
@@ -355,7 +355,7 @@ static void build_screen(kd_mode_t *self) {
     /* --- unreachable banner (hidden by default) --- */
     st->unavail = lv_label_create(scr);
     lv_label_set_text(st->unavail, "agent feed unavailable");
-    lv_obj_set_style_text_font(st->unavail, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(st->unavail, &kd_font_montserrat_28, 0);
     lv_obj_set_style_text_color(st->unavail, COLOR_SECONDARY, 0);
     lv_obj_set_style_bg_color(st->unavail, COLOR_PANEL, 0);
     lv_obj_set_style_bg_opa(st->unavail, LV_OPA_COVER, 0);

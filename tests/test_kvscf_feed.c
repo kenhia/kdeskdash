@@ -215,6 +215,50 @@ static void test_running_defaults_true(void) {
     check(arr[0].favorite, 0, "absent favorite -> false");
 }
 
+/* WI 2365: an Extension Development Host row. The wire shape is kvscf 021's
+ * (now kctrldeck's): a dev host opened with no folder, the usual F5 case. */
+static const char *DEVHOST =
+    "{\"host\":\"cleo\",\"instances\":["
+    "{\"id\":\"111\",\"label\":\"Extension Development Host\","
+    "\"workspace\":\"Extension Development Host\",\"active_file\":null,"
+    "\"app\":\"insiders\",\"ext_dev_host\":true,\"running\":true},"
+    "{\"id\":\"222\",\"label\":\"korg-vs\",\"app\":\"insiders\","
+    "\"ext_dev_host\":false,\"running\":true},"
+    "{\"id\":\"file:///d%3A/x\",\"label\":\"x\",\"app\":\"insiders\","
+    "\"ext_dev_host\":false,\"running\":false,\"favorite\":true}]}";
+
+static void test_ext_dev_host(void) {
+    kvscf_instance_t arr[KV_INSTANCES_MAX];
+    int n = kvscf_parse_append(DEVHOST, strlen(DEVHOST), arr, 0, KV_INSTANCES_MAX);
+    check(n, 3, "dev-host sample parsed");
+    check(arr[0].ext_dev_host, 1, "ext_dev_host true parsed");
+    check(arr[1].ext_dev_host, 0, "ext_dev_host false parsed");
+    check(kvscf_row_tone(&arr[0]), KV_TONE_DEV_HOST, "dev host -> dev-host tone");
+    check(kvscf_row_tone(&arr[1]), KV_TONE_APP, "ordinary window -> app tone");
+    check(kvscf_row_tone(&arr[2]), KV_TONE_MUTED, "closed favorite -> muted");
+
+    /* Absent means false: a publisher older than kvscf 021 sends no field,
+     * and that must not render as a dev host. */
+    n = kvscf_parse_append(SAMPLE, strlen(SAMPLE), arr, 0, KV_INSTANCES_MAX);
+    check(n, 3, "legacy sample parsed");
+    check(arr[0].ext_dev_host, 0, "absent ext_dev_host -> false");
+    check(kvscf_row_tone(&arr[0]), KV_TONE_APP, "legacy row -> app tone");
+
+    /* A non-bool value is not a claim either. */
+    static const char *ODD =
+        "{\"host\":\"cleo\",\"instances\":[{\"id\":\"1\",\"label\":\"a\","
+        "\"ext_dev_host\":\"true\"}]}";
+    n = kvscf_parse_append(ODD, strlen(ODD), arr, 0, KV_INSTANCES_MAX);
+    check(n, 1, "string-valued flag row still parsed");
+    check(arr[0].ext_dev_host, 0, "ext_dev_host \"true\" (string) -> false");
+
+    /* Not running wins: a dimmed row is launchable, not a live dev host. The
+     * wire never sends this pair, so the panel must not be the one to show it. */
+    arr[0].running = false;
+    arr[0].ext_dev_host = true;
+    check(kvscf_row_tone(&arr[0]), KV_TONE_MUTED, "closed row beats dev-host flag");
+}
+
 static void test_merge_across_hosts(void) {
     const char *a = "{\"host\":\"cleo\",\"instances\":["
                     "{\"id\":\"1\",\"label\":\"Zeta\",\"app\":\"stable\"}]}";
@@ -724,6 +768,7 @@ int main(void) {
     test_project_row_sort();
     test_capacity_holds_a_full_project_list();
     test_running_defaults_true();
+    test_ext_dev_host();
     test_merge_across_hosts();
     test_edge_parse();
     test_edge_sort();

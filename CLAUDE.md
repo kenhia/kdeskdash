@@ -123,7 +123,7 @@ Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMak
   `src/modeset.c`, `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/modes/claude_view.c`,
   `src/telemetry_host.c`, `src/bmp_write.c`, `src/clock_core.c`, `src/service_card.c`,
   `src/quickswitch.c`, `src/panel_state.c`, `src/panel_cmd.c`,
-  `src/modes/dev_hostlist.c`, `src/modes/dev_view.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
+  `src/modes/dev_hostlist.c`, `src/modes/dev_view.c`, `src/logfilter.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
   explicit `uint32_t *state` seam). Each has a `tests/test_*.c`.
 - **Modes** (`src/modes/*.c`) — each implements the `kd_mode_t` lifecycle from `src/mode.h`:
   `activate` / `deactivate` / `tick`, owning one LVGL screen and its private `state`. A mode
@@ -248,7 +248,10 @@ than by a module main.c initialises, and the command feed since sprint 039.
    `kpidash:services:deskdash:<host>` every 15 s (no TTL — the kpidash board computes
    freshness from the payload's `ts` and reddens the card after 60 s) so every panel appears
    on the board. kdeskdash never *reads* that namespace; the contract lives in the pure
-   `src/service_card.c` and is host-tested.
+   `src/service_card.c` and is host-tested. Its failure path is too, since sprint 044
+   (WI 2281): `service_pub.c` runs on a kdashdata-style I/O seam
+   (`src/service_pub_internal.h`), and `test_service_pub` fails the Nth write both ways —
+   no reply, and an error reply, which used to count as a publish.
 
    **Why this is not the telemetry handle, although both reach `rpi53:6379`.** Telemetry is
    initialised only when Dev mode is registered, and the card must publish from *every*
@@ -370,7 +373,15 @@ Before touching simulations or LVGL gesture handlers, these capture hard-won dec
 
 ### Fonts
 
-Body text uses the built-in Montserrat bitmap fonts (no font-conversion pipeline). The
+Body text uses Montserrat bitmap fonts **generated here** since sprint 044 (WI 2657):
+`fonts/generate.sh` runs LVGL's own built-in-font recipe (same TTF and `LV_SYMBOL_*` set,
+read from the pinned submodule) with a wider range — Latin-1, en/em dash, curly quotes,
+bullet, ellipsis, kpidash's set — into committed `fonts/kd_font_montserrat_NN.c`. The
+built-ins are off in `lv_conf.h`, so write `kd_font_montserrat_20`, not `lv_font_…`; a new
+size goes in `SIZES`, `LV_FONT_CUSTOM_DECLARE` and `KD_FONT_SOURCES`. `test_font_coverage`
+(`just check-fonts`) fails if the committed files drift from what the script declares. A
+glyph still outside the set logs **once** per codepoint (`src/logfilter.c`, kpidash's) and
+draws a box. The
 `icons` mode is the exception: it renders Nerd Font glyphs at runtime via LVGL's
 **TinyTTF** engine (`LV_USE_TINY_TTF` in `lv_conf.h`), reading the vendored
 `fonts/ttf/SymbolsNerdFont-Regular.ttf` — nothing is baked. Two gotchas if you touch this:
@@ -385,6 +396,12 @@ Body text uses the built-in Montserrat bitmap fonts (no font-conversion pipeline
   font (`create_data_ex(..., cache_size=0)`) and test `dsc.gid.index != 0`. The boolean
   return of `lv_font_get_glyph_dsc` is `true` even for missing glyphs, and a *cached* font
   logs `cache not allocated` per miss — the cache-less probe font avoids both traps.
+- **Set a label's text before its TinyTTF font** — "per miss" means *any* lookup, not just
+  a probe. A new `lv_label` holds LVGL's default `"Text"`, and applying a cached Nerd font
+  first measures four Latin letters it does not have: four `cache not allocated` errors per
+  label, per mode entry (WI 3275, ~1,200 journal lines a week until sprint 044). Call
+  `lv_label_set_text()` first, as `icons.c`'s grid cells and preview column and
+  `foreground.c`'s rail and marker labels now do.
 
 Baking a curated subset the kpidash way (`lv_font_conv` → committed C font, for pixel-crisp
 production icons) is the complementary path; the `icons` mode's favourites file is the

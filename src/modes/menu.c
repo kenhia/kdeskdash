@@ -98,7 +98,7 @@ static void make_tile(lv_obj_t *grid, kd_mode_t *m) {
 
     lv_obj_t *label = lv_label_create(tile);
     lv_label_set_text(label, m->title);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_style_text_font(label, &kd_font_montserrat_28, LV_PART_MAIN);
     lv_obj_set_style_text_color(label, tile_text_color(m->id), LV_PART_MAIN);
     lv_obj_center(label);
 }
@@ -119,7 +119,7 @@ static void build_group(lv_obj_t *parent, const char *header,
 
     lv_obj_t *lbl = lv_label_create(panel);
     lv_label_set_text(lbl, header);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(lbl, &kd_font_montserrat_20, 0);
     lv_obj_set_style_text_color(lbl, COLOR_ACCENT, 0);
     lv_obj_set_style_text_letter_space(lbl, 4, 0);
     lv_obj_set_style_pad_left(lbl, 4, 0);

@@ -62,6 +62,7 @@
 #define COLOR_EDGE      PAL(EDGE_TEAL)     /* Edge teal (rail + named windows) */
 #define COLOR_APPS      PAL(ROCKET_RED)    /* Apps rocket red */
 #define COLOR_STAR      PAL(STAR_GOLD)     /* favorite gold */
+#define COLOR_DEV_HOST  PAL(ALARM_EMBER)   /* extension dev host (WI 2365) */
 
 typedef enum { APP_CODE = 0, APP_EDGE, APP_APPS } fg_app_t;
 
@@ -141,10 +142,15 @@ static void fill_cell(fg_state_t *st, int s, int idx) {
         char label[KV_LABEL_MAX];
         kvscf_display_label(in, label, sizeof(label));
         lv_label_set_text(st->cell_label[s], label);
-        /* A non-running favorite is launchable, not focusable — dim the row. */
-        lv_obj_set_style_text_color(
-            st->cell_label[s],
-            in->running ? lv_color_hex(kvscf_app_color(in->app)) : COLOR_MUTED, 0);
+        /* A non-running favorite is launchable, not focusable — dim the row.
+         * An Extension Development Host is a throwaway debug window — warn. */
+        lv_color_t tone;
+        switch (kvscf_row_tone(in)) {
+        case KV_TONE_MUTED: tone = COLOR_MUTED; break;
+        case KV_TONE_DEV_HOST: tone = COLOR_DEV_HOST; break;
+        default: tone = lv_color_hex(kvscf_app_color(in->app)); break;
+        }
+        lv_obj_set_style_text_color(st->cell_label[s], tone, 0);
         lv_label_set_text(st->cell_host[s], kvscf_display_host(in));
         if (!in->running)
             lv_obj_set_style_text_color(st->cell_host[s], COLOR_MUTED, 0);
@@ -385,12 +391,15 @@ static lv_obj_t *make_app_icon(fg_state_t *st, lv_obj_t *rail, const char *glyph
                                const char *fallback, lv_color_t color,
                                fg_app_t app) {
     lv_obj_t *icon = lv_label_create(rail);
+    /* Text before font: a new label holds LVGL's default "Text", and setting a
+     * TinyTTF font first measures those four Latin letters against a Nerd font
+     * that has none — one "cache not allocated" error each (WI 3275). */
     if (st->rail_font) {
-        lv_obj_set_style_text_font(icon, st->rail_font, 0);
         lv_label_set_text(icon, glyph);
+        lv_obj_set_style_text_font(icon, st->rail_font, 0);
     } else {
-        lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
         lv_label_set_text(icon, fallback);
+        lv_obj_set_style_text_font(icon, &kd_font_montserrat_20, 0);
     }
     lv_obj_set_style_text_color(icon, color, 0);
     lv_obj_add_flag(icon, LV_OBJ_FLAG_CLICKABLE);
@@ -427,7 +436,7 @@ static void build_rail(fg_state_t *st, lv_obj_t *parent) {
     update_rail(st);
 
     st->count_lbl = lv_label_create(rail);
-    lv_obj_set_style_text_font(st->count_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(st->count_lbl, &kd_font_montserrat_20, 0);
     lv_obj_set_style_text_color(st->count_lbl, COLOR_SECONDARY, 0);
     lv_label_set_text(st->count_lbl, "");
 
@@ -444,7 +453,7 @@ static void build_rail(fg_state_t *st, lv_obj_t *parent) {
     lv_obj_add_flag(st->page_nav, LV_OBJ_FLAG_HIDDEN);
 
     st->toast = lv_label_create(rail);
-    lv_obj_set_style_text_font(st->toast, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(st->toast, &kd_font_montserrat_14, 0);
     lv_obj_set_style_text_color(st->toast, COLOR_MUTED, 0);
     lv_label_set_long_mode(st->toast, LV_LABEL_LONG_DOT);
     lv_obj_set_width(st->toast, RAIL_W - 20);
@@ -479,19 +488,19 @@ static void build_cell(fg_state_t *st, lv_obj_t *colbox, int s) {
     lv_obj_set_flex_grow(label, 1);
     /* Pin to one line so an over-long title ellipsizes instead of wrapping to a
      * second line that overflows the cell (LONG_DOT wraps before dotting). */
-    lv_obj_set_height(label, lv_font_montserrat_28.line_height);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_28, 0);
+    lv_obj_set_height(label, kd_font_montserrat_28.line_height);
+    lv_obj_set_style_text_font(label, &kd_font_montserrat_28, 0);
     lv_obj_set_style_text_color(label, COLOR_INK, 0);
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
     lv_label_set_text(label, "");
 
     /* Favorite marker (★ open / ○ closed), reserved space left of the host tab. */
     lv_obj_t *mark = lv_label_create(cell);
+    lv_label_set_text(mark, ""); /* before the TinyTTF font — see make_app_icon */
     lv_obj_set_width(mark, MARK_STRIP);
     if (st->mark_font)
         lv_obj_set_style_text_font(mark, st->mark_font, 0);
     lv_obj_set_style_text_align(mark, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(mark, "");
     st->cell_mark[s] = mark;
 
     /* Host as a 90°-clockwise tab on the right edge: rotated about its own
@@ -503,7 +512,7 @@ static void build_cell(fg_state_t *st, lv_obj_t *colbox, int s) {
     lv_obj_add_flag(strip, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
     lv_obj_t *host = lv_label_create(strip);
-    lv_obj_set_style_text_font(host, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(host, &kd_font_montserrat_14, 0);
     lv_obj_set_style_text_color(host, COLOR_HOST, 0);
     lv_obj_center(host);
     lv_obj_set_style_transform_pivot_x(host, lv_pct(50), 0);
@@ -551,7 +560,7 @@ static void build_grid(fg_state_t *st, lv_obj_t *parent) {
 
     /* Centered banner overlay (empty / unavailable), hidden by default. */
     st->banner = lv_label_create(parent);
-    lv_obj_set_style_text_font(st->banner, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(st->banner, &kd_font_montserrat_28, 0);
     lv_obj_set_style_text_color(st->banner, COLOR_MUTED, 0);
     lv_obj_align(st->banner, LV_ALIGN_CENTER, RAIL_W / 2, 0);
     lv_obj_add_flag(st->banner, LV_OBJ_FLAG_HIDDEN);

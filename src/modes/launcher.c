@@ -89,7 +89,7 @@ struct lk_state {
  * as present. So: one bitmap font, and anything it cannot draw is filtered out
  * of the label rather than drawn as a box. See the sprint record for what it
  * would take to render Ken's emoji properly. */
-#define LABEL_FONT (&lv_font_montserrat_20)
+#define LABEL_FONT (&kd_font_montserrat_20)
 
 /* Glyph-presence predicate for kvscf_label_filter. Reliable here in a way it
  * would not be for TinyTTF: for LVGL's built-in LV_FONT_FMT_TXT fonts the
@@ -382,7 +382,7 @@ static void build_screen(kd_mode_t *self) {
 
     st->status = lv_label_create(side);
     lv_obj_set_width(st->status, LV_PCT(100));
-    lv_obj_set_style_text_font(st->status, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(st->status, &kd_font_montserrat_14, 0);
     lv_obj_set_style_text_color(st->status, PAL(FADED_DENIM), 0);
     lv_obj_set_style_text_align(st->status, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(st->status, LV_LABEL_LONG_DOT);
@@ -390,7 +390,7 @@ static void build_screen(kd_mode_t *self) {
 
     /* Centred over the grid pane while there is no config to draw. */
     st->banner = lv_label_create(scr);
-    lv_obj_set_style_text_font(st->banner, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(st->banner, &kd_font_montserrat_28, 0);
     lv_obj_set_style_text_color(st->banner, PAL(FADED_DENIM), 0);
     lv_label_set_text(st->banner, "waiting for kvscf");
     lv_obj_align(st->banner, LV_ALIGN_LEFT_MID, 0, 0);
