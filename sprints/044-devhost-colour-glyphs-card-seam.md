@@ -193,3 +193,25 @@ test: the output went through `tail`, which also hid the exit code, and the comm
 ahead on it. It passed on 30 consecutive runs afterwards, and in round 2 on **10 more,
 run unfiltered with each log kept** (rc 0 and 27/27 every time). **It's an unreproduced
 single failure**, and the test that failed is unknown.
+
+## Deployed
+
+2026-09-25, from merged `main` (`952ef86`, PR #51), as `.sprint-deploy` declares.
+
+- **`deploy-panels`**: `just publish` published **`kdeskdash 0.27.0-952ef86`** (`latest`
+  moved). `just deploy <host> 0.27.0-952ef86` installed it on both boards.
+
+  | board | installed `--version` | unit | frame (`kddss`) |
+  |---|---|---|---|
+  | rpidash2 | `kdeskdash 0.27.0-952ef86` | active | claude screen, rendered from central; 0 `[Error]` / `cache not allocated` lines in the journal after the restart |
+  | rpidash3 | `kdeskdash 0.27.0-952ef86` | active | launcher with its clock pane |
+
+  rpidash2 is off the 044 dev build and onto the published one. rpidash3 was
+  reachable this time, so the fleet is level. After the restart rpidash3's launcher
+  reads "no launcher configured", because its kvscf Redis held no `kvscf:*` keys at
+  that moment (kwork wasn't publishing), and the last-good cache is in memory, so it
+  doesn't survive a restart. The layout returns when kwork next publishes. That's
+  normal restart behaviour, not a 044 change.
+- **`recipe: publish-publisher`**: `nothing to publish: kdeskdash-publisher
+  2.4.0-c44430a already in the store`. That's a deliberate no-op: the bundle's payload
+  is unchanged (the README repair isn't in it).
