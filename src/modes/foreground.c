@@ -391,12 +391,15 @@ static lv_obj_t *make_app_icon(fg_state_t *st, lv_obj_t *rail, const char *glyph
                                const char *fallback, lv_color_t color,
                                fg_app_t app) {
     lv_obj_t *icon = lv_label_create(rail);
+    /* Text before font: a new label holds LVGL's default "Text", and setting a
+     * TinyTTF font first measures those four Latin letters against a Nerd font
+     * that has none — one "cache not allocated" error each (WI 3275). */
     if (st->rail_font) {
-        lv_obj_set_style_text_font(icon, st->rail_font, 0);
         lv_label_set_text(icon, glyph);
+        lv_obj_set_style_text_font(icon, st->rail_font, 0);
     } else {
-        lv_obj_set_style_text_font(icon, &kd_font_montserrat_20, 0);
         lv_label_set_text(icon, fallback);
+        lv_obj_set_style_text_font(icon, &kd_font_montserrat_20, 0);
     }
     lv_obj_set_style_text_color(icon, color, 0);
     lv_obj_add_flag(icon, LV_OBJ_FLAG_CLICKABLE);
@@ -493,11 +496,11 @@ static void build_cell(fg_state_t *st, lv_obj_t *colbox, int s) {
 
     /* Favorite marker (★ open / ○ closed), reserved space left of the host tab. */
     lv_obj_t *mark = lv_label_create(cell);
+    lv_label_set_text(mark, ""); /* before the TinyTTF font — see make_app_icon */
     lv_obj_set_width(mark, MARK_STRIP);
     if (st->mark_font)
         lv_obj_set_style_text_font(mark, st->mark_font, 0);
     lv_obj_set_style_text_align(mark, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(mark, "");
     st->cell_mark[s] = mark;
 
     /* Host as a 90°-clockwise tab on the right edge: rotated about its own

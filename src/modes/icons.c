@@ -541,9 +541,12 @@ static void build_preview_column(icons_state_t *st, lv_obj_t *parent) {
 
     for (int k = 0; k < PREVIEW_N; k++) {
         lv_obj_t *g = lv_label_create(col);
+        /* Text before font: a new label holds LVGL's default "Text", and setting a
+         * TinyTTF font first measures those four Latin letters against a Nerd font
+         * that has none — one "cache not allocated" error each (WI 3275). */
+        lv_label_set_text(g, "");
         lv_obj_set_style_text_font(g, st->prev_font[k], 0);
         lv_obj_set_style_text_color(g, COLOR_INK, 0);
-        lv_label_set_text(g, "");
         st->prev_lbls[k] = g;
     }
 
