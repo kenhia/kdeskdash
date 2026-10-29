@@ -40,10 +40,11 @@ add_subdirectory(lib/lvgl)
 #
 # A submodule for the same reasons LVGL is one — the pin is a commit in this
 # repo's history and `cmake -B build` needs no network — and following
-# kstudiodash, which adopted the library this way first.
+# kstudiodash (retired with kstudio, 2026-10-20), which adopted the library
+# this way first.
 #
-# KDASH_HIREDIS_STATIC is deliberately NOT set here. kstudiodash forces it ON
-# because the machine it deploys to has no libhiredis at all; both Pis already
+# KDASH_HIREDIS_STATIC is deliberately NOT set here. kstudiodash forced it ON
+# because the machine it deployed to had no libhiredis at all; both Pis already
 # run a kdeskdash that links libhiredis.so, so forcing static would change this
 # project's deploy story as a side effect of a refactor. hiredis::hiredis is
 # created above and kdashdata's own lookup is guarded by `if(NOT TARGET ...)`,

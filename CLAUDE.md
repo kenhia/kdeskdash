@@ -185,7 +185,7 @@ than by a module main.c initialises, and the command feed since sprint 039.
    `redis_client_t`**: sprint 034 retired this panel's own `claude_feed.c`/`claude_redis.c`
    pair for libkdash's typed readers (`kdash_claude_sessions/_limits/_recent`), so the
    contract — key grammar, hash parsing, the display ladder, the attention-first sort,
-   limits staleness — lives in `lib/kdashdata` and is shared with kstudiodash. The handle is
+   limits staleness — lives in `lib/kdashdata`, not here, so any dashboard that vendors it agrees. The handle is
    opened on `KDASH_STEM_CLAUDE` (kdashdata CD-7: its own stem, never the one a kpidash
    reader uses, even though both answer `rpi53:6379`), and the mode owns it — so the "only
    dial an endpoint a registered mode uses" gate is structural rather than a roster in

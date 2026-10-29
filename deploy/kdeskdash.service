@@ -54,8 +54,8 @@ ExecStart=/usr/local/bin/kdeskdash
 # runs as root, and systemd reads EnvironmentFile= as PID 1 before dropping
 # privileges anyway — so the group buys nothing, while naming a group that does
 # not exist yet makes the unit FAIL TO START, turning the optional read below
-# into a hard dependency on k-homelab having converged. Measured on kstudio,
-# systemd 259 (korg handoff 2493).
+# into a hard dependency on k-homelab having converged. Measured on kstudio
+# (since retired), systemd 259 (korg handoff 2493).
 EnvironmentFile=-/etc/khomelab/secrets.env
 EnvironmentFile=-/etc/kdeskdash/kdeskdash.env
 EnvironmentFile=-/etc/kdeskdash/secrets.env
