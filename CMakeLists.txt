@@ -220,7 +220,7 @@ if(NOT CMAKE_CROSSCOMPILING)
 
     # Per-device mode selection: the KDESKDASH_MODES grammar, the built-in
     # default/roster, and every way a malformed spec has to degrade safely.
-    add_executable(test_modeset tests/test_modeset.c src/modeset.c)
+    add_executable(test_modeset tests/test_modeset.c src/modeset.c src/palette.c)
     target_include_directories(test_modeset PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(test_modeset PRIVATE -Wall -Wextra)
     add_test(NAME test_modeset COMMAND test_modeset)

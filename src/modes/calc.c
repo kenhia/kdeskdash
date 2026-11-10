@@ -55,7 +55,7 @@
 #define COLOR_HAIRLINE   PAL(GUNMETAL_SEAM)
 #define COLOR_INK        PAL(MOON_INK)
 #define COLOR_SECONDARY  PAL(STEEL_MIST)
-#define COLOR_MUTED      PAL(FADED_DENIM)
+#define COLOR_MUTED      PAL(DORMANT_SLATE)
 #define COLOR_ACCENT     PAL(CLAUDE_CORAL)  /* claude coral (menu "Ops" header) */
 #define COLOR_EQ         PAL(BURNT_CORAL)   /* darker coral for the "=" key */
 #define COLOR_TEAL       PAL(EDGE_TEAL)     /* Edge teal (Remote mode) */

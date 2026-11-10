@@ -1,7 +1,9 @@
 /**
  * @file menu.c
- * Menu launcher mode: content modes are grouped into side-by-side 3×3 panels —
- * "Fun" then "Ops" today — each tile opening its mode on tap.
+ * Menu launcher mode: content modes are grouped into one to three side-by-side
+ * section panels — "Fun" then "Ops" by default — each tile opening its mode on
+ * tap. Section names, header colours and count come from KDESKDASH_MODES (korg
+ * WI 668); the 18 tile slots are split evenly between the sections.
  *
  * A mode's group and order come from the **modeset** (src/modeset.h), which is
  * the same list that decided which modes got registered and in what swipe order.
@@ -10,8 +12,10 @@
  * disagree. Any registered content mode the modeset does not mention is appended
  * to the last section, so a mode can never silently vanish from the menu.
  *
- * The 3×3 grids are reserved capacity (9 slots/side, filled top-left); this
- * replaced a single horizontal row that clipped once the modes grew past ~6.
+ * The grids are reserved capacity, three rows tall and filled top-left: one
+ * section is 6×3, two are 3×3 each (the layout since sprint 012), three are
+ * 2×3 each. This replaced a single horizontal row that clipped once the modes
+ * grew past ~6.
  * Visuals follow the claude-mode design language (dark panel tiles, hairline
  * border, coral pressed accent). See sprints/012-menu-groups.md.
  */
@@ -28,12 +32,13 @@
  * docs/solutions/best-practices/quote-include-core-header-shadowing.md. */
 #include "../palette.h"
 
-#define TILE_W    288
-#define TILE_H    112
-#define TILE_GAP  20
-#define GRID_COLS 3
-#define GRID_ROWS 3
-#define GROUP_CAP (GRID_COLS * GRID_ROWS)
+#define TILE_W      288 /* widest a tile gets; narrowed only when it must fit */
+#define TILE_H      112
+#define TILE_GAP    20
+#define GRID_ROWS   MODESET_MENU_ROWS
+#define GROUP_CAP   MODESET_MAX_MODES /* largest a section can be (one section) */
+#define SCREEN_PAD  10
+#define SECTION_GAP 32 /* flex column gap: panel | divider | panel */
 
 /* Local aliases onto the named palette (src/palette.h) — the palette is the
  * single source of truth for every color here. */
@@ -82,9 +87,9 @@ static void tile_cb(lv_event_t *e) {
         shell_set_active(target);
 }
 
-static void make_tile(lv_obj_t *grid, kd_mode_t *m) {
+static void make_tile(lv_obj_t *grid, kd_mode_t *m, int tile_w) {
     lv_obj_t *tile = lv_button_create(grid);
-    lv_obj_set_size(tile, TILE_W, TILE_H);
+    lv_obj_set_size(tile, tile_w, TILE_H);
     lv_obj_set_style_bg_color(tile, COLOR_PANEL, LV_PART_MAIN);
     lv_obj_set_style_border_color(tile, COLOR_HAIRLINE, LV_PART_MAIN);
     lv_obj_set_style_border_width(tile, 1, LV_PART_MAIN);
@@ -103,10 +108,38 @@ static void make_tile(lv_obj_t *grid, kd_mode_t *m) {
     lv_obj_center(label);
 }
 
-/* Build one group panel: a header over a 3×3 grid, filled top-left from the
- * `modes` list (up to GROUP_CAP; extras beyond 9 are dropped — revisit then). */
-static void build_group(lv_obj_t *parent, const char *header,
-                        kd_mode_t *const *modes, int n) {
+/* The grid geometry for a given section count. Columns follow from the count
+ * (18 tiles over 3 rows, split evenly); the tile width is TILE_W unless that
+ * many columns, the gaps and the dividers would overflow the screen, as three
+ * sections at TILE_W do by ~20px. One and two sections both get TILE_W, so the
+ * two-section menu every panel shipped with is pixel-identical. */
+typedef struct {
+    int cols;
+    int cap;
+    int tile_w;
+} grid_geom_t;
+
+static grid_geom_t grid_geom(const modeset_t *ms) {
+    grid_geom_t g;
+    int nsec = modeset_section_count(ms);
+    if (nsec < 1)
+        nsec = 1;
+    g.cap = modeset_section_capacity(ms);
+    if (g.cap < GRID_ROWS)
+        g.cap = GRID_ROWS;
+    g.cols = g.cap / GRID_ROWS;
+
+    int avail = (int)lv_display_get_horizontal_resolution(NULL) - 2 * SCREEN_PAD -
+                (nsec - 1) * (2 * SECTION_GAP + 1);
+    int fit = (avail / nsec - (g.cols - 1) * TILE_GAP) / g.cols;
+    g.tile_w = fit < TILE_W ? fit : TILE_W;
+    return g;
+}
+
+/* Build one group panel: a header over a cols×3 grid, filled top-left from the
+ * `modes` list (up to g->cap; modeset_parse already warned about any extras). */
+static void build_group(lv_obj_t *parent, const char *header, lv_color_t color,
+                        const grid_geom_t *g, kd_mode_t *const *modes, int n) {
     lv_obj_t *panel = lv_obj_create(parent);
     lv_obj_remove_style_all(panel);
     lv_obj_set_size(panel, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
@@ -120,13 +153,13 @@ static void build_group(lv_obj_t *parent, const char *header,
     lv_obj_t *lbl = lv_label_create(panel);
     lv_label_set_text(lbl, header);
     lv_obj_set_style_text_font(lbl, &kd_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(lbl, COLOR_ACCENT, 0);
+    lv_obj_set_style_text_color(lbl, color, 0);
     lv_obj_set_style_text_letter_space(lbl, 4, 0);
     lv_obj_set_style_pad_left(lbl, 4, 0);
 
     lv_obj_t *grid = lv_obj_create(panel);
     lv_obj_remove_style_all(grid);
-    lv_obj_set_size(grid, GRID_COLS * TILE_W + (GRID_COLS - 1) * TILE_GAP,
+    lv_obj_set_size(grid, g->cols * g->tile_w + (g->cols - 1) * TILE_GAP,
                     GRID_ROWS * TILE_H + (GRID_ROWS - 1) * TILE_GAP);
     lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START,
@@ -136,9 +169,9 @@ static void build_group(lv_obj_t *parent, const char *header,
     lv_obj_clear_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(grid, LV_OBJ_FLAG_GESTURE_BUBBLE);
 
-    for (int i = 0; i < n && i < GROUP_CAP; i++)
+    for (int i = 0; i < n && i < g->cap; i++)
         if (modes[i])
-            make_tile(grid, modes[i]);
+            make_tile(grid, modes[i], g->tile_w);
 }
 
 /* Collect one section's registered modes, in the modeset's order, skipping any
@@ -154,9 +187,9 @@ static int collect(const modeset_t *ms, int s, kd_mode_t **out) {
     return n;
 }
 
-/* Section names are lowercase ids ("fun"); the header shows them title-cased.
- * When section names become author-supplied (korg WI 668) this is the seam that
- * stops doing the capitalising and starts trusting the name verbatim. */
+/* The header shows a section name with its first letter capitalised, so the
+ * legacy lowercase `fun`/`ops` still read "Fun"/"Ops" and an authored "Play"
+ * is untouched. Only an ASCII first letter changes; UTF-8 passes through. */
 static void header_text(char *dst, size_t cap, const char *name) {
     snprintf(dst, cap, "%s", name ? name : "");
     if (dst[0])
@@ -180,13 +213,14 @@ static void build_screen(kd_mode_t *self) {
     lv_obj_t *scr = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(scr, COLOR_BG, LV_PART_MAIN);
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(scr, 10, 0);
-    lv_obj_set_style_pad_column(scr, 32, 0);
+    lv_obj_set_style_pad_all(scr, SCREEN_PAD, 0);
+    lv_obj_set_style_pad_column(scr, SECTION_GAP, 0);
     lv_obj_set_flex_flow(scr, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(scr, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
 
     int nsec = modeset_section_count(ms);
+    grid_geom_t g = grid_geom(ms);
     kd_mode_t *group[MODESET_MAX_SECTIONS][GROUP_CAP];
     int        ngroup[MODESET_MAX_SECTIONS];
     for (int s = 0; s < nsec; s++)
@@ -197,7 +231,7 @@ static void build_screen(kd_mode_t *self) {
     if (nsec > 0) {
         int last = nsec - 1;
         int count = shell_content_count();
-        for (int i = 0; i < count && ngroup[last] < GROUP_CAP; i++) {
+        for (int i = 0; i < count && ngroup[last] < g.cap; i++) {
             kd_mode_t *m = shell_content_at(i);
             if (m && m->id && !modeset_section_of(ms, m->id))
                 group[last][ngroup[last]++] = m;
@@ -209,7 +243,8 @@ static void build_screen(kd_mode_t *self) {
         header_text(header, sizeof(header), modeset_section_name(ms, s));
         if (s > 0)
             build_divider(scr);
-        build_group(scr, header, group[s], ngroup[s]);
+        build_group(scr, header, lv_color_hex(kd_pal_rgb(modeset_section_color(ms, s))),
+                    &g, group[s], ngroup[s]);
     }
 
     self->screen = scr;

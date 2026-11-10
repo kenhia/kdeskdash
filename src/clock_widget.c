@@ -161,10 +161,10 @@ kd_clock_widget_t *kd_clock_widget_create(lv_obj_t *parent) {
      * reason both are here at all. */
     lv_obj_t *utc_box = make_box(parent, LV_FLEX_FLOW_COLUMN, LV_FLEX_ALIGN_CENTER);
     lv_obj_t *urow = make_box(utc_box, LV_FLEX_FLOW_ROW, LV_FLEX_ALIGN_END);
-    make_label(urow, f.caption, PAL(FADED_DENIM), "UTC");
-    w->utc_hm = make_label(urow, f.utc_hm, PAL(UTC_FROST), "--:--");
+    make_label(urow, f.caption, PAL(DORMANT_SLATE), "UTC");
+    w->utc_hm = make_label(urow, f.utc_hm, PAL(PALE_STEEL), "--:--");
     if (f.show_dates)
-        w->utc_date = make_label(utc_box, f.caption, PAL(FADED_DENIM), "");
+        w->utc_date = make_label(utc_box, f.caption, PAL(DORMANT_SLATE), "");
 
     return w;
 }

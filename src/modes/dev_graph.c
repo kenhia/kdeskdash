@@ -35,7 +35,7 @@
 #define COLOR_RAM  PAL(RAM_SALMON)    /* RAM MB        (red)    */
 #define COLOR_BG   PAL(VOID)
 #define COLOR_GRID PAL(GUNMETAL_SEAM)
-#define COLOR_HOST PAL(UTC_FROST)
+#define COLOR_HOST PAL(PALE_STEEL)
 #define COLOR_CAP  PAL(CAPTION_HAZE)
 #define COLOR_GAP  PAL(MINT_FROST)    /* gap/start marker (pale green) */
 

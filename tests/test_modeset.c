@@ -1,8 +1,9 @@
 /**
  * @file test_modeset.c
  * Host-only unit tests for the per-device mode-set core: the KDESKDASH_MODES
- * grammar, the built-in default, dedupe, unknown-id and unknown-section
- * handling, ordering, and the section query API.
+ * grammar, the built-in default, dedupe, unknown-id and malformed-section
+ * handling, ordering, the section query API, and the configurable sections of
+ * WI 668 (names, header colours, capacity by count).
  *
  * The contract these lock down is "a typo must never blank the panel": every
  * malformed input path has to degrade to something usable, never to nothing.
@@ -11,6 +12,7 @@
 #include <string.h>
 
 #include "modeset.h"
+#include "palette.h"
 
 static int failures;
 
@@ -184,16 +186,23 @@ static void test_unknown_id_skipped(void) {
     check(!modeset_enabled(&ms, "nosuchmode"), "unknown id is not enabled");
 }
 
-static void test_unknown_section_skipped(void) {
+/* Since WI 668 a section name is a display label, not a lookup: anything
+ * non-empty is legal. What is still malformed is a clause with no name. */
+static void test_nameless_section_skipped(void) {
     modeset_t ms;
     static const char *want[] = {"clock"};
 
-    fprintf(stderr, "-- expect a warning about section 'games' --\n");
-    check(modeset_parse(&ms, "games:golz;ops:clock"),
-          "spec with one bad section is still used");
-    check_order(&ms, want, 1, "unknown-section");
-    check(modeset_section_count(&ms) == 1, "bad section is dropped whole");
-    check(!modeset_enabled(&ms, "golz"), "modes under a bad section are dropped");
+    fprintf(stderr, "-- expect a warning about a section with no name --\n");
+    check(modeset_parse(&ms, ":golz;ops:clock"),
+          "spec with one nameless section is still used");
+    check_order(&ms, want, 1, "nameless-section");
+    check(modeset_section_count(&ms) == 1, "nameless section is dropped whole");
+    check(!modeset_enabled(&ms, "golz"), "modes under it are dropped");
+
+    fprintf(stderr, "-- expect a warning about a section with no name --\n");
+    check(modeset_parse(&ms, "#EDGE_TEAL:golz;ops:clock"),
+          "colour with no name is nameless too");
+    check(!modeset_enabled(&ms, "golz"), "colour-only clause is dropped");
 }
 
 /* A section with no ':' is malformed — dropped, not guessed at. */
@@ -249,6 +258,123 @@ static void test_empty_result_falls_back(void) {
     check_order(&ms, DEFAULT_ORDER, DEFAULT_N, "bare garbage");
 }
 
+/* ---- configurable sections (WI 668) ---------------------------------- */
+
+/* The configs every panel runs today must parse exactly as they did: same
+ * names (the menu title-cases them), the default coral header, 9 per side. */
+static void test_legacy_spec_unchanged(void) {
+    modeset_t ms;
+
+    check(modeset_parse(&ms, "fun:game_of_life,golz,icons,palette;"
+                             "ops:claude,launcher,foreground,clock,dev,calc"),
+          "rpidash2's spec used");
+    check(modeset_section_count(&ms) == 2, "legacy: two sections");
+    check(strcmp(modeset_section_name(&ms, 0), "fun") == 0, "legacy: fun");
+    check(strcmp(modeset_section_name(&ms, 1), "ops") == 0, "legacy: ops");
+    check(modeset_section_color(&ms, 0) == KD_PAL_CLAUDE_CORAL,
+          "legacy: fun header is coral");
+    check(modeset_section_color(&ms, 1) == KD_PAL_CLAUDE_CORAL,
+          "legacy: ops header is coral");
+    check(modeset_section_capacity(&ms) == 9, "legacy: 9 tiles per section");
+
+    modeset_default(&ms);
+    check(modeset_section_color(&ms, 0) == KD_PAL_CLAUDE_CORAL,
+          "default: coral header");
+    check(modeset_section_capacity(&ms) == 9, "default: 9 per section");
+}
+
+static void test_arbitrary_names(void) {
+    modeset_t ms;
+    static const char *play[] = {"golz", "icons"};
+    static const char *work[] = {"clock"};
+
+    check(modeset_parse(&ms, "Play:golz,icons; Work Stuff :clock"),
+          "arbitrary names used");
+    check_section(&ms, 0, "Play", play, 2, "names");
+    check_section(&ms, 1, "Work Stuff", work, 1, "names (trimmed, inner space kept)");
+    check(strcmp(modeset_section_of(&ms, "clock"), "Work Stuff") == 0,
+          "section_of returns the authored name");
+}
+
+static void test_header_colours(void) {
+    modeset_t ms;
+
+    check(modeset_parse(&ms, "Fun#EDGE_TEAL:golz;Ops # code_blue :clock;Etc:calc"),
+          "coloured spec used");
+    check(strcmp(modeset_section_name(&ms, 0), "Fun") == 0, "colour not in name");
+    check(strcmp(modeset_section_name(&ms, 1), "Ops") == 0,
+          "spaced colour not in name");
+    check(modeset_section_color(&ms, 0) == KD_PAL_EDGE_TEAL, "EDGE_TEAL resolved");
+    check(modeset_section_color(&ms, 1) == KD_PAL_CODE_BLUE,
+          "colour lookup is case-insensitive and trimmed");
+    check(modeset_section_color(&ms, 2) == KD_PAL_CLAUDE_CORAL,
+          "no colour means the default coral");
+    check(modeset_section_color(&ms, 3) == -1, "colour out of range is -1");
+    check(modeset_section_color(&ms, -1) == -1, "colour(-1) is -1");
+}
+
+/* An unknown colour is cosmetic: warn and fall back, never drop the modes. */
+static void test_unknown_colour_falls_back(void) {
+    modeset_t ms;
+
+    fprintf(stderr, "-- expect warnings about colours 'NOPE' and '' --\n");
+    check(modeset_parse(&ms, "Fun#NOPE:golz;Ops#:clock"), "bad colours still used");
+    check(modeset_count(&ms) == 2, "bad colour keeps its modes");
+    check(strcmp(modeset_section_name(&ms, 0), "Fun") == 0, "name survives");
+    check(modeset_section_color(&ms, 0) == KD_PAL_CLAUDE_CORAL,
+          "unknown colour falls back to coral");
+    check(modeset_section_color(&ms, 1) == KD_PAL_CLAUDE_CORAL,
+          "empty colour falls back to coral");
+}
+
+/* A repeated name merges (as before); the first clause's colour stands. */
+static void test_repeated_section_keeps_first_colour(void) {
+    modeset_t ms;
+
+    fprintf(stderr, "-- expect a warning about a conflicting colour --\n");
+    check(modeset_parse(&ms, "Fun#EDGE_TEAL:golz;Fun#CODE_BLUE:icons"),
+          "repeat with colours used");
+    check(modeset_section_count(&ms) == 1, "repeat merges");
+    check(modeset_section_size(&ms, 0) == 2, "merged modes");
+    check(modeset_section_color(&ms, 0) == KD_PAL_EDGE_TEAL, "first colour wins");
+}
+
+/* The menu's capacity per section is derived from the count: one section is a
+ * single 18-tile grid, two are 9 each, three are 6 each. */
+static void test_capacity_follows_count(void) {
+    modeset_t ms;
+
+    check(modeset_parse(&ms, "All:golz,icons,palette,clock,dev,calc"), "one used");
+    check(modeset_section_count(&ms) == 1, "one section");
+    check(modeset_section_capacity(&ms) == 18, "one section holds 18");
+
+    check(modeset_parse(&ms, "A:golz;B:clock"), "two used");
+    check(modeset_section_capacity(&ms) == 9, "two sections hold 9 each");
+
+    check(modeset_parse(&ms, "A:golz;B:clock;C#STAR_GOLD:calc"), "three used");
+    check(modeset_section_count(&ms) == 3, "three sections");
+    check(modeset_section_capacity(&ms) == 6, "three sections hold 6 each");
+    check(modeset_section_color(&ms, 2) == KD_PAL_STAR_GOLD, "third has its colour");
+
+    fprintf(stderr, "-- expect a warning about a fourth section --\n");
+    check(modeset_parse(&ms, "A:golz;B:clock;C:calc;D:dev"), "four parses");
+    check(modeset_section_count(&ms) == 3, "fourth section dropped");
+    check(!modeset_enabled(&ms, "dev"), "fourth section's modes dropped");
+}
+
+/* A name too long for the buffer is skipped like an over-long id — never
+ * truncated into a different label. */
+static void test_overlong_name_skipped(void) {
+    modeset_t ms;
+    char spec[256];
+
+    snprintf(spec, sizeof(spec), "%0*d:golz;ops:clock", MODESET_NAME_MAX + 4, 0);
+    fprintf(stderr, "-- expect a warning about an over-long section name --\n");
+    check(modeset_parse(&ms, spec), "over-long name does not break the parse");
+    check(modeset_section_count(&ms) == 1, "over-long section dropped");
+    check(!modeset_enabled(&ms, "golz"), "its modes dropped");
+}
+
 /* ---- bounds ----------------------------------------------------------- */
 
 static void test_overflow_is_clamped(void) {
@@ -297,7 +423,14 @@ int main(void) {
     test_whitespace_tolerated();
     test_empty_section_is_fine();
     test_unknown_id_skipped();
-    test_unknown_section_skipped();
+    test_nameless_section_skipped();
+    test_legacy_spec_unchanged();
+    test_arbitrary_names();
+    test_header_colours();
+    test_unknown_colour_falls_back();
+    test_repeated_section_keeps_first_colour();
+    test_capacity_follows_count();
+    test_overlong_name_skipped();
     test_missing_colon_skipped();
     test_duplicate_id_first_wins();
     test_repeated_section_merges();
