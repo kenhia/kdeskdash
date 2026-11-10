@@ -18,6 +18,7 @@
  * wrong one and reports it as an endpoint being down. These cases pin the new
  * rule and keep the old failure it was built from.
  */
+#include "chime_watch.h"
 #include "config.h"
 
 #include <assert.h>
@@ -54,6 +55,10 @@ static void clear_env(void) {
     unsetenv("KVSCF_TOKEN");
     unsetenv("KCTRLDECK_TOKEN_CLEO_PAIR");
     unsetenv("KCTRLDECK_TOKEN_KWORK_PAIR");
+    unsetenv("KDESKDASH_CHIME_DEVICE");
+    unsetenv("KDESKDASH_CHIME_SOUND");
+    unsetenv("KDESKDASH_CHIME_VOLUME");
+    unsetenv("KDESKDASH_CHIME_COOLDOWN_S");
 }
 
 static void load(kdeskdash_config_t *cfg) {
@@ -601,7 +606,45 @@ static void test_state_path_default_and_override(void) {
     printf("ok  state file: default and override\n");
 }
 
+/* WI 1096: off unless a device is named, defaults when the numbers are
+ * absent or out of range, and an explicit 0 is honoured (silent / no gap). */
+static void test_chime_defaults_off(void) {
+    clear_env();
+    kdeskdash_config_t cfg;
+    load(&cfg);
+    assert(cfg.chime_device == NULL);
+    assert(cfg.chime_sound == NULL);
+    assert(cfg.chime_volume == CHIME_DEFAULT_VOLUME);
+    assert(cfg.chime_cooldown_s == CHIME_DEFAULT_COOLDOWN_S);
+    setenv("KDESKDASH_CHIME_DEVICE", "", 1);
+    load(&cfg);
+    assert(cfg.chime_device == NULL);
+    printf("ok  chime: off by default, empty device is off\n");
+}
+
+static void test_chime_settings(void) {
+    clear_env();
+    setenv("KDESKDASH_CHIME_DEVICE", "plughw:CARD=UACDemoV10,DEV=0", 1);
+    setenv("KDESKDASH_CHIME_SOUND", "/usr/share/sounds/alsa/Front_Center.wav", 1);
+    setenv("KDESKDASH_CHIME_VOLUME", "0", 1);
+    setenv("KDESKDASH_CHIME_COOLDOWN_S", "0", 1);
+    kdeskdash_config_t cfg;
+    load(&cfg);
+    assert(strcmp(cfg.chime_device, "plughw:CARD=UACDemoV10,DEV=0") == 0);
+    assert(strcmp(cfg.chime_sound, "/usr/share/sounds/alsa/Front_Center.wav") == 0);
+    assert(cfg.chime_volume == 0);
+    assert(cfg.chime_cooldown_s == 0);
+    setenv("KDESKDASH_CHIME_VOLUME", "101", 1);
+    setenv("KDESKDASH_CHIME_COOLDOWN_S", "-5", 1);
+    load(&cfg);
+    assert(cfg.chime_volume == CHIME_DEFAULT_VOLUME);
+    assert(cfg.chime_cooldown_s == CHIME_DEFAULT_COOLDOWN_S);
+    printf("ok  chime: explicit settings, out-of-range falls back\n");
+}
+
 int main(void) {
+    test_chime_defaults_off();
+    test_chime_settings();
     test_control_ignores_the_fleet_password();
     test_control_reads_its_own_name();
     test_one_fleet_password_serves_all_three_central_handles();

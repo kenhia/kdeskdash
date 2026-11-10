@@ -11,6 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "chime_watch.h"
 #include "config.h"
 #include "kvscf_redis.h"
 #include "logfilter.h"
@@ -249,6 +250,20 @@ int main(int argc, char **argv) {
     service_pub_init(cfg.card_redis_host, cfg.card_redis_port,
                      cfg.card_redis_auth, cfg.card_name, KD_VERSION);
 
+    /* BLOCKED chime (WI 1096): its own claude-feed handle, run from this loop
+     * rather than the claude mode because it must sound whatever is on screen
+     * — and the board with the speaker does not register that mode. Gated on
+     * a configured device, not on a mode: off by default, never dialled. */
+    chime_watch_init(&(chime_watch_opts_t){
+        .device = cfg.chime_device,
+        .sound_path = cfg.chime_sound,
+        .volume = cfg.chime_volume,
+        .cooldown_s = cfg.chime_cooldown_s,
+        .redis_host = cfg.claude_redis_host,
+        .redis_port = cfg.claude_redis_port,
+        .redis_auth = cfg.claude_redis_auth,
+    });
+
     /* Commands from central (kdash:panelmode / kdash:panelshot). The OTHER
      * deliberate exception to the mode gate, and for the same reason as the
      * card: remote control addresses the INSTANCE, not a mode — a panel that
@@ -278,6 +293,8 @@ int main(int argc, char **argv) {
             panel_feed_poll();
             /* Self-published service card; throttles itself to 15 s. */
             service_pub_tick();
+            /* Throttles its own SCAN to 5 s; reaps the player every call. */
+            chime_watch_tick();
             last_poll = lv_tick_get();
         }
         uint32_t sleep_ms = lv_timer_handler();
@@ -288,6 +305,7 @@ int main(int argc, char **argv) {
 
     printf("\nkdeskdash: shutting down\n");
     service_pub_shutdown();
+    chime_watch_shutdown();
     panel_feed_shutdown();
     telemetry_shutdown();
     claude_mode_shutdown(claude_mode);

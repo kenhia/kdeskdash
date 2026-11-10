@@ -9,6 +9,7 @@
 #include <strings.h>
 #include <unistd.h>
 
+#include "chime_watch.h"
 #include "panel_cmd.h"
 #include "panel_state.h"
 
@@ -229,6 +230,22 @@ void config_load(kdeskdash_config_t *cfg) {
      * panels on two hosts need nothing here; two instances on ONE host would
      * clobber each other's key and must be given distinct names. */
     cfg->card_name = env_or("KDESKDASH_CARD_NAME", "deskdash");
+
+    /* --- BLOCKED chime (WI 1096) -------------------------------------------
+     *
+     * Off unless a device is named: only a board with a speaker sets this, and
+     * a board without one must never so much as dial the feed for it. The feed
+     * itself is the claude feed's endpoint above — no second endpoint to set.
+     * Out-of-range numbers fall back to the default rather than clamping, the
+     * same treatment the ports get. */
+    cfg->chime_device = env_or("KDESKDASH_CHIME_DEVICE", NULL);
+    cfg->chime_sound = env_or("KDESKDASH_CHIME_SOUND", NULL);
+    const char *cvol = env_or("KDESKDASH_CHIME_VOLUME", NULL);
+    int vol = cvol ? atoi(cvol) : -1;
+    cfg->chime_volume =
+        (cvol && vol >= 0 && vol <= 100) ? vol : CHIME_DEFAULT_VOLUME;
+    int cool = atoi(env_or("KDESKDASH_CHIME_COOLDOWN_S", "-1"));
+    cfg->chime_cooldown_s = cool >= 0 ? cool : CHIME_DEFAULT_COOLDOWN_S;
 
     /* --- commands from central (sprint 039) --------------------------------
      *
