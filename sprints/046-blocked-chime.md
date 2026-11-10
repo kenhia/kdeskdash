@@ -105,3 +105,28 @@ TTL and deleted afterwards.
 - **Unconfigured.** This path is unit-level only (`test_config`, and the init
   logs `chime: off`). rpidash2 was not touched, and it picks this up at the
   ship's deploy with no env line, so it stays silent.
+
+## Deployed
+
+Shipped as PR #54, squash `2dcd7f3`. The overseer cleared it on proposal korg:4425
+(comment 4486).
+
+- **`deploy-panels`**: `just publish` gave **`0.27.0-2dcd7f3`** (and `latest`).
+  `just deploy` pinned both boards to it, and `just versions` reports each board
+  on exactly that version.
+  - **rpidash2**: the unit is active. It logs `chime: off (KDESKDASH_CHIME_DEVICE
+    unset)`, which is the unconfigured path, now proven live. A `kddss` frame
+    was taken.
+  - **rpidash3**: reachable. This took it off the sprint's push-dev build. The
+    unit is active and a `kddss` frame was taken. **Smoke test on the published
+    bytes:** a fresh BLOCKED test session, published to rpi53 and then deleted,
+    logged `chime: session BLOCKED — playing built-in tone on
+    plughw:CARD=UACDemoV10,DEV=0` at 18:54:27 PST, with no `aplay` error.
+- **Env refresh on rpidash3 (overseer ruling)**: `/etc/kdeskdash/kdeskdash.env`
+  had carried comments from before sprints 037/040. I replaced it whole with the
+  committed `deploy/hosts/rpidash3.env`. A settings-only diff showed the two
+  identical, so no behaviour changed. The md5 `2dec043e…` matches on both sides,
+  the unit restarted active, and the chime is on.
+- **`recipe: publish-publisher`**: nothing to publish. `kdeskdash-publisher
+  2.4.0-c44430a` is already in the store, because this sprint didn't touch the
+  publisher.
