@@ -28,3 +28,4 @@ compile_commands.json
 build-*/
 CMakeFiles/
 CMakeCache.txt
+.sprint-defaults
