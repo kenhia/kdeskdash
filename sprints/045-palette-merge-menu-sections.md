@@ -117,3 +117,20 @@ their `fun:`/`ops:` lines.
 - **`DUSK_SILVER`'s usage note claimed a use that no longer existed** ("clock: local
   seconds"; nothing referenced it after sprint 036). The merge drops it anyway. I'm
   recording it because the palette mode had been describing a colour no screen used.
+
+## Deployed
+
+2026-11-09 PST, from merged `main` (`18519c4`, PR #53), via `.sprint-deploy`. All
+probes were run from kai, which is the deploying host.
+
+- **`deploy-panels`**: `just publish` gave **`0.27.0-18519c4`** (and `latest`).
+  `just deploy` pinned both boards to it.
+  - **rpidash2**: `--version` prints `kdeskdash 0.27.0-18519c4`, and the unit is
+    active. This took it off the sprint's push-dev build. A `kddss` frame of the
+    menu is byte-identical to the pre-sprint screenshot, so the legacy `fun`/`ops`
+    regression still holds on the published bytes.
+  - **rpidash3**: reachable. `--version` prints `kdeskdash 0.27.0-18519c4`, the unit
+    is active, and a `kddss` frame shows the launcher with the new clock colours.
+- **`recipe: publish-publisher`**: nothing to publish. `kdeskdash-publisher
+  2.4.0-c44430a` is already in the store, because this sprint didn't touch the
+  publisher.
