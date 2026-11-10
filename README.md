@@ -149,9 +149,10 @@ mode ids above (`game_of_life`, `golz`, `clock`, `dev`, `claude`, `icons`,
 `foreground`, `launcher`, `calc`, `palette`). **A section's list order is both the
 swipe-cycle order and the Menu tile order** — the two can no longer disagree.
 
-The section name is the Menu header's text — any label up to 23 bytes, shown with
-its first letter capitalised, so the long-standing `fun`/`ops` still read "Fun" and
-"Ops". `#COLOUR` names a [src/palette.h](src/palette.h) entry for that header
+The section name is the Menu header's text — any label up to 23 bytes. Its first
+letter is **always** capitalised, so the long-standing `fun`/`ops` still read "Fun"
+and "Ops" with no rename; a header that starts lowercase is deliberately not
+possible. `#COLOUR` names a [src/palette.h](src/palette.h) entry for that header
 (`EDGE_TEAL`, `star_gold`, …; case-insensitive — the `palette` mode shows them
 all), default `CLAUDE_CORAL`. One to three sections:
 the Menu's 18 tile slots split evenly, so one section is a 6×3 grid, two are 3×3

@@ -99,6 +99,12 @@ first-colour rule on a repeat, capacity by count, and an over-long name. The old
 "unknown section skipped" test became "nameless section skipped", because an
 unknown name is now legal.
 
+## Overseer rulings
+
+On the two calls I raised (korg:4370 comment 4378): the first-letter capitalisation
+stays, and the README's syntax note now says outright that a lowercase-first header
+is not possible. The 285 px tiles in the three-section layout are accepted.
+
 ## Docs
 
 The grammar and its degradation paths are documented in the README's per-device
