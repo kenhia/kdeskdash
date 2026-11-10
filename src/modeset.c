@@ -8,6 +8,7 @@
  * a string straight out of getenv().
  */
 #include "modeset.h"
+#include "palette.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -15,10 +16,8 @@
 /* The roster: every mode this build can create, in the order and grouping that
  * panels shipped with before per-device sets existed. This table is the single
  * source of truth for three things — the default set, the default grouping, and
- * which ids are legal — so a new mode is added here exactly once.
- *
- * Section names are drawn from this table too, which is why v1 accepts exactly
- * "fun" and "ops" without a separate list to keep in sync. */
+ * which ids are legal — so a new mode is added here exactly once. Its section
+ * names are only the default grouping: a spec may name sections anything. */
 static const struct {
     const char *section;
     const char *id;
@@ -67,14 +66,20 @@ static bool span_copy(char *dst, size_t cap, const char *b, const char *e) {
     return true;
 }
 
-static bool section_name_known(const char *b, const char *e) {
-    for (int i = 0; i < ROSTER_N; i++)
-        if (span_eq(b, e, ROSTER[i].section))
-            return true;
-    return false;
-}
-
 /* ---- building --------------------------------------------------------- */
+
+#define DEFAULT_HEADER_COLOR KD_PAL_CLAUDE_CORAL
+
+/* Open a new section at the end of ids[]. The caller has checked capacity and
+ * that `name` fits. */
+static int new_section(modeset_t *ms, const char *b, const char *e, int color) {
+    int s = ms->nsections++;
+    span_copy(ms->sections[s].name, MODESET_NAME_MAX, b, e);
+    ms->sections[s].color = color;
+    ms->sections[s].first = ms->nids;
+    ms->sections[s].count = 0;
+    return s;
+}
 
 /* Find an existing section by name, or -1. A spec that names the same section
  * twice merges into the first rather than creating a second. */
@@ -121,10 +126,7 @@ void modeset_default(modeset_t *ms) {
         if (s < 0) {
             if (ms->nsections >= MODESET_MAX_SECTIONS)
                 continue;
-            s = ms->nsections++;
-            snprintf(ms->sections[s].name, MODESET_NAME_MAX, "%s", name);
-            ms->sections[s].first = ms->nids;
-            ms->sections[s].count = 0;
+            s = new_section(ms, name, nend, DEFAULT_HEADER_COLOR);
         }
         insert_into_section(ms, s, ROSTER[i].id);
     }
@@ -132,7 +134,25 @@ void modeset_default(modeset_t *ms) {
 
 /* ---- parse ------------------------------------------------------------ */
 
-/* One "name:id,id,..." clause. Returns the number of modes it contributed. */
+/* The `#PALETTE` half of a clause head, [b, e) already trimmed. An unknown or
+ * empty name warns and falls back: a header colour is cosmetic, and dropping a
+ * section's modes over one would be the worst possible degradation. */
+static int parse_color(const char *b, const char *e, const char *nb, const char *ne) {
+    char name[32];
+    int idx = -1;
+    if (span_copy(name, sizeof(name), b, e))
+        idx = kd_pal_find(name);
+    if (idx < 0) {
+        fprintf(stderr, "kdeskdash: KDESKDASH_MODES: section \"%.*s\": unknown "
+                        "palette colour \"%.*s\" — using CLAUDE_CORAL\n",
+                (int)(ne - nb), nb, (int)(e - b), b);
+        return DEFAULT_HEADER_COLOR;
+    }
+    return idx;
+}
+
+/* One "name[#PALETTE]:id,id,..." clause. Returns the number of modes it
+ * contributed. */
 static int parse_section(modeset_t *ms, const char *b, const char *e) {
     const char *colon = memchr(b, ':', (size_t)(e - b));
     if (!colon) {
@@ -141,12 +161,26 @@ static int parse_section(modeset_t *ms, const char *b, const char *e) {
         return 0;
     }
 
-    const char *nb = b, *ne = colon;
+    const char *hash = memchr(b, '#', (size_t)(colon - b));
+    const char *nb = b, *ne = hash ? hash : colon;
     trim(&nb, &ne);
-    if (!section_name_known(nb, ne)) {
-        fprintf(stderr, "kdeskdash: KDESKDASH_MODES: unknown section \"%.*s\" "
-                        "— skipped\n", (int)(ne - nb), nb);
+    if (ne == nb) {
+        fprintf(stderr, "kdeskdash: KDESKDASH_MODES: section \"%.*s\" has no "
+                        "name — skipped\n", (int)(e - b), b);
         return 0;
+    }
+    if ((size_t)(ne - nb) >= MODESET_NAME_MAX) {
+        fprintf(stderr, "kdeskdash: KDESKDASH_MODES: section name \"%.*s\" is "
+                        "longer than %d bytes — skipped\n", (int)(ne - nb), nb,
+                MODESET_NAME_MAX - 1);
+        return 0;
+    }
+
+    int color = DEFAULT_HEADER_COLOR;
+    if (hash) {
+        const char *cb = hash + 1, *ce = colon;
+        trim(&cb, &ce);
+        color = parse_color(cb, ce, nb, ne);
     }
 
     int s = find_section(ms, nb, ne);
@@ -157,10 +191,11 @@ static int parse_section(modeset_t *ms, const char *b, const char *e) {
                     (int)(ne - nb), nb);
             return 0;
         }
-        s = ms->nsections++;
-        span_copy(ms->sections[s].name, MODESET_NAME_MAX, nb, ne);
-        ms->sections[s].first = ms->nids;
-        ms->sections[s].count = 0;
+        s = new_section(ms, nb, ne, color);
+    } else if (hash && color != ms->sections[s].color) {
+        fprintf(stderr, "kdeskdash: KDESKDASH_MODES: section \"%s\" repeated "
+                        "with another colour — keeping the first\n",
+                ms->sections[s].name);
     }
 
     int added = 0;
@@ -231,6 +266,15 @@ bool modeset_parse(modeset_t *ms, const char *spec) {
         modeset_default(ms);
         return false;
     }
+
+    int cap = modeset_section_capacity(ms);
+    for (int s = 0; s < ms->nsections; s++)
+        if (ms->sections[s].count > cap)
+            fprintf(stderr, "kdeskdash: KDESKDASH_MODES: section \"%s\" has %d "
+                            "modes; with %d section(s) the Menu shows %d — the "
+                            "rest stay on the swipe cycle only\n",
+                    ms->sections[s].name, ms->sections[s].count,
+                    ms->nsections, cap);
     return true;
 }
 
@@ -281,6 +325,18 @@ const char *modeset_section_at(const modeset_t *ms, int s, int i) {
     if (i < 0 || i >= ms->sections[s].count)
         return NULL;
     return ms->ids[ms->sections[s].first + i];
+}
+
+int modeset_section_color(const modeset_t *ms, int s) {
+    if (s < 0 || s >= ms->nsections)
+        return -1;
+    return ms->sections[s].color;
+}
+
+int modeset_section_capacity(const modeset_t *ms) {
+    if (ms->nsections <= 0)
+        return 0;
+    return MODESET_MAX_MODES / ms->nsections;
 }
 
 const char *modeset_section_of(const modeset_t *ms, const char *id) {

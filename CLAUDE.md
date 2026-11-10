@@ -147,8 +147,8 @@ Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMak
   loop until SIGINT/SIGTERM, tears down cleanly.
 
 **Which modes a panel registers is configuration**, not a build flag: `src/modeset.c` parses
-`KDESKDASH_MODES` (`"fun:<ids>;ops:<ids>"`), and its roster table is simultaneously the
-built-in default, the default menu grouping, and the list of legal ids. A section's list
+`KDESKDASH_MODES` (`"name[#PALETTE]:<ids>;…"`, one to three sections, any header name — WI 668), and its
+roster table is simultaneously the built-in default, the default menu grouping, and the list of legal ids. A section's list
 order is both the swipe-cycle order and the menu tile order — `menu.c` owns no id lists of
 its own, so a device's set and its menu cannot drift apart. Every malformed spec degrades
 (warn + skip; a spec selecting nothing falls back to the full set) because a blank panel is

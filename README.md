@@ -144,11 +144,22 @@ registers, in the order it registers them, grouped into the Menu's sections:
 KDESKDASH_MODES="fun:game_of_life,golz,icons,palette;ops:claude,foreground,clock,dev,calc"
 ```
 
-Each section is `name:id,id,…`; sections are separated by `;`. Valid ids are the
+Each section is `name[#COLOUR]:id,id,…`; sections are separated by `;`. Valid ids are the
 mode ids above (`game_of_life`, `golz`, `clock`, `dev`, `claude`, `icons`,
-`foreground`, `launcher`, `calc`, `palette`) and the section names are `fun` and `ops`, the
-two the Menu draws. **A section's list order is both the swipe-cycle order and
-the Menu tile order** — the two can no longer disagree.
+`foreground`, `launcher`, `calc`, `palette`). **A section's list order is both the
+swipe-cycle order and the Menu tile order** — the two can no longer disagree.
+
+The section name is the Menu header's text — any label up to 23 bytes, shown with
+its first letter capitalised, so the long-standing `fun`/`ops` still read "Fun" and
+"Ops". `#COLOUR` names a [src/palette.h](src/palette.h) entry for that header
+(`EDGE_TEAL`, `star_gold`, …; case-insensitive — the `palette` mode shows them
+all), default `CLAUDE_CORAL`. One to three sections:
+the Menu's 18 tile slots split evenly, so one section is a 6×3 grid, two are 3×3
+each, three are 2×3 each:
+
+```bash
+KDESKDASH_MODES="Play#EDGE_TEAL:game_of_life,golz,icons;Work#INSIDER_MINT:claude,launcher,foreground,clock,dev,calc;Etc:palette"
+```
 
 Unset means every mode, which is what both panels ship with. Each device's line
 lives in its [deploy/hosts/](deploy/hosts/) file, so changing a panel's mode set
@@ -156,7 +167,8 @@ is a one-line edit and a redeploy — including adding a future mode to just one
 device.
 
 Nothing about a bad value can leave you with a panel you cannot navigate: an
-unknown mode id or section name is warned about on stderr and skipped, and a
+unknown mode id, a nameless or over-long section, or a fourth section is warned
+about on stderr and skipped, an unknown colour warns and falls back to coral, and a
 spec that selects *nothing* usable falls back to the full set rather than
 rendering an empty menu. `journalctl -u kdeskdash` shows what was dropped. The
 grammar and every one of those degradation paths are host-tested in
@@ -289,7 +301,7 @@ sudo -E ./kdeskdash      # Ctrl-C to exit
 | `KDESKDASH_KVSCF_REDIS_AUTH_KEY` | _(unset → legacy lookup)_ | **Which fleet key name holds this board's kvscf password.** Set it to `REDISCLI_AUTH` when the endpoint is central, `CLAUDE_REDISCLI_AUTH` on rpidash2's own 6380, `KVSCF_REDISCLI_AUTH` on rpidash3's. Naming it matters once the endpoint can be central: both published names are then in the panel's environment and they are **different secrets**, so the legacy ordered lookup picks the board-local password and AUTH fails — which shows up as "the endpoint is down", not as a permissions error. Unset keeps that ordered lookup, correct for a panel on its own board's instance. |
 | `KDESKDASH_KVSCF_PAIR_HOST` | _(unset → any publisher)_ | The one workstation this panel reads (`kvscf:*:<host>`) and will send a command to. Unset keeps the pre-fold wildcard, still right for a private instance only one workstation writes to (rpidash3). **On a shared server this is the only scoping there is** (kdashdata CD-8), so rpidash2 sets `cleo`. A value that is not a legal host token warns and degrades to the wildcard rather than stopping the panel. |
 | `KVSCF_REDISCLI_AUTH` | _(claude-feed auth, **same instance only**)_ | The **transport** gate, distinct from `KVSCF_TOKEN`'s application one. **Secret, from `/etc/khomelab/secrets.env`**; needed on both panels since sprint 035 (each board's own 6380 instance has a `requirepass`). The two panels' instances are different services with different passwords, and k-homelab publishes **one key name per secret** (its `bin/check-secrets` refuses one key naming two store entries), so the name is per-host: `KVSCF_REDISCLI_AUTH` on rpidash3, `CLAUDE_REDISCLI_AUTH` on rpidash2 — the latter named for the *instance* (`redis-claude`), not the Claude feed, which reads central. kdeskdash tries them in that order. Wrong or missing looks like an unreachable endpoint, not a permissions error. Since sprint 040 it inherits nothing from the Claude feed at all, and the preferred spelling is to name the key in `KDESKDASH_KVSCF_REDIS_AUTH_KEY` rather than rely on this two-name order. |
-| `KDESKDASH_MODES`      | _(unset → all modes)_ | Per-device mode set: `fun:<ids>;ops:<ids>`. See [Per-device mode sets](#per-device-mode-sets). |
+| `KDESKDASH_MODES`      | _(unset → all modes)_ | Per-device mode set: `name[#COLOUR]:<ids>;…`, 1–3 sections. See [Per-device mode sets](#per-device-mode-sets). |
 | `KDESKDASH_ICONS_TTF`  | `/usr/local/share/kdeskdash/SymbolsNerdFont-Regular.ttf` | Symbols Nerd Font read at runtime by the `icons` mode (installed by the deploy target). If missing, the mode shows an "unavailable" state and the rest of the dashboard is unaffected. |
 | `KDESKDASH_ICONS_FAVORITES` | `/var/lib/kdeskdash/icon-favorites.txt` | `icons`-mode favourites file (loaded on entry, written by **Save**). One lowercase-hex codepoint per line — drops straight into `lv_font_conv -r` ranges for a future static bake. |
 | `KDESKDASH_CLOCK_ZONES` | _(unset → no extra faces)_ | Clock mode: extra world-clock rows, comma-separated `[<label>=]<tz>` — e.g. `"Asia/Tokyo,HQ=Europe/London"`. Without a label the zone's last path segment is used with underscores as spaces (`America/New_York` → "New York"). Up to four; malformed entries are skipped, so a typo costs one row. An unknown zone name is not an error to the C library — it silently shows UTC under whatever label you gave it. |

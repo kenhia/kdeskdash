@@ -115,11 +115,11 @@ static void set_status(lk_state_t *st, const char *msg, lv_color_t color) {
  * cut un-dimmed the grid on recovery but left "kvscf offline" on screen). */
 static void standing_status(lk_state_t *st) {
     if (!kvscf_redis_have_token())
-        set_status(st, "no token " LV_SYMBOL_WARNING " view only", PAL(FADED_DENIM));
+        set_status(st, "no token " LV_SYMBOL_WARNING " view only", PAL(DORMANT_SLATE));
     else if (st->dimmed)
         set_status(st, "kvscf offline", PAL(PATIENT_AMBER));
     else
-        set_status(st, "", PAL(FADED_DENIM));
+        set_status(st, "", PAL(DORMANT_SLATE));
 }
 
 /* ---- painting ---------------------------------------------------------- */
@@ -383,7 +383,7 @@ static void build_screen(kd_mode_t *self) {
     st->status = lv_label_create(side);
     lv_obj_set_width(st->status, LV_PCT(100));
     lv_obj_set_style_text_font(st->status, &kd_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(st->status, PAL(FADED_DENIM), 0);
+    lv_obj_set_style_text_color(st->status, PAL(DORMANT_SLATE), 0);
     lv_obj_set_style_text_align(st->status, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(st->status, LV_LABEL_LONG_DOT);
     lv_label_set_text(st->status, "");
@@ -391,7 +391,7 @@ static void build_screen(kd_mode_t *self) {
     /* Centred over the grid pane while there is no config to draw. */
     st->banner = lv_label_create(scr);
     lv_obj_set_style_text_font(st->banner, &kd_font_montserrat_28, 0);
-    lv_obj_set_style_text_color(st->banner, PAL(FADED_DENIM), 0);
+    lv_obj_set_style_text_color(st->banner, PAL(DORMANT_SLATE), 0);
     lv_label_set_text(st->banner, "waiting for kvscf");
     lv_obj_align(st->banner, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_set_width(st->banner, LV_PCT(GRID_PCT));

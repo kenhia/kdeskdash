@@ -55,7 +55,7 @@
 #define COLOR_HAIRLINE  PAL(GUNMETAL_SEAM)
 #define COLOR_INK       PAL(MOON_INK)
 #define COLOR_SECONDARY PAL(STEEL_MIST)
-#define COLOR_MUTED     PAL(FADED_DENIM)
+#define COLOR_MUTED     PAL(DORMANT_SLATE)
 #define COLOR_ACCENT    PAL(CLAUDE_CORAL)  /* claude coral */
 #define COLOR_HOST      PAL(HOST_GREY)     /* cleo-side host grey */
 #define COLOR_VSCODE    PAL(CODE_BLUE)     /* VS Code blue (rail + stable) */

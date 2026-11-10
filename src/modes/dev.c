@@ -50,7 +50,7 @@ _Static_assert(DEV_HOSTLIST_MAX >= TELEMETRY_HOSTS_MAX,
  * single source of truth for every color here. */
 #define PAL(name) lv_color_hex(kd_pal_rgb(KD_PAL_##name))
 #define COLOR_BG      PAL(VOID)
-#define COLOR_HOST    PAL(UTC_FROST)
+#define COLOR_HOST    PAL(PALE_STEEL)
 #define COLOR_ROW     PAL(PEWTER_ROW)
 #define COLOR_ROW_SEL PAL(SELECT_BLUE)
 #define COLOR_TXT     PAL(MOON_INK)
