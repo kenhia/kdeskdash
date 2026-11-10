@@ -37,6 +37,10 @@ typedef struct {
     int         card_redis_port;   /* KDESKDASH_CARD_REDIS_PORT — falls back to telemetry_redis_port */
     const char *card_redis_auth;   /* KDESKDASH_CARD_REDISCLI_AUTH — falls back to telemetry_redis_auth ONLY when the endpoint is the same instance; NULL otherwise */
     const char *quick_pairs;       /* KDESKDASH_QUICK_PAIRS — three states: NULL (unset) = partner is the previously active mode; "none"/"off" = double-tap inert; "a:b,c:d" = pinned pairs. Grammar owned by quickswitch.c */
+    const char *chime_device;      /* KDESKDASH_CHIME_DEVICE — ALSA device for the BLOCKED chime (e.g. plughw:CARD=UACDemoV10,DEV=0); NULL when unset = chime off (WI 1096) */
+    const char *chime_sound;       /* KDESKDASH_CHIME_SOUND — WAV to play instead of the built-in tone; NULL = built-in */
+    int         chime_volume;      /* KDESKDASH_CHIME_VOLUME — 0..100, built-in tone only; default 30 */
+    int         chime_cooldown_s;  /* KDESKDASH_CHIME_COOLDOWN_S — minimum gap between chimes; default 30 */
     const char *card_name;         /* KDESKDASH_CARD_NAME — service-card name segment; default "deskdash" (change it to keep two instances on ONE host distinct) */
 } kdeskdash_config_t;
 

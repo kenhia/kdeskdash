@@ -103,6 +103,8 @@ add_executable(kdeskdash
     src/quickswitch.c
     src/service_card.c
     src/service_pub.c
+    src/chime.c
+    src/chime_watch.c
     src/kvscf_feed.c
     src/kvscf_redis.c
     src/bmp_write.c
@@ -299,6 +301,18 @@ if(NOT CMAKE_CROSSCOMPILING)
     target_compile_options(test_claude_view PRIVATE -Wall -Wextra)
     target_link_libraries(test_claude_view kdash_core)
     add_test(NAME test_claude_view COMMAND test_claude_view)
+
+    # The BLOCKED chime's pure core (WI 1096): edge-not-level, prime-on-boot,
+    # cooldown, the synthesized tone's bounds, and the ALSA card-name parse.
+    # Links kdash_core for the session type only.
+    add_executable(test_chime
+        tests/test_chime.c
+        src/chime.c
+    )
+    target_include_directories(test_chime PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(test_chime PRIVATE -Wall -Wextra)
+    target_link_libraries(test_chime kdash_core m)
+    add_test(NAME test_chime COMMAND test_chime)
 
     # Pure host-token contract for telemetry discovery keys (no Redis/LVGL).
     add_executable(test_telemetry_host

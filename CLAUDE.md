@@ -122,7 +122,7 @@ Read first: `src/mode.h` (the mode contract), `src/shell.c`, `src/main.c`, `CMak
 - **Pure cores** (`src/gol.c`, `src/golz.c`, `src/stopwatch.c`, `src/calc.c`, `src/palette.c`, `src/registry.c`,
   `src/modeset.c`, `src/iconset.c`, `src/kvscf_feed.c`, `src/dev_telemetry.c`, `src/modes/claude_view.c`,
   `src/telemetry_host.c`, `src/bmp_write.c`, `src/clock_core.c`, `src/service_card.c`,
-  `src/quickswitch.c`, `src/panel_state.c`, `src/panel_cmd.c`,
+  `src/quickswitch.c`, `src/panel_state.c`, `src/panel_cmd.c`, `src/chime.c`,
   `src/modes/dev_hostlist.c`, `src/modes/dev_view.c`, `src/logfilter.c`) — no LVGL, no Redis, deterministic (RNG threaded through an
   explicit `uint32_t *state` seam). Each has a `tests/test_*.c`.
 - **Modes** (`src/modes/*.c`) — each implements the `kd_mode_t` lifecycle from `src/mode.h`:
@@ -157,13 +157,14 @@ only recoverable over SSH.
 **Adding a mode is three lines**: the roster in `src/modeset.c`, a case in `main.c`'s
 `create_mode()` dispatch, and its source in `CMakeLists.txt` — plus the mode's own `.c`/`.h`.
 
-#### Five independent feed handles — do not conflate them
+#### Six independent feed handles — do not conflate them
 
 Each has its own connection and failure isolation (a down endpoint never stalls boot or
 another path). Three are `redis_client_t`s — the generic client + backoff lives in
-`src/redis.c` / `redis_internal.h`, and each feed is a thin reader on its own handle. **Two
+`src/redis.c` / `redis_internal.h`, and each feed is a thin reader on its own handle. **Three
 are libkdash `kdash_conn_t`s**: the claude feed since sprint 034, owned by its mode rather
-than by a module main.c initialises, and the command feed since sprint 039.
+than by a module main.c initialises, the command feed since sprint 039, and the BLOCKED
+chime's since sprint 046.
 
 1. **Commands from central** (`src/panel_feed.c`, `KDESKDASH_CMD_REDIS_*`) — read-only
    `kdash:panelmode:<host>` / `kdash:panelshot:<host>` on rpi53, polled ~1×/sec from the
@@ -262,6 +263,17 @@ than by a module main.c initialises, and the command feed since sprint 039.
    `config.c`). Both Pis already point telemetry at `rpi53:6379`, so the card authenticates
    with no new env line on either device. If you find yourself merging these two because
    "they go to the same place", this paragraph is the reason not to.
+
+6. **BLOCKED chime** (`src/chime_watch.c`, `KDESKDASH_CHIME_*`, sprint 046 / WI 1096) — a
+   second read-only handle on `KDASH_STEM_CLAUDE`, same endpoint config as the claude
+   mode's, run from main.c's loop because the alert must sound whatever mode is on screen
+   and a mode does no work while deactivated. **Not the claude mode's handle**: rpidash3,
+   the board with the speaker, does not register that mode. Gated on a configured
+   `KDESKDASH_CHIME_DEVICE` rather than on a mode, so a board without a speaker never dials
+   it. The decisions (edge-not-level, prime on the first snapshot so a restart is silent, a
+   failed read is not a snapshot, cooldown) are the pure `src/chime.c`'s and host-tested;
+   the player is fork/exec `aplay`, reaped with `WNOHANG` — never block the LVGL loop on
+   audio, and address the card by `CARD=` name, never by index (it moved 3→1 on rpidash3).
 
 Feeds are initialised **only for modes the modeset registered**, so a panel without Dev never
 dials the telemetry endpoint at all. A handle shared by two modes is initialised when *either*
