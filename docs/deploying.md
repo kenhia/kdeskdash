@@ -242,6 +242,13 @@ made portable to BSD userland — `jstr` parsed with a GNU-only sed `\|` and
 published nothing at all on kimac, and `date -d` / `stat -c` now fall back to
 their BSD forms.
 
+**2.5.0** writes kdashdata CD-29's `five_hour_none` and stops copying
+seven-day values into the five-hour fields when a source reports no five-hour
+window (sprint 047, korg WI 4623). Until every host carrying `claude-hooks`
+(and cleo, by hand) is on it, an older publisher writing after a fixed one
+leaves the flag at 1 beside its copied value; CD-29 readers hide that value,
+so the gap costs a gauge, never a wrong number.
+
 **The version is not the dashboard's.** The publisher changes on its own clock,
 so its version is `<publisher/VERSION>-<short sha of the last commit touching
 the payload>` (e.g. `1.0.0-47f7c49`). Scoping the sha to the payload files —

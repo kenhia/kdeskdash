@@ -132,7 +132,8 @@ scoped fields) would leave the scoped gauge frozen and looking fresh.
 | field | writers | notes |
 |---|---|---|
 | `five_hour_pct`, `seven_day_pct` | all | percent used, headline windows |
-| `five_hour_resets_at`, `seven_day_resets_at` | statusline, oauth | unix s; the file source leaves them untouched |
+| `five_hour_none` | all (2.5.0+) | 1 when the source reports **no five-hour window** (oauth `"five_hour":null`, a statusline `rate_limits` with no `five_hour` object, a history sample with no `fh`), 0 when it reports one. Written on every headline write, in the same HSET as `updated_at`. kdashdata CD-29 |
+| `five_hour_resets_at`, `seven_day_resets_at` | statusline, oauth | unix s; the file source leaves them untouched — except on a no-window write, where every source writes `five_hour_pct 0` and `five_hour_resets_at 0` beside the flag, because the writer that observes no window is the one that clears another writer's leftover five-hour reading |
 | `updated_at` | all | **observation** time of the headline set |
 | `host` | all | which machine produced the observation |
 | `source` | all | `statusline` \| `file` \| `oauth` |

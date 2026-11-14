@@ -453,7 +453,7 @@ hook_mode() {
 }
 
 statusline_mode() {
-  local json sid key name model rl fh sd fh_pct fh_reset sd_pct sd_reset cw ctx line stamp
+  local json sid key name model rl fh sd fh_pct fh_reset fh_none sd_pct sd_reset cw ctx line stamp
   json=$(cat)
   sid=$(token "$(jstr "$json" session_id)")
   name=$(jstr "$json" session_name)
@@ -467,13 +467,29 @@ statusline_mode() {
   [ "$cw" != "$json" ] && ctx=$(jnum "$cw" used_percentage)
 
   # rate limits (absent for API-key auth)
-  fh_pct="" ; sd_pct=""
+  #
+  # Each object's presence is tested BETWEEN its two expansions. Testing after
+  # the `%%\}*` trim can never fire: with no `"five_hour":{` the first expansion
+  # leaves the whole segment, the trim cuts it at the first `}`, and what is
+  # left is the head of the payload up to the end of the seven_day object, so
+  # jnum read seven-day numbers as five-hour ones (korg WI 4623). A rate_limits
+  # with no five_hour object is a plan with no five-hour window, which kdashdata
+  # CD-29 has us say with five_hour_none 1 rather than a number.
+  fh_pct="" ; fh_reset="" ; fh_none="" ; sd_pct="" ; sd_reset=""
   rl="${json#*\"rate_limits\":}"
   if [ "$rl" != "$json" ]; then
-    fh="${rl#*\"five_hour\":\{}" ; fh="${fh%%\}*}"
-    sd="${rl#*\"seven_day\":\{}" ; sd="${sd%%\}*}"
-    fh_pct=$(jnum "$fh" used_percentage) ; fh_reset=$(jnum "$fh" resets_at)
-    sd_pct=$(jnum "$sd" used_percentage) ; sd_reset=$(jnum "$sd" resets_at)
+    fh="${rl#*\"five_hour\":\{}"
+    if [ "$fh" != "$rl" ]; then
+      fh="${fh%%\}*}" ; fh_none=0
+      fh_pct=$(jnum "$fh" used_percentage) ; fh_reset=$(jnum "$fh" resets_at)
+    else
+      fh_none=1
+    fi
+    sd="${rl#*\"seven_day\":\{}"
+    if [ "$sd" != "$rl" ]; then
+      sd="${sd%%\}*}"
+      sd_pct=$(jnum "$sd" used_percentage) ; sd_reset=$(jnum "$sd" resets_at)
+    fi
   fi
 
   # statusline text first — Redis must never delay it
@@ -491,8 +507,13 @@ statusline_mode() {
   [ -n "$stamp" ] && [ $((NOW - stamp)) -lt "$KDD_LIMITS_MIN_S" ] && exit 0
   printf '%s' "$NOW" > "${STATE_DIR}/limits.stamp" 2>/dev/null
 
+  # No window: pct and reset are written as 0 beside the flag, in this HSET,
+  # because the writer that observes no window is the one that clears a
+  # five-hour reading another writer left behind (CD-29).
   if [ -n "$fh_pct" ] || [ -n "$sd_pct" ]; then
+    [ "$fh_none" = 1 ] && { fh_pct=0 ; fh_reset=0 ; }
     cmd hset claude:limits \
+      five_hour_none "${fh_none:-0}" \
       five_hour_pct "${fh_pct:-0}" five_hour_resets_at "${fh_reset:-0}" \
       seven_day_pct "${sd_pct:-0}" seven_day_resets_at "${sd_reset:-0}" \
       updated_at "$NOW" host "$HOST" source statusline \
@@ -522,6 +543,10 @@ statusline_mode() {
 #
 # Results land in these globals rather than a parsed return string.
 P_T="" ; P_FH="" ; P_SD="" ; P_FHR="" ; P_SDR="" ; P_SRC=""
+# 1 when the source reports no five-hour window (kdashdata CD-29), 0 when it
+# reports one. Every source can tell which, so this is never left unset on a
+# successful read.
+P_FHN=""
 # Model-scoped weekly window (oauth only): model label, percent, resets epoch,
 # is_active flag, and how many weekly_scoped entries the reply carried.
 P_SCM="" ; P_SCP="" ; P_SCR="" ; P_SCA="" ; P_SCN=""
@@ -572,6 +597,8 @@ from_file() {
     [ "$age" -le "$KDD_POLL_MAX_AGE_S" ] || continue   # app closed; try oauth
     P_FH=$(jnum "$rec" fh) ; P_SD=$(jnum "$rec" sd)
     [ -n "$P_FH" ] || [ -n "$P_SD" ] || continue
+    # A sample with no fh is the app recording no five-hour window (CD-29).
+    if [ -n "$P_FH" ]; then P_FHN=0 ; else P_FHN=1 ; fi
     P_T="$t" ; P_SRC=file
     return 0
   done
@@ -626,14 +653,30 @@ from_oauth() {
            -H "User-Agent: claude-code/${ver}" 2>/dev/null | tr -d '\r\n')
   [ -n "$body" ] || return 1
   # "seven_day":{ matches the exact key; seven_day_opus & friends are :null.
-  fhb="${body#*\"five_hour\":\{}" ; fhb="${fhb%%\}*}"
-  sdb="${body#*\"seven_day\":\{}" ; sdb="${sdb%%\}*}"
-  [ "$fhb" != "$body" ] || return 1
-  P_FH=$(jnum "$fhb" utilization) ; P_FH="${P_FH%%.*}"   # 22.0 -> 22
-  P_SD=$(jnum "$sdb" utilization) ; P_SD="${P_SD%%.*}"
+  #
+  # Each object's presence is tested BETWEEN its two expansions. The old guard
+  # ran after the `%%\}*` trim, where it could never fire: with five_hour null
+  # the trim cut the unmatched body at the end of the seven_day object, and the
+  # seven-day utilization and reset were published as five-hour ones (korg WI
+  # 4623). `"five_hour":null` is the API reporting no five-hour window on this
+  # plan (CD-29); a body naming five_hour neither way is a shape we do not know,
+  # and an unknown shape keeps the last value rather than publishing a guess.
+  P_FH="" ; P_FHR="" ; P_SD="" ; P_SDR=""
+  fhb="${body#*\"five_hour\":\{}"
+  if [ "$fhb" != "$body" ]; then
+    fhb="${fhb%%\}*}" ; P_FHN=0
+    P_FH=$(jnum "$fhb" utilization) ; P_FH="${P_FH%%.*}"   # 22.0 -> 22
+    P_FHR=$(iso2epoch "$(jstr "$fhb" resets_at)")
+  else
+    case "$body" in *'"five_hour":null'*) P_FHN=1 ;; *) return 1 ;; esac
+  fi
+  sdb="${body#*\"seven_day\":\{}"
+  if [ "$sdb" != "$body" ]; then
+    sdb="${sdb%%\}*}"
+    P_SD=$(jnum "$sdb" utilization) ; P_SD="${P_SD%%.*}"
+    P_SDR=$(iso2epoch "$(jstr "$sdb" resets_at)")
+  fi
   [ -n "$P_FH" ] || [ -n "$P_SD" ] || return 1
-  P_FHR=$(iso2epoch "$(jstr "$fhb" resets_at)")
-  P_SDR=$(iso2epoch "$(jstr "$sdb" resets_at)")
   # The model-scoped weekly window rides only in limits[] — the legacy
   # top-level keys (seven_day_opus & friends) are :null and never carry it.
   # Bound to the array, then to the first weekly_scoped entry; only one has
@@ -672,14 +715,27 @@ poll_mode() {
   # Headline: never publish over a fresher observation — a live statusline,
   # on this host or any other, is always the better number.
   if [ -z "$prev" ] || [ "$prev" -lt "${P_T:-$NOW}" ]; then
-    cmd hset claude:limits \
-      five_hour_pct "${P_FH:-0}" seven_day_pct "${P_SD:-0}" \
-      updated_at "${P_T:-$NOW}" host "$HOST" source "$P_SRC" \
-      expected_refresh_s "$KDD_POLL_EXPECT_S"
+    if [ "$P_FHN" = 1 ]; then
+      # No five-hour window (CD-29): the flag, a 0 pct AND a 0 reset, in the
+      # same HSET as updated_at. The one exception to "a source that does not
+      # know the reset leaves it alone" below — this source does know: there
+      # is nothing to reset, and a leftover reset is another writer's reading.
+      cmd hset claude:limits \
+        five_hour_none 1 five_hour_pct 0 five_hour_resets_at 0 \
+        seven_day_pct "${P_SD:-0}" \
+        updated_at "${P_T:-$NOW}" host "$HOST" source "$P_SRC" \
+        expected_refresh_s "$KDD_POLL_EXPECT_S"
+    else
+      cmd hset claude:limits \
+        five_hour_none 0 \
+        five_hour_pct "${P_FH:-0}" seven_day_pct "${P_SD:-0}" \
+        updated_at "${P_T:-$NOW}" host "$HOST" source "$P_SRC" \
+        expected_refresh_s "$KDD_POLL_EXPECT_S"
+    fi
     # Reset stamps only when the source actually knows them. The history file
     # carries percentages only, and writing 0 would break the panel's countdown —
     # leaving the previous value in place is the honest degradation.
-    [ -n "$P_FHR" ] && cmd hset claude:limits five_hour_resets_at "$P_FHR"
+    [ "$P_FHN" != 1 ] && [ -n "$P_FHR" ] && cmd hset claude:limits five_hour_resets_at "$P_FHR"
     [ -n "$P_SDR" ] && cmd hset claude:limits seven_day_resets_at "$P_SDR"
   fi
   # Scoped set: oauth is its only producer, stamped with its own
