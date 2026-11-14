@@ -89,3 +89,23 @@ At 2026-11-14 01:49Z the branch's script ran `poll` once on kai, not under
 within five minutes. That write copies the seven-day values back in and leaves
 the flag at 1 beside them, which is the CD-29 gap. New readers hide the value.
 The gap closes when the deploy above lands.
+
+## Deployed
+
+2026-11-14, from merged `main` `8c4d05b` (PR #56), on the overseer's clearance (korg comment 4676).
+
+- **`deploy-panels`**: nothing was published. `kdeskdash 0.27.0-2dcd7f3 already in the store`, because the panel payload is unchanged. Both boards already run `0.27.0-2dcd7f3`, so neither was restarted.
+- **`recipe: publish-publisher`**: published `kdeskdash-publisher 2.5.0-8c4d05b` and moved `latest`. The bundle diff against 2.4.0-c44430a, read off both SHA256SUMS, is `claude-pub.sh` and `VERSION` only.
+- **k-homelab `30a13db`** is on origin/main. It bumps `kdeskdash_publisher_version` to `2.5.0-8c4d05b` (Branch A, done inline under the documented procedure) and adds a changelog entry for each host applied on. k-homelab's `just check` passed. Applies ran from kubs0, each after `bin/audit`:
+
+| host | result |
+|---|---|
+| kai | claude-hooks `changed`, copilot-hooks `changed`; kdeskdash-poll already `ok`. Re-audit `ok` on all three; installed sha256 `5fa4305a…` matches the store |
+| kubs0 | claude-hooks and copilot-hooks `changed`; re-audit `ok` |
+| kimac | claude-hooks and copilot-hooks `changed`; re-audit `ok` |
+| thrall | claude-hooks `changed`; re-audit `ok` |
+| komarchy | **unreachable** from kubs0 (last seen 01:46Z). Flagged `kdash:stale:komarchy:k-homelab`; headed-catchup applies it on wake |
+| kbook2 | **unreachable** from kubs0 (last seen 2026-11-11). Flagged; headed-catchup applies it on wake |
+| cleo | unmanaged. It **was on 2.1.0-581799b**, three releases behind. It got 2.5.0's `claude-pub.sh` and `VERSION` from kai by base64 over ssh, after checksums were verified against the store. The hashes on cleo match the store. The old files are kept as `claude-pub.sh.bak.pre-047` / `VERSION.bak.pre-047`. A smoke `poll` under Git Bash exited 0 with no `no-kdash-pub` breadcrumb; its guard correctly declined to overwrite kai's newer observation |
+
+**Live check, after the deploy.** A hand-start of kai's `kdeskdash-claude-poll.service` (deployed 2.5.0) exited 0. The record then read `five_hour_none 1`, `five_hour_pct 0`, `five_hour_resets_at 0`, `seven_day_pct 11`, `seven_day_resets_at 1795089599`, `updated_at 1794621494`, `host kai`, `source oauth`, `scoped_model Fable`, `scoped_pct 13`.
