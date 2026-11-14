@@ -19,6 +19,10 @@ const char *claude_disp_label(kdash_claude_disp_t d) {
     return "?";
 }
 
+bool claude_five_hour_visible(const kdash_claude_limits_t *l) {
+    return !(l && l->valid && l->five_hour_none);
+}
+
 const char *claude_project_label(const char *project) {
     return (project && project[0] != '\0') ? project : "?";
 }

@@ -40,4 +40,10 @@ void claude_fmt_age(long long age_s, char *out, size_t outsz);
 void claude_fmt_reset(long long resets_at, long long now, char *out,
                       size_t outsz);
 
+/* Whether the 5 HR gauge belongs on the panel. False only when a valid record
+ * says the plan has no five-hour window (CD-29 `five_hour_none`, e.g. Ultra);
+ * plans that have one, records predating the field, and no record at all keep
+ * the gauge. Layout, not data: libkdash has already zeroed the fields. */
+bool claude_five_hour_visible(const kdash_claude_limits_t *l);
+
 #endif /* KDESKDASH_MODES_CLAUDE_VIEW_H */

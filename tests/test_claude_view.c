@@ -115,9 +115,36 @@ static void test_library_ladder_contract(void) {
           "attention-first rank order");
 }
 
+/* ---------- the five-hour gauge follows the plan (CD-29) ---------- */
+
+/* Ultra has no five-hour window; Pro and Max still do, and someone running
+ * this code from GitHub may be on either. The gauge hides only on a positive
+ * "no window" statement — a record that predates the field, or no record at
+ * all, keeps the two-gauge layout it always had. */
+static void test_five_hour_visible(void) {
+    kdash_claude_limits_t l;
+
+    memset(&l, 0, sizeof(l));
+    check(claude_five_hour_visible(&l), "no record yet: gauge shown as --");
+
+    l.valid = true;
+    l.five_hour_pct = 22;
+    check(claude_five_hour_visible(&l), "plan with a five-hour window");
+
+    l.five_hour_none = true;
+    l.five_hour_pct = 0;
+    check(!claude_five_hour_visible(&l), "plan with no five-hour window");
+
+    l.valid = false;
+    check(claude_five_hour_visible(&l), "invalid record never hides it");
+
+    check(claude_five_hour_visible(NULL), "NULL is no record");
+}
+
 int main(void) {
     test_disp_label();
     test_project_label();
+    test_five_hour_visible();
     test_fmt();
     test_library_ladder_contract();
 
