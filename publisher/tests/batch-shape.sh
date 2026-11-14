@@ -347,5 +347,98 @@ APPDATA="$appdata" KDD_LEGS=central "$script" poll </dev/null >/dev/null 2>&1
 has "history sample with fh: flag 0 beside the real pct" \
   "five_hour_none${TAB}0${TAB}five_hour_pct${TAB}7${TAB}seven_day_pct${TAB}3"
 
+# ---- 16. the desktop app's moved, sparse history file (korg WI 4670) ----
+# On 2026-11-13 the Windows app moved its data from the MSIX LocalCache to
+# %LOCALAPPDATA%/Claude-Data/<package>/, and stopped sampling every 5 minutes:
+# samples now land hours apart. A fresh sample still wins outright; an old one
+# is published only when oauth cannot answer, stamped with its OWN time so the
+# panel reads it as stale and the guard keeps any fresher writer on top.
+lad="$work/localappdata"
+mkdir -p "$lad/Claude-Data/claude_testpkg"
+lhist="$lad/Claude-Data/claude_testpkg/plan-usage-history.json"
+nohome="$work/nohome"; mkdir -p "$nohome"
+poll_file() {
+  export KDD_CAPTURE_DIR="$work/cap"
+  rm -rf "$KDD_CAPTURE_DIR"; mkdir -p "$KDD_CAPTURE_DIR"
+  HOME="${1:-$nohome}" APPDATA="$work/noappdata" LOCALAPPDATA="$lad" \
+    PATH="$work/bin:$PATH" KDD_OAUTH_BODY="$fx/usage-five-hour-null.json" \
+    KDD_LEGS=central "$script" poll </dev/null >/dev/null 2>&1
+}
+printf '{"samples":[{"t":%s000,"u":{"sd":4}}]}' "$(date +%s)" > "$lhist"
+poll_file
+has "Claude-Data history file is found" \
+  "five_hour_none${TAB}1${TAB}five_hour_pct${TAB}0${TAB}five_hour_resets_at${TAB}0${TAB}seven_day_pct${TAB}4"
+has "Claude-Data history file publishes as source file" "source${TAB}file"
+
+old=$(( $(date +%s) - 5 * 3600 ))
+printf '{"samples":[{"t":%s000,"u":{"sd":6}}]}' "$old" > "$lhist"
+poll_file
+has "old sample, no oauth: still published" "seven_day_pct${TAB}6"
+has "old sample, no oauth: stamped with the sample's own time" \
+  "updated_at${TAB}${old}${TAB}"
+poll_file "$ohome"
+has "old sample, oauth answers: oauth wins" "source${TAB}oauth"
+expect "old sample, oauth answers: the old sample is not published" "" \
+  "$(bodies | grep -F "seven_day_pct${TAB}6")"
+
+# ---- 17. an expired token asks the CLI to refresh it (korg WI 4673) ----
+# The access token lives 8 hours and only the CLI refreshes it, so a host with
+# no CLI session for 8 hours used to poll nothing, silently, every 5 minutes.
+# The poll now asks the CLI: `auth status` first, then the smallest `-p` call,
+# run with user settings excluded so no hook publishes a session for it. At
+# most once an hour, and a token still dead after that leaves a breadcrumb.
+ehome="$work/ehome"; mkdir -p "$ehome/.claude"
+expired_creds() {
+  printf '{"claudeAiOauth":{"accessToken":"placeholder-not-a-token","expiresAt":%s000,"scopes":["user:inference","user:profile"]}}' \
+    "$(( $(date +%s) - 60 ))" > "$ehome/.claude/.credentials.json"
+}
+cat > "$work/bin/claude" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$KDD_CLAUDE_LOG"
+case "$1 $2" in
+  "auth status") want=status ;;
+  *) want=p ;;
+esac
+if [ "$KDD_STUB_REFRESH" = "$want" ]; then
+  printf '{"claudeAiOauth":{"accessToken":"placeholder-not-a-token","expiresAt":%s000,"scopes":["user:inference","user:profile"]}}' \
+    "$(( $(date +%s) + 28800 ))" > "$HOME/.claude/.credentials.json"
+fi
+STUB
+chmod +x "$work/bin/claude"
+export KDD_CLAUDE_LOG="$work/claude.log"
+poll_expired() {
+  export KDD_CAPTURE_DIR="$work/cap"
+  rm -rf "$KDD_CAPTURE_DIR"; mkdir -p "$KDD_CAPTURE_DIR"
+  HOME="$ehome" APPDATA="$work/noappdata" LOCALAPPDATA="" \
+    PATH="$work/bin:$PATH" KDD_OAUTH_BODY="$fx/usage-five-hour-null.json" \
+    KDD_STUB_REFRESH="$1" KDD_LEGS=central "$script" poll </dev/null >/dev/null 2>&1
+}
+reset_refresh() {
+  expired_creds; : > "$KDD_CLAUDE_LOG"
+  rm -f "$KDD_STATE_DIR/oauth-refresh.stamp" "$KDD_STATE_DIR/oauth-expired"
+}
+
+reset_refresh; poll_expired status
+has "expired token, auth status refreshes: oauth publishes" "source${TAB}oauth"
+expect "expired token, auth status refreshes: no -p call" "auth status" \
+  "$(cat "$KDD_CLAUDE_LOG")"
+
+reset_refresh; poll_expired p
+has "expired token, only -p refreshes: oauth publishes" "source${TAB}oauth"
+expect "the -p call excludes user settings, so no hook fires for it" "1" \
+  "$(grep -c -- '-p .*--setting-sources project' "$KDD_CLAUDE_LOG")"
+
+reset_refresh; poll_expired none
+expect "expired token, nothing refreshes: no headline" "" "$(headline)"
+expect "expired token, nothing refreshes: breadcrumb left" "yes" \
+  "$([ -s "$KDD_STATE_DIR/oauth-expired" ] && echo yes)"
+: > "$KDD_CLAUDE_LOG"; poll_expired none
+expect "refresh is attempted at most once an hour" "" "$(cat "$KDD_CLAUDE_LOG")"
+
+# The breadcrumb from the case above is left in place on purpose.
+expired_creds; rm -f "$KDD_STATE_DIR/oauth-refresh.stamp"; poll_expired status
+expect "a successful refresh clears the breadcrumb" "no" \
+  "$([ -e "$KDD_STATE_DIR/oauth-expired" ] && echo yes || echo no)"
+
 [ "$fails" -eq 0 ] || { printf '\n%d assertion(s) failed\n' "$fails"; exit 1; }
 printf '\nall batch-shape assertions passed\n'

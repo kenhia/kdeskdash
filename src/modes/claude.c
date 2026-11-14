@@ -108,6 +108,7 @@ typedef struct {
 } claude_row_t;
 
 typedef struct {
+    lv_obj_t *col;   /* the whole gauge column, hidden as one */
     lv_obj_t *arc;
     lv_obj_t *pct;
     lv_obj_t *cap;   /* window caption; fixed for 5 HR / 7 DAY, the scoped
@@ -253,6 +254,7 @@ static void make_gauge(claude_gauge_t *g, lv_obj_t *parent, const char *window) 
     lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(col, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
+    g->col = col;
 
     /* 270° gauge, lv_arc's native default orientation (135° start). */
     g->arc = lv_arc_create(col);
@@ -512,8 +514,15 @@ static void render_limits(claude_state_t *st, const kdash_claude_limits_t *l,
      * rules are libkdash's, with this family's own default windows. */
     bool stale = kdash_claude_limits_stale(l, now, KDASH_CLAUDE_LIMITS_GRACE_S,
                                            KDASH_CLAUDE_LIMITS_STALE_S);
-    render_gauge(&st->five, l->five_hour_pct, (long long)l->five_hour_resets_at,
-                 now, l->valid, stale);
+    /* A plan with no five-hour window (Ultra) drops the 5 HR column and the
+     * row re-centres on 7 DAY; any plan that has one renders it as always. */
+    if (claude_five_hour_visible(l)) {
+        lv_obj_clear_flag(st->five.col, LV_OBJ_FLAG_HIDDEN);
+        render_gauge(&st->five, l->five_hour_pct,
+                     (long long)l->five_hour_resets_at, now, l->valid, stale);
+    } else {
+        lv_obj_add_flag(st->five.col, LV_OBJ_FLAG_HIDDEN);
+    }
     render_gauge(&st->seven, l->seven_day_pct,
                  (long long)l->seven_day_resets_at, now, l->valid, stale);
 

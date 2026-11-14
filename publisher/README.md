@@ -101,12 +101,24 @@ desktop app neither writes nor refreshes it, so on a desktop-only machine it
 sits expired and the oauth path correctly declines (the fleet's cleo is
 exactly this case, hence its scheduled task rides the file path).
 
+The access token in that file lives 8 hours. When the poll finds it expired it
+asks the CLI to refresh it (sprint 048): `claude auth status`, then the
+smallest `claude -p` turn, run with `--setting-sources project` from `$TMPDIR`
+so no hook publishes a session for it. That happens at most once an hour, and a
+token still dead afterwards leaves `state/oauth-expired`. A refresh cannot
+move the sign-in's own end date: when the CLI warns that the sign-in ends,
+run `claude auth login` interactively.
+
 - **file** — `plan-usage-history.json`, which the Claude **desktop app**
-  samples on its own 5-minute timer whether or not any session runs (measured:
-  4,638 of 4,660 gaps were exactly 5 min over 27 days). No network, no
-  credentials. Percentages only — this file carries no reset timestamps, and
-  the script deliberately leaves the `*_resets_at` fields untouched rather
-  than writing a sentinel.
+  writes whether or not any session runs. Until 2026-11 it sampled every 5
+  minutes. Since the Windows app moved its data (to
+  `%LOCALAPPDATA%\Claude-Data\<package>\`), samples land hours apart, so the
+  poll takes a fresh sample (≤ 15 min) first, then oauth, then any sample. An
+  old sample is published with its own observation time, so the panel greys it
+  and any fresher writer outranks it. A sample with no `fh` means no five-hour
+  window on this plan. No network, no credentials. Percentages only — this
+  file carries no reset timestamps, and the script deliberately leaves the
+  `*_resets_at` fields untouched rather than writing a sentinel.
 - **oauth** — `GET api.anthropic.com/api/oauth/usage` with the CLI's own
   credentials (`~/.claude/.credentials.json`), for headless hosts. Supplies
   reset timestamps too. The `User-Agent: claude-code/<version>` header is
@@ -232,7 +244,8 @@ away: `bash` on PATH may be WSL, not Git Bash (the vbs resolves
 `%ProgramFiles%\Git\bin\bash.exe` explicitly), and the MSIX-packaged desktop
 app redirects `%APPDATA%\Claude\...` into
 `%LOCALAPPDATA%\Packages\Claude_<hash>\LocalCache\Roaming\Claude\` for some
-processes — `from_file` probes both locations.
+processes, and since 2026-11 keeps its data in
+`%LOCALAPPDATA%\Claude-Data\<package>\` instead — `from_file` probes all three.
 
 ### Linux headless (systemd user timer, the kai install)
 

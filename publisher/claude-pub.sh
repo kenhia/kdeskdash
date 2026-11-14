@@ -64,7 +64,8 @@ KDD_TTL_S=7200
 KDD_RECENT_KEEP=19      # LTRIM 0 19 -> 20 entries
 KDD_LIMITS_MIN_S=5      # statusline publish throttle
 KDD_HEARTBEAT_MIN_S=120 # tool-use keepalive throttle (panel greys at 15m)
-KDD_POLL_MAX_AGE_S=900  # plan-usage-history sample older than this = app closed
+KDD_POLL_MAX_AGE_S=900  # history sample older than this: try oauth first
+KDD_REFRESH_EVERY_S=3600 # poll: at most one CLI token refresh an hour
 
 # What the panel should expect between writes from each mode, published as
 # expected_refresh_s / scoped_expected_refresh_s so the greying policy lives
@@ -578,9 +579,16 @@ stored_epoch() {
 # unparseable, which the caller treats as unknown. See iso_epoch.
 iso2epoch() { iso_epoch "$1"; }
 
+# from_file <max-age-s>: the newest history sample, if no older than the given
+# age; an empty age takes any. Since 2026-11-13 the Windows app keeps its data
+# under %LOCALAPPDATA%/Claude-Data/<package>/ and samples hours apart rather
+# than every 5 minutes (korg WI 4670), so poll_mode asks for a fresh sample,
+# then oauth, then an old sample — published with its own observation time,
+# which the panel greys and any fresher writer outranks.
 from_file() {
   local f rec t age
   for f in "${APPDATA}/Claude/plan-usage-history.json" \
+           "${LOCALAPPDATA}"/Claude-Data/*/plan-usage-history.json \
            "${LOCALAPPDATA}/Packages/Claude_pzs8sxrjxfjjc/LocalCache/Roaming/Claude/plan-usage-history.json" \
            "${HOME}/Library/Application Support/Claude/plan-usage-history.json" \
            "${HOME}/.config/Claude/plan-usage-history.json" ; do
@@ -594,8 +602,9 @@ from_file() {
     [ -n "$t" ] || continue
     t=$((t / 1000))
     age=$((NOW - t)) ; [ "$age" -lt 0 ] && age=0
-    [ "$age" -le "$KDD_POLL_MAX_AGE_S" ] || continue   # app closed; try oauth
+    [ -z "$1" ] || [ "$age" -le "$1" ] || continue   # too old; try oauth
     P_FH=$(jnum "$rec" fh) ; P_SD=$(jnum "$rec" sd)
+    P_FHR="" ; P_SDR=""   # no resets in the file; drop any a failed oauth read left
     [ -n "$P_FH" ] || [ -n "$P_SD" ] || continue
     # A sample with no fh is the app recording no five-hour window (CD-29).
     if [ -n "$P_FH" ]; then P_FHN=0 ; else P_FHN=1 ; fi
@@ -626,7 +635,8 @@ cli_version() {
 
 # accessToken from the CLI's own credential file. Bounded to the claudeAiOauth
 # block: mcpOAuth entries further down the file carry accessToken fields too,
-# and jstr's greedy match would otherwise return the LAST one.
+# and jstr's greedy match would otherwise return the LAST one. Returns 2 for an
+# expired token — the one failure oauth_refresh can do something about.
 oauth_token() {
   local f="${HOME}/.claude/.credentials.json" j exp
   [ -f "$f" ] || return 1
@@ -635,15 +645,55 @@ oauth_token() {
   j="${j#*\"claudeAiOauth\"}"
   j="${j%%\"mcpOAuth\"*}"
   exp=$(jnum "$j" expiresAt)                       # ms; note refreshTokenExpiresAt
-  [ -n "$exp" ] && [ $((exp / 1000)) -le "$NOW" ] && return 1   # expired
+  [ -n "$exp" ] && [ $((exp / 1000)) -le "$NOW" ] && return 2   # expired
   case "$j" in *'"user:profile"'*) ;; *) return 1 ;; esac        # scope required
   jstr "$j" accessToken
 }
 
+# The access token lives 8 hours and only the CLI refreshes it, so a host with
+# no CLI session for 8 hours polled nothing, silently, every 5 minutes (korg WI
+# 4673). Ask the CLI to do it, cheapest first: `auth status`, then the smallest
+# `-p` turn. That one runs outside $HOME with user settings excluded, so no
+# hook (this script's own included) publishes a session for it. At most once
+# an hour; a token still dead afterwards leaves a breadcrumb.
+#
+# bounded <secs> <cmd...>: coreutils timeout where there is one. macOS ships
+# none, and a missing bound must not turn into a refresh that never runs.
+bounded() {
+  if command -v timeout >/dev/null 2>&1; then timeout "$@"; else shift; "$@"; fi
+}
+
+oauth_refresh() {
+  local stamp="${STATE_DIR}/oauth-refresh.stamp" mt c
+  mt=$(mtime "$stamp")
+  [ -n "$mt" ] && [ $((NOW - mt)) -lt "$KDD_REFRESH_EVERY_S" ] && return 1
+  : > "$stamp" 2>/dev/null
+  for c in claude "${HOME}/.local/bin/claude" "${HOME}/.claude/local/claude" /usr/local/bin/claude ; do
+    command -v "$c" >/dev/null 2>&1 && break
+    c=""
+  done
+  if [ -n "$c" ]; then
+    bounded 30 "$c" auth status </dev/null >/dev/null 2>&1
+    oauth_token >/dev/null && { rm -f "${STATE_DIR}/oauth-expired"; return 0; }
+    ( cd "${TMPDIR:-/tmp}" && bounded 120 "$c" -p --setting-sources project \
+        --strict-mcp-config --no-session-persistence --tools "" \
+        --model haiku "Reply with the single word: ok" ) </dev/null >/dev/null 2>&1
+    oauth_token >/dev/null && { rm -f "${STATE_DIR}/oauth-expired"; return 0; }
+  fi
+  printf 'oauth token expired and the CLI did not refresh it, as of %s\n' "$NOW" \
+    > "${STATE_DIR}/oauth-expired" 2>/dev/null
+  return 1
+}
+
 from_oauth() {
-  local tok ver body fhb sdb lim seg
+  local tok ver body fhb sdb lim seg rc
   command -v curl >/dev/null 2>&1 || return 1
-  tok=$(oauth_token) || return 1
+  tok=$(oauth_token) ; rc=$?
+  if [ "$rc" = 2 ]; then
+    oauth_refresh || return 1
+    tok=$(oauth_token) || return 1
+  fi
+  [ "$rc" = 0 ] || [ "$rc" = 2 ] || return 1
   [ -n "$tok" ] || return 1
   ver=$(cli_version)
   [ -n "$ver" ] || return 1
@@ -702,7 +752,7 @@ from_oauth() {
 
 poll_mode() {
   local prev sprev
-  from_file || from_oauth || exit 0
+  from_file "$KDD_POLL_MAX_AGE_S" || from_oauth || from_file "" || exit 0
 
   # The headline and scoped sets are guarded INDEPENDENTLY, each by its own
   # observation stamp. Sharing one guard would let a fresher file-source write
