@@ -97,3 +97,45 @@ shows none. No refresh can fix this; it needs an interactive login.
 
 - cleo is still unmanaged (WI 4651): 2.6.0 has to be hand-copied there, as
   2.5.0 was.
+- Ken has to sign in again with `claude auth login` (WI 4691, Awaiting Ken).
+  cleo's CLI is already signed out, and kubs0's sign-in ends on 2026-11-19.
+
+## Deployed
+
+2026-11-14, from merged `main` `09bf6c9` (PR #58).
+
+- **`deploy-panels`** published `kdeskdash 0.28.0-09bf6c9` and moved `latest`.
+  Both boards were reachable. `just versions` reads `kdeskdash 0.28.0-09bf6c9`
+  on `rpidash2` and on `rpidash3`, and both units are `active`. `kddss` saved a
+  frame from rpidash2 (`deploy-0.28.0.png`).
+- **`recipe: publish-publisher`** published `kdeskdash-publisher 2.6.0-09bf6c9`
+  and moved `latest`. The bundle diff against 2.5.0-8c4d05b, read off both
+  SHA256SUMS, is `claude-pub.sh` and `VERSION` only.
+- **k-homelab `99267d0`** is on origin/main. It bumps
+  `kdeskdash_publisher_version` to `2.6.0-09bf6c9` and adds changelog entries.
+  k-homelab's `just check` passed. Applies ran from kubs0, each after
+  `bin/audit`:
+
+| host | result |
+|---|---|
+| kai | claude-hooks and copilot-hooks `changed`; kdeskdash-poll already `ok`. Re-audit `ok` on all three. Installed sha256 `1c566a35…` matches the store |
+| kubs0 | claude-hooks and copilot-hooks `changed`; re-audit `ok` |
+| kimac | claude-hooks and copilot-hooks `changed`; re-audit `ok` |
+| thrall | claude-hooks `changed`; re-audit `ok` |
+| komarchy, kbook2 | **unreachable**, and already flagged `kdash:stale:<host>:k-homelab`. headed-catchup applies them on wake |
+| cleo | unmanaged (WI 4651). It was on 2.5.0-8c4d05b. It got 2.6.0's `claude-pub.sh` and `VERSION` from kai by base64 over ssh, after their checksums were verified against the store. The hashes on cleo match. The old files are kept as `*.bak.pre-048` |
+
+**Live checks.**
+
+- **kai.** A hand-start of `kdeskdash-claude-poll.service` (2.6.0) found
+  kai's token **expired**, which is the case WI 4673 describes. The poll
+  refreshed it in about a second, which suggests `auth status` alone was
+  enough, though this run did not prove which step it was. It left no
+  `oauth-expired` breadcrumb, the credentials then had 8 h left, and the unit
+  reported `Result=success`. The live record read `five_hour_none 1`,
+  `seven_day_pct 14`, `scoped_model Fable`.
+- **cleo.** A smoke poll under Git Bash found
+  `Claude-Data/claude_pzs8sxrjxfjjc/plan-usage-history.json` and exited 0.
+  Its last sample was 2026-11-13 18:39. It left `state/oauth-expired` because
+  cleo's CLI reports `loggedIn: false`. This is the designed loud failure,
+  not a regression, and it is filed as WI 4691.
