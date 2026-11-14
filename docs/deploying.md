@@ -175,8 +175,14 @@ Anything that stays on a panel should be published and deployed.
 ## The publisher bundle — a second artifact, on its own clock
 
 The publishers (`publisher/claude-pub.sh`, `publisher/ghcp-pub.sh`, the two poll
-units and the Copilot hook template) run on *feed hosts* (kai, kubs0, cleo), not
-on the panels, and k-homelab's recipes are what install them there.
+units and the Copilot hook template) run on *feed hosts*, not on the panels.
+k-homelab's recipes install them on every host that declares `claude-hooks`,
+which as of sprint 047 means kai, kubs0, komarchy, kimac, kbook2 and thrall.
+Only kai declares `kdeskdash-poll`. A release reaches those hosts through
+a bump of `kdeskdash_publisher_version` and `bin/apply`, and the
+intermittent ones catch up through headed-catchup when they wake. **cleo is
+the exception:** it is unmanaged, so nothing delivers to it. Sprint 047 found it
+still on 2.1.0 three releases later and copied 2.5.0 across by hand.
 
 **Two publishers, one bundle, one clock** since sprint 038: `ghcp-pub.sh`
 publishes GitHub Copilot CLI sessions to `ghcp:session:*` the way
