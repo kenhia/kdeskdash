@@ -256,5 +256,96 @@ gnu=$(grep -nE '\\[|+?]' "$script" "$here/../ghcp-pub.sh" \
       | grep -vE "sed -E|grep -[a-zA-Z]*E|'s/\\\\\\//" || true)
 expect "no GNU-only BRE alternation or repetition in the publishers" "" "$gnu"
 
+# ---- 15. no five-hour window: five_hour_none 1, never seven-day values ----
+# korg WI 4623. The API returns `"five_hour":null` for a plan with no five-hour
+# window, and the old guard (tested after the `%%\}*` trim, where it could not
+# fire) read seven_day's utilization and reset as five-hour ones. kdashdata
+# CD-29: the writer that observes no window says so with the flag AND zeroes
+# both five-hour fields, in the same HSET as updated_at.
+#
+# The oauth path runs for real against a stub curl serving a body captured
+# from the API (fixtures/oauth/). The credential file is a fake written here;
+# the token in it is a placeholder, and only curl's stub ever sees it.
+fx="$here/fixtures/oauth"
+ohome="$work/ohome"
+mkdir -p "$ohome/.claude" "$work/bin" "$work/noappdata"
+printf '{"claudeAiOauth":{"accessToken":"placeholder-not-a-token","expiresAt":%s000,"scopes":["user:inference","user:profile"]}}' \
+  "$(( $(date +%s) + 3600 ))" > "$ohome/.claude/.credentials.json"
+printf '2.1.300' > "$KDD_STATE_DIR/cli.version"
+cat > "$work/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+cat "$KDD_OAUTH_BODY"
+STUB
+chmod +x "$work/bin/curl"
+
+# One oauth poll against <fixture>; leaves the capture in $KDD_CAPTURE_DIR.
+poll_oauth() {
+  export KDD_CAPTURE_DIR="$work/cap"
+  rm -rf "$KDD_CAPTURE_DIR"; mkdir -p "$KDD_CAPTURE_DIR"
+  HOME="$ohome" APPDATA="$work/noappdata" LOCALAPPDATA="" \
+    PATH="$work/bin:$PATH" KDD_OAUTH_BODY="$1" KDD_LEGS=central \
+    "$script" poll </dev/null >/dev/null 2>&1
+}
+# The headline HSET line alone (the one carrying updated_at).
+headline() { bodies | grep -F "${TAB}updated_at${TAB}"; }
+
+sd_reset=$(date -u -d '2026-11-19T11:59:59Z' +%s)
+fh_reset=$(date -u -d '2026-11-14T05:00:00Z' +%s)
+
+poll_oauth "$fx/usage-five-hour-null.json"
+expect "oauth five_hour null: flag 1 and zeroed five-hour fields, one HSET" \
+"hset${TAB}claude:limits${TAB}five_hour_none${TAB}1${TAB}five_hour_pct${TAB}0${TAB}five_hour_resets_at${TAB}0${TAB}seven_day_pct${TAB}10${TAB}updated_at${TAB}TS${TAB}host${TAB}testhost${TAB}source${TAB}oauth${TAB}expected_refresh_s${TAB}N" \
+"$(headline | sed -E "s/updated_at${TAB}[0-9]{10}/updated_at${TAB}TS/; s/expected_refresh_s${TAB}[0-9]+/expected_refresh_s${TAB}N/")"
+expect "oauth five_hour null: no other write touches five_hour_resets_at" "" \
+"$(bodies | grep -v -F "${TAB}updated_at${TAB}" | grep -F five_hour_resets_at)"
+has "oauth five_hour null: seven-day reset still published" \
+  "seven_day_resets_at${TAB}${sd_reset}"
+has "oauth five_hour null: the scoped window is unaffected" \
+  "scoped_model${TAB}Fable${TAB}scoped_pct${TAB}12"
+
+poll_oauth "$fx/usage-five-hour-object.json"
+has "oauth five_hour object: flag 0 and the real five-hour pct" \
+  "five_hour_none${TAB}0${TAB}five_hour_pct${TAB}22${TAB}seven_day_pct${TAB}10"
+has "oauth five_hour object: its own reset, not seven_day's" \
+  "five_hour_resets_at${TAB}${fh_reset}"
+
+# A body naming five_hour neither way is a shape we do not know: keep the last
+# value (publish nothing) rather than guess a window into or out of existence.
+printf '{"seven_day":{"utilization":10.0,"resets_at":"2026-11-19T11:59:59Z"}}' \
+  > "$work/no-key.json"
+poll_oauth "$work/no-key.json"
+expect "oauth body with no five_hour key publishes no headline" "" "$(headline)"
+
+# The statusline path had the same guard fault. Claude Code omits an object
+# rather than nulling it here, so both spellings are covered.
+for sl in \
+  '{"session_id":"s10","model":{"display_name":"Opus 5"},"rate_limits":{"seven_day":{"used_percentage":10,"resets_at":1795089599}}}' \
+  '{"session_id":"s10","model":{"display_name":"Opus 5"},"rate_limits":{"five_hour":null,"seven_day":{"used_percentage":10,"resets_at":1795089599}}}'
+do
+  rm -f "$KDD_STATE_DIR/limits.stamp"
+  run statusline central 1 "$sl"
+  has "statusline with no five_hour object: flag 1, zeroed, seven-day kept" \
+    "five_hour_none${TAB}1${TAB}five_hour_pct${TAB}0${TAB}five_hour_resets_at${TAB}0${TAB}seven_day_pct${TAB}10${TAB}seven_day_resets_at${TAB}1795089599"
+done
+rm -f "$KDD_STATE_DIR/limits.stamp"
+run statusline central 1 \
+  '{"session_id":"s10","model":{"display_name":"Opus 5"},"rate_limits":{"five_hour":{"used_percentage":30,"resets_at":1795010000},"seven_day":{"used_percentage":10,"resets_at":1795089599}}}'
+has "statusline with a five_hour object: flag 0 and its own values" \
+  "five_hour_none${TAB}0${TAB}five_hour_pct${TAB}30${TAB}five_hour_resets_at${TAB}1795010000${TAB}seven_day_pct${TAB}10"
+
+# The history file: a sample with no fh is the app recording no window.
+printf '{"samples":[{"t":%s000,"u":{"sd":3}}]}' "$(date +%s)" \
+  > "$appdata/Claude/plan-usage-history.json"
+rm -rf "$KDD_CAPTURE_DIR"; mkdir -p "$KDD_CAPTURE_DIR"
+APPDATA="$appdata" KDD_LEGS=central "$script" poll </dev/null >/dev/null 2>&1
+has "history sample with no fh: flag 1 and zeroed five-hour fields" \
+  "five_hour_none${TAB}1${TAB}five_hour_pct${TAB}0${TAB}five_hour_resets_at${TAB}0${TAB}seven_day_pct${TAB}3"
+printf '{"samples":[{"t":%s000,"u":{"fh":7,"sd":3}}]}' "$(date +%s)" \
+  > "$appdata/Claude/plan-usage-history.json"
+rm -rf "$KDD_CAPTURE_DIR"; mkdir -p "$KDD_CAPTURE_DIR"
+APPDATA="$appdata" KDD_LEGS=central "$script" poll </dev/null >/dev/null 2>&1
+has "history sample with fh: flag 0 beside the real pct" \
+  "five_hour_none${TAB}0${TAB}five_hour_pct${TAB}7${TAB}seven_day_pct${TAB}3"
+
 [ "$fails" -eq 0 ] || { printf '\n%d assertion(s) failed\n' "$fails"; exit 1; }
 printf '\nall batch-shape assertions passed\n'
