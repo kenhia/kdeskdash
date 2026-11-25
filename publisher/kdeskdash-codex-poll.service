@@ -1,0 +1,13 @@
+# kdeskdash codex-feed poll — user unit for the one host that writes
+# codex:limits (kai). Limits are account-wide, so one writer is the design
+# (kdashdata CD-33); a second would add freshness, not coverage.
+# Install: see publisher/README.md.
+[Unit]
+Description=kdeskdash codex-feed poll (session-free Codex usage limits)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.codex/kdeskdash-pub/codex-pub.sh poll
+TimeoutStartSec=2min

@@ -28,6 +28,9 @@ payload=(
     publisher/ghcp-hooks.darwin.json
     publisher/kdeskdash-claude-poll.service
     publisher/kdeskdash-claude-poll.timer
+    publisher/codex-pub.sh
+    publisher/kdeskdash-codex-poll.service
+    publisher/kdeskdash-codex-poll.timer
     publisher/VERSION
 )
 
