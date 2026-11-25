@@ -1,0 +1,12 @@
+# Every 5 minutes, matching expected_refresh_s=300 in what the script publishes.
+# Monotonic triggers, so Persistent= would be a no-op; OnStartupSec covers the
+# first run after the user manager comes up (lingering must be on).
+[Unit]
+Description=kdeskdash codex-feed poll every 5 minutes
+
+[Timer]
+OnStartupSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

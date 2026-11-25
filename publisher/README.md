@@ -27,11 +27,13 @@ units and the Copilot hook template) in the homelab package store as
 from *that* (see `docs/deploying.md`, "The publisher bundle"). The manual
 steps below remain the path for unmanaged machines (cleo).
 
-**Two publishers ship from this directory**, on one version clock. Everything
+**Three publishers ship from this directory**, on one version clock. Everything
 above and below is about `claude-pub.sh`, the Claude Code feed. Its sibling
 `ghcp-pub.sh` does the same job for GitHub Copilot CLI sessions and has its
-own section at the end — read it before touching either, because the two
-feeds look identical and the Copilot one can say strictly less.
+own section near the end — read it before touching either, because the two
+feeds look identical and the Copilot one can say strictly less. The third,
+`codex-pub.sh` (since 2.7.0), publishes only Codex's usage limits and has the
+last section.
 
 ## Install (per machine, once)
 
@@ -608,3 +610,76 @@ $P hget "ghcp:session:$(hostname -s):$SID" status
 **`ts` must be 10 digits.** Thirteen means the millisecond conversion is broken
 and the row will read as live forever. An empty `hget` is an answer, not an
 error — it means the key (or the field) is absent.
+
+# Codex usage publisher (`codex-pub.sh`)
+
+Writes `codex:limits` — kdashdata CD-33, a HASH with no TTL on
+`KDASH_CENTRAL_REDIS` beside `claude:limits` — with no Codex session running.
+One mode, `poll`. Sprint 049, korg WI 4939.
+
+**One writer, kai.** Codex limits are account-wide, so a second host adds
+freshness, not coverage. kai was chosen because cleo has no release path for
+this bundle (korg WI 4651).
+
+## Sources, measured on codex-cli 0.171.0
+
+| Order | Source | `source` | Observation time |
+|---|---|---|---|
+| 1 | `codex app-server` JSON-RPC `account/rateLimits/read` | `app-server` | the read itself |
+| 2 | the newest rollout's last `token_count` event | `rollout` | that event's `timestamp` |
+
+The app-server method is marked **[experimental]**, so it is measured rather
+than trusted. It answers in under a second, with no session running, and
+Codex authenticates the call itself. The script **never reads `auth.json`**.
+
+Logged out, it returns a JSON-RPC error
+(`codex account authentication required to read rate limits`). That is not
+a zero reading. Nothing is published, the stored reading ages until the panel
+greys it, and the reason goes in `~/.codex/kdeskdash-pub/state/app-server-error`.
+The rollout fallback stamps the sample with the rollout's own time, so an old
+rollout reads as stale, never as fresh.
+
+Two traps, both covered by `tests/codex-batch-shape.sh` (ctest
+`test_publisher_codex`):
+
+- **The app-server exits on stdin EOF without answering.** Piping the three
+  requests in loses the reply, so the script runs the exchange as a `coproc`
+  and closes stdin only after the answer to request 2 arrives. The test's stub
+  `codex` behaves the same way.
+- **Key order is the server's.** A result line starts `{"id":2,…`, but an
+  error line ends `…,"id":2}`. A reader that matched on the prefix logged a
+  logged-out host as "no answer". It still published nothing, but it gave
+  the wrong reason.
+
+## Windows are keyed by length (CD-33)
+
+300 minutes maps to `five_hour_*` and 10080 to `seven_day_*`, whichever slot
+reported them. On Ken's Pro plan (`prolite`), the **primary** slot holds the
+weekly window and `secondary` is null. That publishes as a seven-day reading
+with `five_hour_none=1` and both five-hour values written as `0` in the same
+HSET. A sample with no 10080-minute window is incomplete, so nothing is
+published. Other window lengths are outside v1's projection and are ignored.
+`limitId`, credits and `rateLimitReachedType` are not written (CD-33).
+
+## Freshness
+
+`updated_at` is the observation time. The script reads the stored value first
+and publishes only when its sample is **newer**, so a republish never advances
+the stamp and an old rollout never replaces an app-server reading.
+`expected_refresh_s` is 300, matching the timer.
+
+## Install (kai)
+
+The bundle carries `codex-pub.sh` and `kdeskdash-codex-poll.{service,timer}`.
+The unit expects the script at `~/.codex/kdeskdash-pub/codex-pub.sh`. On a
+managed host, the install belongs to k-homelab like the Claude poller's.
+Lingering must be on, as it already is on kai.
+
+## Smoke test
+
+```bash
+publisher/codex-pub.sh poll
+for f in five_hour_none seven_day_pct seven_day_resets_at updated_at source plan_type; do
+  printf '%s=%s\n' $f "$(kdash-pub --app kdeskdash --stem KDASH_CENTRAL_REDIS hget codex:limits $f)"
+done
+```

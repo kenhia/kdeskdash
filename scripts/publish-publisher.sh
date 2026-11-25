@@ -46,6 +46,10 @@ cd "$repo"
 # 043, korg WI 3170): a Copilot hook command is not $HOME-expanded, and
 # k-homelab installs the file byte-identical, so a host with a different $HOME
 # needs its own shipped file rather than an installer that rewrites one.
+#
+# codex-pub.sh and its poll unit pair joined in sprint 049 (korg WI 4939) on
+# the same reasoning as ghcp-pub.sh: same transport, same store route, one
+# version clock. Only one host runs it, so k-homelab decides where it lands.
 payload=(
     publisher/claude-pub.sh
     publisher/ghcp-pub.sh
@@ -53,6 +57,9 @@ payload=(
     publisher/ghcp-hooks.darwin.json
     publisher/kdeskdash-claude-poll.service
     publisher/kdeskdash-claude-poll.timer
+    publisher/codex-pub.sh
+    publisher/kdeskdash-codex-poll.service
+    publisher/kdeskdash-codex-poll.timer
 )
 
 # A published version names a commit or it names nothing (same rule as

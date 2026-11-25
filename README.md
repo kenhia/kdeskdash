@@ -458,6 +458,9 @@ kdeskdash/
 │   ├── settings-fragment.json      # ~/.claude/settings.json hook + statusline config
 │   ├── poll-hidden.vbs             # Windows shim: run `poll` from Task Scheduler windowless
 │   ├── kdeskdash-claude-poll.*     # systemd user unit pair for `poll` on headless hosts
+│   ├── codex-pub.sh                # Codex usage limits -> codex:limits (one writer, kai; app-server, rollout fallback)
+│   ├── kdeskdash-codex-poll.*      #   its systemd user unit pair
+│   ├── tests/codex-batch-shape.sh  #   stub app-server that exits on EOF, like the real one (ctest: test_publisher_codex)
 │   └── README.md                   # per-machine install, source decision table, key contract
 ├── scripts/
 │   ├── sync-sysroot.sh             # rsync a Pi sysroot for cross-compilation

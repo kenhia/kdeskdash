@@ -1,0 +1,3 @@
+{"id":1,"result":{"userAgent":"kdeskdash-codex-pub/0.171.0 (Ubuntu 24.4.0; x86_64) unknown (kdeskdash-codex-pub; 1)","codexHome":"/scratch-codex-home","platformFamily":"unix","platformOs":"linux"}}
+{"method":"remoteControl/status/changed","params":{"status":"disabled","serverName":"kai","installationId":"00000000-0000-0000-0000-000000000000","environmentId":null},"emittedAtMs":1795572313326}
+{"error":{"code":-32600,"message":"codex account authentication required to read rate limits"},"id":2}

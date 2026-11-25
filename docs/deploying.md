@@ -215,7 +215,8 @@ just publish-publisher      # → artifacts/kdeskdash-publisher/<version>/
 
 `artifacts/kdeskdash-publisher/<version>/`, flat, plus `SHA256SUMS`:
 `claude-pub.sh`, `ghcp-pub.sh`, `ghcp-hooks.json`, `ghcp-hooks.darwin.json`,
-`kdeskdash-claude-poll.service`, `kdeskdash-claude-poll.timer`, and a generated
+`kdeskdash-claude-poll.service`, `kdeskdash-claude-poll.timer`, `codex-pub.sh`,
+`kdeskdash-codex-poll.service`, `kdeskdash-codex-poll.timer`, and a generated
 `VERSION` holding the full version string so an installed copy can say what it
 is without the store path that delivered it.
 
@@ -254,6 +255,13 @@ window (sprint 047, korg WI 4623). Until every host carrying `claude-hooks`
 (and cleo, by hand) is on it, an older publisher writing after a fixed one
 leaves the flag at 1 beside its copied value; CD-29 readers hide that value,
 so the gap costs a gauge, never a wrong number.
+
+**2.7.0** adds the third publisher, `codex-pub.sh`, with its own poll unit
+pair (sprint 049, korg WI 4939). It writes kdashdata CD-33's `codex:limits`
+from one host. It changes nothing for a host that already runs 2.6.0, but
+it is an install change on the host that runs the Codex poller. No k-homelab
+recipe installs it yet. Its `kdeskdash-poll` recipe is hardwired to
+`claude-pub.sh`, so the fold-in is a recipe decision there.
 
 **The version is not the dashboard's.** The publisher changes on its own clock,
 so its version is `<publisher/VERSION>-<short sha of the last commit touching

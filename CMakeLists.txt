@@ -437,5 +437,12 @@ if(NOT CMAKE_CROSSCOMPILING)
         add_test(NAME test_publisher_ghcp
                  COMMAND ${BASH_EXECUTABLE}
                          ${CMAKE_SOURCE_DIR}/publisher/tests/ghcp-batch-shape.sh)
+
+        # The Codex usage publisher (sprint 049). Its stub `codex` exits on
+        # stdin EOF without answering, as the real app-server does, so a
+        # publisher that pipes its requests and closes stdin fails here.
+        add_test(NAME test_publisher_codex
+                 COMMAND ${BASH_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/publisher/tests/codex-batch-shape.sh)
     endif()
 endif()
