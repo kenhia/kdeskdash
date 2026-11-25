@@ -123,3 +123,21 @@ fixed.
 ## Repaired in passing
 
 None.
+
+## Deployed
+
+2026-11-24, from merged `main` at `0e2457f` (PR #59), by the karc leg's ship
+turn on kai. Both `.sprint-deploy` steps ran.
+
+- **`deploy-panels`: `kdeskdash 0.28.0-0e2457f`.** A new panel version was
+  cut because the panel payload includes `CMakeLists.txt`, where
+  `test_publisher_codex` was registered. No dashboard code changed. It is
+  installed on **rpidash2 and rpidash3**: `just versions` reports exactly
+  `kdeskdash 0.28.0-0e2457f` on both, `systemctl is-active` reports `active`
+  on both, and `kddss` saved a rendered frame from each through central.
+- **`recipe: publish-publisher`: `kdeskdash-publisher 2.7.0-0e2457f`**, which
+  is `latest` in the store. The published `codex-pub.sh` sha256
+  (`53a1797d…69c243a`) matches the merged source. `claude-pub.sh`
+  (`1c566a35…ba6bbe`) is unchanged from the version kai already runs.
+- **Not installed anywhere:** the Codex poller. korg:4963 pins
+  `2.7.0-0e2457f` and owns the install and the timer-fired acceptance.
