@@ -102,11 +102,23 @@ fixed.
 
 ## Not done here, on purpose
 
-- **No persistent install.** The proposal's notes require Ken's OK in the
-  moment for a new timer, and k-homelab has no recipe for this:
-  `kdeskdash-poll` hardcodes `claude-pub.sh` in its paths and its pairing
-  guard. The proposed install and its fold-in are in the overseer handoff.
-- **No store publish yet.** The bundle publishes from merged `main` at ship.
+- **No install on kai, and no k-homelab change — Ken's ruling.** The leg
+  paused on the install (korg:4948 comment 4984). Ken chose option (A): a
+  new k-homelab `codex-poll` recipe, run **as its own slice, korg:4963**,
+  not inline here (relayed by the overseer, comment 4985). `kdeskdash-poll`
+  cannot carry this because it hardcodes `claude-pub.sh` in its paths and its
+  pairing guard. korg:4963 owns the recipe, the
+  `kdeskdash_publisher_version` bump and the **timer-fired acceptance**: a
+  run the timer starts on its own advances `updated_at` with
+  `source app-server`. WI 4939 is resolved on the implementation, and its
+  "install it the way the Claude poller is installed" clause moves with that
+  slice.
+- **The hand-written reading stays.** The `codex:limits` record written
+  during acceptance is a true observation. It reads stale on every consumer
+  until the timer exists, which is the designed behaviour.
+- **Store publish at ship.** `just publish-publisher` runs from merged `main`
+  as usual, so the store holds `kdeskdash-publisher 2.7.0-<sha>` for
+  korg:4963 to pin.
 
 ## Repaired in passing
 
