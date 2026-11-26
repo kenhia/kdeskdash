@@ -60,6 +60,14 @@ published-publisher version="":
     @v="{{ version }}"; [ -n "$v" ] || v="$(scripts/version-publisher.sh)"; \
      scripts/store-has.sh --say kdeskdash-publisher "$v"
 
+# Install a published publisher bundle on cleo (default: the newest published).
+# cleo is the one feed host k-homelab does not manage (korg WI 4651), so this
+# recipe is how a publisher release reaches it; .sprint-deploy runs it after
+# publish-publisher. Hash-verified on cleo before and after the swap; a cleo
+# already running that version is a no-op, a cleo that is asleep is a loud fail.
+deploy-publisher-cleo version="":
+    scripts/deploy.sh publisher-windows kenhi@cleo {{ version }}
+
 # Install a published version on a Pi (default: the newest published).
 # Naming an older version IS the rollback — there is no second verb.
 deploy host="rpidash2" version="":

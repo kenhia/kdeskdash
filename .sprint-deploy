@@ -12,6 +12,13 @@
 # answer "nothing to publish" and exit 0. Change detection lives in the
 # recipes, not here and not in the skill.
 #
+# deploy-publisher-cleo follows publish-publisher because cleo is the one feed
+# host no k-homelab recipe reaches (korg WI 4651, Ken's ruling of 2026-11-26).
+# Same self-skipping rule: it hashes cleo's install first and exits 0 when cleo
+# already runs `latest`. Unlike the publish it is NOT silent when its target is
+# away — cleo asleep fails the step, and that is the point.
+#
 # See .claude/skills/deploy-panels/SKILL.md and docs/deploying.md.
 deploy-panels
 recipe: publish-publisher
+recipe: deploy-publisher-cleo

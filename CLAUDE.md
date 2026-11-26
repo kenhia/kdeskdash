@@ -95,6 +95,7 @@ just check                    # CI gate: build the host tree + run every unit te
 just test golz                # run ONE test by name (ctest -R test_golz)
 just publish                  # release: build + publish a version to the package store
 just publish-publisher        # publish the claude-feed publisher bundle (its own version clock)
+just deploy-publisher-cleo    # install the published publisher on cleo (the one unmanaged feed host)
 just deploy [host] [version]  # install a published version (default rpidash2, newest)
 just push-dev [host]          # dev loop ONLY: push this tree to a board, bypassing the store
 just versions                 # what is published / cached here / running on each board

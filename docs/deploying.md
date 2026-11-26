@@ -30,6 +30,7 @@ just install-service [host] [version] # unit (from the artifact) + host env
 just versions                         # published / cached here / running where
 just published [version]              # is it already in the store? (exit code is the answer)
 just published-publisher [version]    # the same question for the publisher bundle
+just deploy-publisher-cleo [version]  # install a published publisher bundle on cleo
 just push-dev [host]                  # dev loop — NOT a deploy, see below
 ```
 
@@ -181,8 +182,9 @@ which as of sprint 047 means kai, kubs0, komarchy, kimac, kbook2 and thrall.
 Only kai declares `kdeskdash-poll`. A release reaches those hosts through
 a bump of `kdeskdash_publisher_version` and `bin/apply`, and the
 intermittent ones catch up through headed-catchup when they wake. **cleo is
-the exception:** it is unmanaged, so nothing delivers to it. Sprint 047 found it
-still on 2.1.0 three releases later and copied 2.5.0 across by hand.
+the exception:** k-homelab does not manage it. Sprint 047 found it still on
+2.1.0 three releases later and copied 2.5.0 across by hand; since sprint 050 it
+has its own recipe, below.
 
 **Two publishers, one bundle, one clock** since sprint 038: `ghcp-pub.sh`
 publishes GitHub Copilot CLI sessions to `ghcp:session:*` the way
@@ -263,6 +265,11 @@ it is an install change on the host that runs the Codex poller. No k-homelab
 recipe installs it yet. Its `kdeskdash-poll` recipe is hardwired to
 `claude-pub.sh`, so the fold-in is a recipe decision there.
 
+**2.7.1** clears `state/oauth-expired` whenever a poll holds a valid token, not
+only after its own refresh (sprint 050, korg WI 4793). An interactive `claude
+auth login` used to leave the breadcrumb claiming an expired token forever. Not
+an install change.
+
 **The version is not the dashboard's.** The publisher changes on its own clock,
 so its version is `<publisher/VERSION>-<short sha of the last commit touching
 the payload>` (e.g. `1.0.0-47f7c49`). Scoping the sha to the payload files —
@@ -278,6 +285,48 @@ the publisher's contract meaningfully changes; forgetting to is harmless,
 because the sha moves regardless.
 
 The off-`main` rule is the dashboard's: a branch publish never moves `latest`.
+
+### cleo: `just deploy-publisher-cleo`
+
+cleo is the one feed host no k-homelab recipe reaches, and nothing told anyone
+when it fell behind (korg WI 4651). Ken's ruling there: **this repo owns keeping
+it current**, the way kdashdata once installed kdash-pub on cleo from its own
+justfile. So `.sprint-deploy` runs it on every sprint, straight after
+`publish-publisher`:
+
+```sh
+just deploy-publisher-cleo            # the newest published (latest)
+just deploy-publisher-cleo 2.7.0-0e2457f   # a named one — the rollback
+```
+
+It is `scripts/deploy.sh publisher-windows kenhi@cleo`, and like the panel
+deploy it installs **the published artifact**, fetched into
+`.deploy-cache/kdeskdash-publisher/<version>/` and checked against
+`SHA256SUMS`, never this checkout. What it does on cleo:
+
+- **Only `claude-pub.sh` and `VERSION`** go to
+  `C:\Users\kenhi\.claude\kdeskdash-pub\`. That is everything cleo runs from
+  the bundle. `poll-hidden.vbs` and the scheduled task are the one-time install
+  in `publisher/README.md` and are not in the bundle; a cleo with no install
+  directory is refused with a pointer there rather than half-installed.
+- **Hashes first.** If cleo's two files already match, it says so and exits 0 —
+  which is what makes it safe to declare unconditionally, like the publish.
+- **Staged, checked, swapped, re-checked.** scp to `<name>.new`, PowerShell
+  hashes the staged files against the artifact's sums (a mismatch deletes them
+  and swaps nothing), then renames them over the old ones — retrying for a few
+  seconds, because a hook running the old script holds it open — and hashes the
+  installed files again. The final line is cleo's own reading, not ours.
+- **No quoting crosses the ssh boundary.** cleo's ssh shell is PowerShell, which
+  parses the whole command string; every script goes as `-EncodedCommand`
+  (UTF-16LE, base64). Keep those scripts ASCII.
+- **cleo asleep is a loud failure, not a skip.** ssh is BatchMode with a 15 s
+  connect timeout and the step exits non-zero naming the host, with nothing
+  changed. Silence is how it fell three releases behind; a red Phase 7 step is
+  the signal to run it again once cleo is awake.
+
+Proven live in sprint 050: it moved cleo from `2.6.0-09bf6c9` to
+`2.7.0-0e2457f` (only `VERSION` differed — 049 did not touch
+`claude-pub.sh`), and a second run reported the hashes matching.
 
 Nothing here touches the panels. The consuming side — installing from the
 store, retiring the vendored copy and the checkout staging — is k-homelab's

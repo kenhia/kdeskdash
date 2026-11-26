@@ -7,6 +7,7 @@
 #   scripts/deploy.sh push-dev        <target> <binary> [ttf]
 #   scripts/deploy.sh fetch           [version]
 #   scripts/deploy.sh versions        <target>...
+#   scripts/deploy.sh publisher-windows <target> [version]   (the claude-feed publisher, cleo)
 #
 # Since sprint 024 a deploy installs a *published artifact*, not this build
 # tree: `just publish` puts artifacts/kdeskdash/<version>/ in the homelab
@@ -54,10 +55,14 @@ fetch_failed() {
 # .deploy-cache/<version>/, verify every file against SHA256SUMS, and echo the
 # directory. A cached copy that still verifies is reused — the store is
 # immutable, so a version that checks out cannot have changed underneath us.
+#
+# The second argument names the artifact (default: the panel's). The publisher
+# bundle caches under .deploy-cache/kdeskdash-publisher/<version>/ so the
+# panel's own cache listing in `versions` stays a list of panel versions.
 fetch_artifact() {
-    local want=${1:-}
+    local want=${1:-} artifact=${2:-kdeskdash}
     : "${KDESKDASH_STORE_URL:?set KDESKDASH_STORE_URL in .env (e.g. https://kubsdb.encke-wahoo.ts.net:4880)}"
-    local base="$KDESKDASH_STORE_URL/artifacts/kdeskdash"
+    local base="$KDESKDASH_STORE_URL/artifacts/$artifact"
 
     local v="$want"
     if [ -z "$v" ]; then
@@ -70,13 +75,14 @@ fetch_artifact() {
     fi
 
     local dir="$cache/$v"
+    [ "$artifact" = kdeskdash ] || dir="$cache/$artifact/$v"
     if [ -f "$dir/SHA256SUMS" ] && (cd "$dir" && sha256sum -c --quiet SHA256SUMS 2>/dev/null); then
         echo "using cached artifact $v" >&2
         printf '%s\n' "$dir"
         return
     fi
 
-    echo "fetching kdeskdash $v from the store" >&2
+    echo "fetching $artifact $v from the store" >&2
     rm -rf "$dir"
     mkdir -p "$dir"
     # Every failure from here on takes the directory with it. Leaving a partial
@@ -140,7 +146,7 @@ push_binary() {
     fi
 }
 
-cmd=${1:?usage: deploy.sh <deploy|install-service|push-dev|fetch|versions> ...}
+cmd=${1:?usage: deploy.sh <deploy|install-service|push-dev|fetch|versions|publisher-windows> ...}
 shift || true
 
 case "$cmd" in
@@ -253,6 +259,101 @@ case "$cmd" in
         fetch_artifact "${1:-}"
         ;;
 
+    publisher-windows)
+        # Install a published claude-feed publisher on a Windows host (cleo):
+        # the one feed host k-homelab does not manage, which is how it came to
+        # be found three releases behind (korg WI 4651). Ken's ruling there:
+        # this repo owns keeping it current, declared in .sprint-deploy after
+        # publish-publisher, so every release reaches it in the sprint that
+        # cut it.
+        #
+        # Only claude-pub.sh and VERSION: they are what cleo runs from the
+        # bundle. poll-hidden.vbs and the scheduled task are a one-time
+        # install (publisher/README.md) and are not in the bundle at all.
+        #
+        # The remote shell is PowerShell, which parses the whole ssh command
+        # string, so no script text crosses that boundary as text: each one is
+        # sent as -EncodedCommand (UTF-16LE, base64), whose alphabet no shell
+        # on either side has an opinion about. Files go by scp to <name>.new,
+        # are hash-checked there BEFORE the swap, and the installed files are
+        # hashed again AFTER it — a write that reports success and did not land
+        # is the failure mode this exists to catch.
+        target=${1:?missing ssh target}
+        version=${2:-}
+        dir=$(fetch_artifact "$version" kdeskdash-publisher)
+        v=$(basename "$dir")
+        files=(claude-pub.sh VERSION)
+        rdir='.claude/kdeskdash-pub'                   # relative to the ssh home
+        ssh_opts=(-o BatchMode=yes -o ConnectTimeout=15)
+
+        # pwsh <script>: run a PowerShell script on the target, encoded.
+        pwsh_run() {
+            local enc
+            enc=$(printf '%s' "$1" | iconv -f UTF-8 -t UTF-16LE | base64 -w0)
+            ssh -n "${ssh_opts[@]}" "$target" "pwsh -NoProfile -NonInteractive -EncodedCommand $enc"
+        }
+        # Prints "<sha256> <name>" per file, "- <name>" for an absent one.
+        # ASCII only: this text reaches Windows PowerShell's parser.
+        hash_ps="\$ErrorActionPreference = 'Stop'
+\$d = Join-Path \$env:USERPROFILE '.claude\\kdeskdash-pub'
+if (-not (Test-Path -LiteralPath \$d -PathType Container)) { Write-Output 'NO-DIR'; exit 3 }
+foreach (\$n in @($(printf "'%s'," "${files[@]}" | sed 's/,$//'))) {
+  \$p = Join-Path \$d \$n
+  if (Test-Path -LiteralPath \$p) { Write-Output ((Get-FileHash -Algorithm SHA256 -LiteralPath \$p).Hash.ToLower() + ' ' + \$n) }
+  else { Write-Output ('- ' + \$n) }
+}"
+        want=$(cd "$dir" && sha256sum "${files[@]}" | awk '{print $1" "$2}')
+
+        rc=0
+        have=$(pwsh_run "$hash_ps" | tr -d '\r') || rc=$?
+        case $rc in
+            0) ;;
+            3) die "$target has no ~/$rdir — the first install is by hand (publisher/README.md, Windows); this only keeps it current" ;;
+            *) die "could not read $target's installed publisher (ssh/pwsh exit $rc) — is it awake? Nothing was changed." ;;
+        esac
+        if [ "$have" = "$want" ]; then
+            echo "$target already runs kdeskdash-publisher $v (hashes match) — nothing to install"
+            exit 0
+        fi
+
+        # Stage beside the target, so the swap is a rename in one directory.
+        for f in "${files[@]}"; do
+            scp -q "${ssh_opts[@]}" "$dir/$f" "$target:$rdir/$f.new"
+        done
+
+        # Verify every staged file, then swap them in. A staged file that does
+        # not match is removed and nothing is swapped. The swap retries: a hook
+        # running the old script holds it open, and Windows refuses to replace
+        # an open file for the moment it takes the hook to finish.
+        swap_ps="\$ErrorActionPreference = 'Stop'
+\$d = Join-Path \$env:USERPROFILE '.claude\\kdeskdash-pub'
+\$want = @{ $(cd "$dir" && sha256sum "${files[@]}" | awk '{printf "\x27%s\x27 = \x27%s\x27; ", $2, $1}') }
+foreach (\$n in \$want.Keys) {
+  \$h = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path \$d (\$n + '.new'))).Hash.ToLower()
+  if (\$h -ne \$want[\$n]) {
+    foreach (\$m in \$want.Keys) { Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath (Join-Path \$d (\$m + '.new')) }
+    Write-Output ('staged ' + \$n + ' is ' + \$h + ', expected ' + \$want[\$n]); exit 4
+  }
+}
+foreach (\$n in \$want.Keys) {
+  for (\$i = 1; ; \$i++) {
+    try { Move-Item -Force -LiteralPath (Join-Path \$d (\$n + '.new')) -Destination (Join-Path \$d \$n); break }
+    catch { if (\$i -ge 10) { Write-Output ('could not replace ' + \$n + ': ' + \$_); exit 5 }; Start-Sleep -Milliseconds 500 }
+  }
+}"
+        rc=0
+        out=$(pwsh_run "$swap_ps" | tr -d '\r') || rc=$?
+        [ "$rc" = 0 ] || die "install on $target failed (exit $rc): $out"
+
+        # Prove it landed, from the target's own reading of its files.
+        have=$(pwsh_run "$hash_ps" | tr -d '\r') || die "could not re-read $target after the install"
+        if [ "$have" != "$want" ]; then
+            printf 'expected:\n%s\nfound:\n%s\n' "$want" "$have" >&2
+            die "kdeskdash-publisher $v did NOT land on $target"
+        fi
+        echo "deployed kdeskdash-publisher $v to $target:~/$rdir (hashes verified on $target)"
+        ;;
+
     versions)
         : "${KDESKDASH_STORE_HOST:?set KDESKDASH_STORE_HOST in .env (the host running kpkg, e.g. kubsdb)}"
         echo "store:"
@@ -260,7 +361,7 @@ case "$cmd" in
             echo "  (nothing published yet)"
         echo "cached here:"
         # shellcheck disable=SC2012  # names only; no odd filenames in a version dir
-        ls -1t "$cache" 2>/dev/null | sed 's/^/  /' || echo "  (none)"
+        ls -1t "$cache" 2>/dev/null | grep -vx kdeskdash-publisher | sed 's/^/  /' || echo "  (none)"
         for target in "$@"; do
             got=$(probe_version "$target")
             printf '%s: %s\n' "$target" "${got:-unreachable, not installed, or too old to say}"

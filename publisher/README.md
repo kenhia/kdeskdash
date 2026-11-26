@@ -24,8 +24,10 @@ Managed Linux hosts don't install from this directory: `just
 publish-publisher` puts a versioned bundle (both publishers, the two poll
 units and the Copilot hook template) in the homelab package store as
 `artifacts/kdeskdash-publisher/<version>/`, and k-homelab's recipes install
-from *that* (see `docs/deploying.md`, "The publisher bundle"). The manual
-steps below remain the path for unmanaged machines (cleo).
+from *that* (see `docs/deploying.md`, "The publisher bundle"). cleo, the one
+unmanaged feed host, is kept current from the same bundle by `just
+deploy-publisher-cleo` (sprint 050, korg WI 4651); the manual steps below are
+its first install, and the path for any other unmanaged machine.
 
 **Three publishers ship from this directory**, on one version clock. Everything
 above and below is about `claude-pub.sh`, the Claude Code feed. Its sibling
@@ -107,7 +109,9 @@ The access token in that file lives 8 hours. When the poll finds it expired it
 asks the CLI to refresh it (sprint 048): `claude auth status`, then the
 smallest `claude -p` turn, run with `--setting-sources project` from `$TMPDIR`
 so no hook publishes a session for it. That happens at most once an hour, and a
-token still dead afterwards leaves `state/oauth-expired`. A refresh cannot
+token still dead afterwards leaves `state/oauth-expired`, which the next poll
+that finds a valid token removes — however it got valid, an interactive
+`claude auth login` included (2.7.1, korg WI 4793). A refresh cannot
 move the sign-in's own end date: when the CLI warns that the sign-in ends,
 run `claude auth login` interactively.
 
@@ -585,7 +589,8 @@ reason as the Claude hook (see "Windows: why the hook command names
 `bash.exe`"); the template's `powershell` variant already does.
 
 Managed hosts get this from k-homelab's `copilot-hooks` recipe (korg WI 2754),
-which installs from the store bundle. cleo installs by hand.
+which installs from the store bundle. cleo installs it by hand (its recipe,
+`just deploy-publisher-cleo`, carries only `claude-pub.sh` and `VERSION`).
 
 ## Smoke test
 
@@ -618,8 +623,9 @@ Writes `codex:limits` — kdashdata CD-33, a HASH with no TTL on
 One mode, `poll`. Sprint 049, korg WI 4939.
 
 **One writer, kai.** Codex limits are account-wide, so a second host adds
-freshness, not coverage. kai was chosen because cleo has no release path for
-this bundle (korg WI 4651).
+freshness, not coverage. kai was chosen because cleo had no release path for
+this bundle at the time (korg WI 4651, closed by sprint 050's
+`deploy-publisher-cleo`, which still carries only `claude-pub.sh`).
 
 ## Sources, measured on codex-cli 0.171.0
 
