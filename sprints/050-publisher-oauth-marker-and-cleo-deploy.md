@@ -87,3 +87,31 @@ Checked 2026-11-26, about 18:15Z.
 ## Repaired in passing
 
 Nothing.
+
+## Deployed
+
+2026-11-26, about 18:25Z, from merged `main` (`d0e2b34`, PR #60), run from kai.
+Ship turn of karc leg `kdeskdash-740974`, after the overseer cleared it
+(korg:5077 comment 5171).
+
+- **`deploy-panels`** published panel `0.28.0-d0e2b34`. This was a real
+  release: `scripts/deploy.sh` is part of the panel payload. `just deploy`
+  installed it on **rpidash2** and **rpidash3**. `just versions` reported both
+  boards as `kdeskdash 0.28.0-d0e2b34`, both units were `active`, and `kddss`
+  saved a frame from each board.
+- **`just publish-publisher`** published `kdeskdash-publisher 2.7.1-d0e2b34`,
+  and `latest` now points to it. Against 2.7.0-0e2457f the bundle diff, read
+  off both SHA256SUMS files, is `claude-pub.sh` and `VERSION` only.
+- **`just deploy-publisher-cleo`** fetched 2.7.1-d0e2b34 and installed it on
+  cleo. The step reported "hashes verified on kenhi@cleo". A separate ssh read
+  of cleo's files confirmed `VERSION` = `2.7.1-d0e2b34`. Their sha256 values
+  are `d0a90893…` (claude-pub.sh) and `61a8b272…` (VERSION), which match the
+  artifact's SHA256SUMS.
+- **Live check of the marker fix (WI 4793), triggered on kai.** I ran the
+  published 2.7.1 `claude-pub.sh poll` against kai's real CLI credentials, with
+  a throwaway `KDD_STATE_DIR` that already held a stale `oauth-expired`. After
+  the poll the marker was gone, and `claude:limits` read `source oauth` with
+  `updated_at` equal to that second.
+- **Not done here:** kai and kubs0 install the publisher through k-homelab's
+  `kdeskdash_publisher_version`, which is still `2.7.0-0e2457f`. The bump to
+  `2.7.1-d0e2b34` is relayed to the k-homelab leg through the overseer.
