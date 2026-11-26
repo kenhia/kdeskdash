@@ -440,5 +440,17 @@ expired_creds; rm -f "$KDD_STATE_DIR/oauth-refresh.stamp"; poll_expired status
 expect "a successful refresh clears the breadcrumb" "no" \
   "$([ -e "$KDD_STATE_DIR/oauth-expired" ] && echo yes || echo no)"
 
+# korg WI 4793. An interactive `claude auth login` writes a fresh token behind
+# the poll's back: oauth_token answers 0, oauth_refresh never runs, and the
+# breadcrumb it alone used to clear stayed behind indefinitely, still claiming
+# the token was expired. A poll that finds a valid token clears it.
+printf 'oauth token expired and the CLI did not refresh it, as of 0\n' \
+  > "$KDD_STATE_DIR/oauth-expired"
+: > "$KDD_CLAUDE_LOG"; poll_oauth "$fx/usage-five-hour-null.json"
+has "a fresh login (valid token, no refresh): oauth publishes" "source${TAB}oauth"
+expect "a fresh login clears a stale breadcrumb on the next poll" "no" \
+  "$([ -e "$KDD_STATE_DIR/oauth-expired" ] && echo yes || echo no)"
+expect "a fresh login: no refresh attempted" "" "$(cat "$KDD_CLAUDE_LOG")"
+
 [ "$fails" -eq 0 ] || { printf '\n%d assertion(s) failed\n' "$fails"; exit 1; }
 printf '\nall batch-shape assertions passed\n'

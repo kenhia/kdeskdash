@@ -695,6 +695,12 @@ from_oauth() {
   fi
   [ "$rc" = 0 ] || [ "$rc" = 2 ] || return 1
   [ -n "$tok" ] || return 1
+  # A valid token in hand means the breadcrumb is stale, whoever refreshed it.
+  # oauth_refresh clears it on its own success, but an interactive
+  # `claude auth login` refreshes behind the poll's back: oauth_token answers
+  # 0, oauth_refresh never runs, and the marker went on claiming an expired
+  # token indefinitely (korg WI 4793).
+  rm -f "${STATE_DIR}/oauth-expired"
   ver=$(cli_version)
   [ -n "$ver" ] || return 1
   body=$(curl -s --max-time 10 https://api.anthropic.com/api/oauth/usage \
